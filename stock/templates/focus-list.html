@@ -1,0 +1,67 @@
+{% extends "base-view.html" %}
+{% block title %}关注清单{% endblock %}
+{% block content %}
+<!-- 表格悬浮固定表头 -->
+<div id="fixedHeader">
+    <div class="fixed-header-inner">
+        <div class="fixed-header-row" id="fixedHeaderRow">
+            <!-- JS动态克隆原生表头内容与样式 -->
+        </div>
+    </div>
+</div>
+
+<div class="table-responsive" id="tableWrap">
+    <table class="table table-stock table-hover" id="stockTable">
+        <!-- 表格固定表头 -->
+        <thead id="originalThead">
+            <tr>
+                <th style="width: 17.5%;">代码</th>
+                <th style="width: 22.5%;">名称</th>
+                <th style="width: 15%;">价格</th>
+                <th style="width: 15%;">计划</th>
+                <th style="width: 15%;">胜率</th>
+                <th style="width: 15%;">涨幅</th>
+            </tr>
+        </thead>
+        <tbody id="stockBody">
+            {% for item in list %}
+            <tr data-code="{{ item.tscode }}">
+                <td style="width: 17.5%;">
+                    <a class="table-code-text" href="/focus/view/{{ item.tscode }}">{{ item.code }}</a>
+                </td>
+                <td style="width: 22.5%;">
+                    <span>{{ item.name }}</span>
+                </td>
+                <td style="width: 15%;">
+                    <span id="close-{{ item.tscode }}">--</span>
+                </td>
+                <td style="width: 15%;">
+                    <span>{{ item.plan_price }}</span>
+                </td>
+                <td style="width: 15%;">
+                    <span>{{ item.win_ratio }}</span>
+                </td>
+                <td style="width: 15%;">
+                    <span id="change-{{ item.tscode }}">--</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% load static %}
+<script type="module">
+    import { baseInit} from "{% static 'base/js/base.js' %}";
+    import { tableHeaderInit } from "{% static 'stock/js/list.js' %}";
+    import { initFocusList } from "{% static 'stock/js/focus.js' %}";
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        baseInit();
+        tableHeaderInit();
+        initFocusList({{ interval|default:20000 }});
+    });
+</script>
+{% endblock %}

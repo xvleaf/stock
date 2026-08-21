@@ -1,0 +1,410 @@
+/* ---- 全局 ---- */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+:root {
+    --nav-height: 50px;
+    --gap-height: 2px;
+    --z-nav: 1030;
+    --z-gap: 1025;
+    --z-fixed-header: 1020;
+    --color-active: #1677ff;
+    --color-link: #1677ff;
+    --color-text: #1d2a3a;
+    --color-bg-body: #f7f9fc;
+    --color-bg-white: #ffffff;
+    --color-border-under-nav: #e8ecf0;
+    --color-border-table-header: #e8ecf0;
+    --color-border-table-dashed: #e8ecf0;
+    --color-nav-item: #5a6879;
+    --font-weight-base: 400;
+    --font-weight-light: 300;
+    --font-size-base: 14px;
+    --font-size-sm: 13px;
+    --font-size-xs: 11px;
+    --menu-radius-default: 8px;
+    /* 需要计算，不带 px */
+    --padding-page-left-right: 10;
+    /* 三个断点，四个宽度区间 */
+    /* bp1 与精简导航栏同时修改 */
+    --bp1: 1200;     /* 第一断点 */
+    --bp2: 1440;     /* 第二断点 */
+    --bp3: 1920;     /* 第三断点 */
+    --w1: 100%;      /* 视口 < 第一断点 */
+    --w2: 85%;       /* 第一断点 ≤ 视口 < 第二断点 */
+    --w3: 70%;       /* 第二断点 ≤ 视口 < 第三断点 */
+    --w4: 60%;       /* 视口 ≥ 第三断点 */
+}
+/* 滚动条全局隐藏（仅 html 作为滚动容器，body 不设 overflow 避免嵌套滚动容器吞掉滚轮事件） */
+html {
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    /* 禁止垂直弹性回弹 */
+    overscroll-behavior-y: none;
+}
+html::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+body {
+    background: var(--color-bg-body);
+    font-weight: var(--font-weight-base);
+    font-size: var(--font-size-base);
+    font-family: "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+/* ---- 顶部导航 ---- */
+#mainNav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: var(--z-nav);
+    height: var(--nav-height);
+    background: var(--color-bg-white);
+    border-bottom: 1px solid var(--color-border-under-nav);
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateY(0);
+    will-change: transform;
+}
+#mainNav .navbar-inner {
+    /* max-width: 100%; 后面统一宽度控制 */
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+#mainNav .navbar-nav .nav-link {
+    color: var(--color-nav-item);
+    /* 页面边距 + "table-stock td" 边距 */
+    padding: 10px calc((var(--padding-page-left-right) + 10) * 1px);
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+    white-space: nowrap;
+}
+#mainNav .navbar-nav .nav-link.active {
+    color: var(--color-active);
+    border-bottom-color: var(--color-active);
+}
+#mainNav .navbar-nav .nav-link:hover {
+    color: var(--color-active);
+}
+/* 隐藏导航 */
+#mainNav.hidden {
+    transform: translateY(-100%);
+}
+/* ---- 下拉菜单 ---- */
+.dropdown-menu {
+    border-radius: var(--menu-radius-default);
+    border: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    padding: 4px 0;
+    font-size: var(--font-size-base);
+}
+.dropdown-item {
+    padding: 4px 20px;
+    color: var(--color-text);
+}
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background: #f0f5ff;
+    color: var(--color-active);
+}
+.dropdown-submenu {
+    position: relative;
+}
+.dropdown-submenu .dropdown-menu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: 0;
+    margin-top: -1px;
+    border-radius: var(--menu-radius-default);
+}
+.dropdown-submenu.show>.dropdown-menu {
+    display: block;
+}
+/* 网站图标：PC端默认不显示，手机端显示 */
+.navbar-logo-mobile {
+    display: none;
+}
+/* ---- 导航下方间隙 ---- */
+#gap {
+    position: fixed;
+    top: var(--nav-height);
+    left: 0;
+    right: 0;
+    z-index: var(--z-gap);
+    height: var(--gap-height);
+    background: var(--color-bg-body);
+}
+/* ---- 页面主体 ---- */
+.page-content {
+    /* max-width: 100%; 后面统一宽度控制 */
+    margin: 0 auto;
+    background: var(--color-bg-white);
+    padding: 20px calc(var(--padding-page-left-right) * 1px) 20px;
+    /* min-height: 100vh; */
+    transition: padding-top 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: padding-top;
+}
+
+/* ---- 表单 ---- */
+.form-wrap {
+    margin: 0 auto;
+    padding: 16px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
+}
+.form-wrap .form-label {
+    font-size: 0.85rem;
+    color: #555;
+    margin-bottom: 2px;
+}
+
+/* ---- 固定表头 ---- */
+#fixedHeader {
+    position: fixed;
+    left: 0;
+    right: 0;
+    z-index: var(--z-fixed-header);
+    display: none;
+    will-change: top;
+    /* 防止表头内容溢出覆盖其他元素 */
+    overflow: hidden; 
+}
+#fixedHeader .fixed-header-inner {
+    /* max-width: 100%; 后面统一宽度控制 */
+    margin: 0 auto;
+    padding: 0 calc(var(--padding-page-left-right) * 1px);
+    background: var(--color-bg-white);
+}
+#fixedHeader .fixed-header-row {
+    display: table;
+    table-layout: fixed;
+    flex-shrink: 0;
+    background: var(--color-bg-white);
+    border-bottom: 1px solid var(--color-border-table-header);
+}
+#fixedHeader .fixed-header-row>div {
+    display: table-cell;
+    background: var(--color-bg-white);
+    vertical-align: middle;
+    color: var(--color-text);
+    white-space: nowrap;
+}
+/* ---- 表格 ---- */
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
+}
+.table-responsive::-webkit-scrollbar {
+    height: 4px;
+    background: transparent;
+}
+.table-responsive::-webkit-scrollbar-track {
+    background: transparent;
+}
+.table-responsive::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 2px;
+}
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.32);
+}
+.table-stock th,
+.table-stock td {
+    /* 修改此处左右边距，需同时修改 nav 的边距 */
+    padding: 14px 10px;
+    font-family: inherit;
+    font-size: var(--font-size-base);
+    color: var(--color-text);
+}
+/* 表头 */
+.table-stock thead th {
+    background: var(--color-bg-white);
+    border-bottom: 1px solid var(--color-border-table-header);
+    white-space: nowrap;
+    font-weight: var(--font-weight-base);
+}
+/* 表内 */
+.table-stock tbody td {
+    border-bottom: 1px dashed var(--color-border-table-dashed);
+    font-weight: var(--font-weight-light);
+}
+.table-stock tbody tr:hover {
+    background-color: #fafbfc;
+}
+.table-code-text {
+    color: var(--color-link);
+}
+.chart-code-text {
+    font-size: var(--font-size-base);
+    padding: 10px 5px;
+}
+
+/* ---- focus list 拖拽排序样式 ---- */
+#stockBody tr.sorting-mode {
+    cursor: grab;
+}
+#stockBody tr.sorting-mode:active {
+    cursor: grabbing;
+}
+#stockBody tr.dragging {
+    opacity: 0.4;
+}
+#stockBody tr.drag-over {
+    border-top: 2px solid #4a90d9;
+}
+
+/* ---- 三个断点页面宽度 ---- */
+#mainNav .navbar-inner,
+.page-content,
+#fixedHeader .fixed-header-inner {
+    --switch1: clamp(0px, (100vw - var(--bp1) * 1px) * 9999, 9999px);
+    --switch2: clamp(0px, (100vw - var(--bp2) * 1px) * 9999, 9999px);
+    --switch3: clamp(0px, (100vw - var(--bp3) * 1px) * 9999, 9999px);
+    width: max(
+        var(--w4),
+        max(
+            var(--w3),
+            max(
+                var(--w2),
+                var(--w1) - var(--switch1)
+            ) - var(--switch2)
+        ) - var(--switch3)
+    );
+    margin: 0 auto;
+}
+
+/* ---- 精简导航栏 ---- */
+/* 
+修改分辨率时，需要同时改动 base-navi.html 中的 mainNav，
+需要与 Bootstrap 定义的断点一致，断点如下：
+navbar-expand-sm	576px
+navbar-expand-md	768px
+navbar-expand-lg	992px
+navbar-expand-xl	1200px
+navbar-expand-xxl	1400px
+且需要与 base.js 的 BREAKPOINT_MD 一起修改
+若需要特殊点，需要修改 bootstrap.min.css 对应的分辨率
+*/
+@media (max-width: 992px) {
+    :root {
+        --nav-height: 40px;
+        --gap-height: 2px;
+        --padding-page-left-right:5;
+    }
+    #mainNav .navbar-collapse {
+        background: var(--color-bg-body);
+        border-radius: var(--menu-radius-default);
+        margin-top: 8px;
+        padding: 8px 0;
+        position: absolute;
+        top: var(--nav-height);
+        left: 0;
+        right: 0;
+        z-index: var(--z-nav);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+    #mainNav .navbar-nav .nav-link {
+        border-bottom: none;
+        border-left: 3px solid transparent;
+        /* 页面边距 + "table-stock td" 边距 */
+        padding: 10px calc((var(--padding-page-left-right) + 8) * 1px);
+    }
+    #mainNav .navbar-nav .nav-link.active {
+        border-left-color: var(--color-active);
+        background: rgba(22, 119, 255, 0.05);
+    }
+    /* 下拉菜单移动端 */
+    .dropdown-submenu .dropdown-menu {
+        position: static !important;
+        float: none;
+        box-shadow: none;
+        background: transparent;
+        padding-left: 20px;
+        border-radius: 0;
+        margin: 0;
+    }
+    .dropdown-submenu .dropdown-menu .dropdown-item {
+        padding-left: 30px;
+    }
+    .dropdown-submenu .dropdown-toggle::after {
+        float: right;
+    }
+    .dropdown-submenu.show .dropdown-menu {
+        display: block;
+    }
+    .page-content {
+        padding: 12px calc(var(--padding-page-left-right)*1px) 12px;
+    }
+    /* 表格滚动条缩小 */
+    .table-responsive::-webkit-scrollbar {
+        height: 3px;
+    }
+    .table-responsive::-webkit-scrollbar-thumb {
+        border-radius: 1.5px;
+    }
+    #fixedHeader .fixed-header-inner {
+        padding: 0 calc(var(--padding-page-left-right)*1px);
+    }
+    /* 表格字体与间距 */
+    .table-stock th,
+    .table-stock td {
+        /* 修改此处左右边距，需同时修改 nav 的边距 */
+        padding: 10px 8px;
+        font-size: var(--font-size-sm);
+    }
+    /* ---- 移动端两条线导航图标 ---- */
+    .two-line-menu {
+        width: 20px;
+        height: 12px;
+        position: relative;
+        display: inline-block;
+        padding-left: 0;
+    }
+    .two-line-menu::before,
+    .two-line-menu::after {
+        content: '';
+        width: 100%;
+        height: 2px;
+        background-color: var(--color-nav-item);
+        border-radius: 2px;
+        position: absolute;
+    }
+    .two-line-menu::before {
+        top: 0;
+    }
+    .two-line-menu::after {
+        bottom: 0;
+    }
+    /* 导航图标位置 */
+    .navbar-toggler {
+        border: none;
+        padding: 6px calc((var(--padding-page-left-right)) * 1px);
+    }
+    .navbar-toggler:focus {
+        box-shadow: none;
+    }
+    /* 网站图标：PC端默认不显示，手机端显示 */
+    .navbar-logo-mobile {
+        display: inline-flex;
+        color: var(--color-nav-item);
+        font-size: calc(var(--nav-height) * 0.5);
+        padding: 6px calc((var(--padding-page-left-right) + 8) * 1px);
+        transition: color 0.2s;
+        margin-left: auto;
+    }
+}

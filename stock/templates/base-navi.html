@@ -1,0 +1,73 @@
+{% load static %}
+<!-- 顶部全局导航组件 -->
+<nav class="navbar navbar-expand-lg" id="mainNav">
+    <div class="navbar-inner">
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="切换导航">
+            <span class="two-line-menu"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto mb-2 mb-md-0">
+                <li class="nav-item">
+                    <a class="nav-link" href="/capital">
+                        <i class="fas fa-chart-line me-1"></i> 资金
+                    </a>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" id="focusDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-check-square me-1"></i> 关注
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="focusDropdown">
+                        <li><a class="dropdown-item" href="/focus/list">关注清单</a></li>
+                        <li><a class="dropdown-item" href="/fund/list">基金债券</a></li>
+                        <li><a class="dropdown-item" href="/sector/list">行业板块</a></li>
+                        <li class="dropdown-submenu">
+                            <a class="dropdown-item dropdown-toggle" href="#" id="filterSubmenu" role="button" aria-expanded="false">
+                                筛选股票
+                            </a>
+                            <ul class="dropdown-menu" aria-labelledby="filterSubmenu">
+                                <li><a class="dropdown-item" href="/filter/list">清单</a></li>
+                                <li><a class="dropdown-item" href="/filter/run">筛选</a></li>
+                                <li><a class="dropdown-item" href="/filter/refer">对比</a></li>
+                                <li><a class="dropdown-item" href="/filter/config">设定</a></li>
+                            </ul>
+                        </li>
+                        <li><a class="dropdown-item" href="/focus/plus">添加股票</a></li>
+                    </ul>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/trans/list">
+                        <i class="fas fa-sack-dollar me-1"></i> 交易
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/review/trans/list">
+                        <i class="fas fa-history me-1"></i> 复盘
+                    </a>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" id="reviewDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-cog me-1"></i> 设置
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="reviewDropdown">
+                        <li><a class="dropdown-item" href="/setting">参数设置</a></li>
+                        <li><a class="dropdown-item" href="/files">文件管理</a></li>
+                        <li><a class="dropdown-item" href="/admin">后台管理</a></li>
+                        <!-- 登出改用POST表单+CSRF -->
+                        <li>
+                            <form action="{% url 'logout' %}" method="post" class="m-0 p-0">
+                                {% csrf_token %}
+                                <button type="submit" class="dropdown-item w-100 text-start border-0 bg-transparent">
+                                    退出登录
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+        
+        <!-- 移动端右侧图标 -->
+        <span class="navbar-logo-mobile fas fa-circle-nodes"></span>
+        
+    </div>
+</nav>

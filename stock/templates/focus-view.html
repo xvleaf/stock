@@ -1,0 +1,184 @@
+{% extends "base-view.html" %}
+{% block title %}{{ name }} {{ code }} - 关注详情{% endblock %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'stock/css/view.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="chart-page {% if not navi %}no-navi{% endif %}" id="chartPage">
+    {# 分时视图 #}
+    {% if view == 'trend' %}
+    <div class="chart-trend-wrap">
+        {# 图形容器 #}
+        <div class="chart-trend-canvas">
+            {# 占位层 #}
+            <div class="chart-placeholder" id="trendPlaceholder">
+                <div class="chart-placeholder-text">图表加载中...</div>
+            </div>
+            <div id="chartContainer" class="chart-container"></div>
+        </div>
+
+        <div class="chart-param">
+                <button class="chart-icon-btn" id="btnExit"></button>
+                <button class="chart-icon-btn" id="btnEdit"></button>
+                <button class="chart-icon-btn" id="btnDeal"></button>
+                <button class="chart-icon-btn" id="btnFullscreen"></button>
+                <button class="chart-icon-btn"><i class="fas fa-chevron-down"></i></button>
+                <button class="chart-icon-btn"><i class="fas fa-xmark"></i></button>
+        </div>
+    </div>
+
+    {# K线视图 #}
+    {% else %}
+    <div class="chart-kline-wrap">
+        {# 占位层 #}
+        <div class="chart-placeholder" id="klinePlaceholder">
+            <div class="chart-placeholder-text">图表加载中...</div>
+        </div>
+        <div id="chartContainer" class="chart-container"></div>
+    </div>
+
+    {# K线指标栏 #}
+    <div class="chart-kline-metrics">
+        <table>
+            <tr>
+                <td><span id="klineClose" class="metric-item">-</span>
+                    <span class="metric-split">,</span>
+                    <span id="klinePercent" class="metric-item">-</span>
+                    <span class="metric-split">,</span>
+                    <span id="klineMa" class="metric-item metric-orange">-</span>
+                    <span class="metric-split">,</span>
+                    <span id="klineMv" class="metric-item metric-black">-</span>
+                </td>
+            </tr>
+            <tr>
+                <td><span id="klineTp" class="metric-item metric-grey">-</span>
+                    <span class="metric-split">,</span>
+                    <span id="klineUp" class="metric-item metric-blue">-</span>
+                    <span class="metric-split">,</span>
+                    <span id="klineAv" class="metric-item metric-black">-</span>
+                    <span class="metric-split">,</span>
+                    <span id="klineLw" class="metric-item metric-blue">-</span>
+                    <span class="metric-split">,</span>
+                    <span id="klineFl" class="metric-item metric-grey">-</span>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    {# K线参数栏 #}
+    <div class="chart-param" id="klineParam">
+        <span class="param-label metric-black">k</span>
+        <div id="kValue" contenteditable="true" class="param-input">-</div>
+        <span class="param-label metric-black">d</span>
+        <div id="dValue" contenteditable="true" class="param-input">-</div>
+
+        <div class="param-label metric-grey pointer" onclick="toggleRight('{{ market }}.{{ code }}')">
+            <i class="fas fa-repeat"></i>
+        </div>        
+        <div class="param-label metric-grey pointer" onclick="changeFreq('{{ market }}.{{ code }}', 'day')">
+            <i class="fas fa-sun"></i>
+        </div>        
+        <div class="param-label metric-grey pointer" onclick="changeFreq('{{ market }}.{{ code }}', 'week')">
+            <i class="fas fa-star-of-life"></i>
+        </div>        
+        <div class="param-label metric-grey pointer" onclick="changeFreq('{{ market }}.{{ code }}', 'month')">
+            <i class="fas fa-moon"></i>
+        </div>        
+        <div class="param-label metric-grey pointer" onclick="toggleFullscreen('{{ market }}.{{ code }}', '{{ screen }}')">
+            <i class="fas fa-expand"></i>
+        </div>        
+    </div>
+    {% endif %}
+
+    {# 股票信息 #}
+    <div class="chart-stock-name">
+        <span id="naviIndicator" class="chart-kline-navi"></span>
+        <span class="pointer" onclick="viewModeChange('{{ market }}.{{ code }}', '{{ view }}')">NAME</span>
+        <span class="{% if is_linkable %}pointer{% endif %}"
+              {% if is_linkable %}onclick="jumpToLink('{{ cat }}', '{{ market }}', '{{ code }}')"{% endif %}>CODE</span>
+    </div>
+
+    {# 底部导航栏 #}
+    {% if navi %}
+    <div class="chart-navi-bar">
+            
+        <div class="chart-navi-left">
+            <div class="chart-navi-group">
+                <div class="chart-navi-item {% if navi_prev %}pointer{% else %}is-disabled{% endif %}"
+                    {% if navi_prev %}onclick="naviSwitch('{{ market }}.{{ code }}', 'navi', 'prev')"{% endif %}>
+                    <i class="fas fa-angle-left"></i>
+                </div>
+                {% if show_pilot %}
+                <div class="chart-navi-item {% if pilot_prev %}pointer{% else %}is-disabled{% endif %}"
+                    {% if pilot_prev %}onclick="naviSwitch('{{ market }}.{{ code }}', 'pilot', 'prev')"{% endif %}>
+                    <i class="fas fa-angle-up"></i>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="chart-navi-center">
+            <div class="chart-navi-group">
+                {% if show_tool_bar and screen != 'full' %}
+                <div class="chart-navi-item pointer" onclick="toggleComment()">
+                    <i class="fas fa-comment-alt"></i>
+                </div>
+                {% endif %}
+                <div class="chart-navi-item pointer" onclick="backToList()">
+                    <i class="fas fa-list"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-navi-right">
+            <div class="chart-navi-group">
+                {% if show_pilot %}
+                <div class="chart-navi-item {% if pilot_next %}pointer{% else %}is-disabled{% endif %}"
+                    {% if pilot_next %}onclick="naviSwitch('{{ market }}.{{ code }}', 'pilot', 'next')"{% endif %}>
+                    <i class="fas fa-angle-down"></i>
+                </div>
+                {% endif %}
+                <div class="chart-navi-item {% if navi_next %}pointer{% else %}is-disabled{% endif %}"
+                    {% if navi_next %}onclick="naviSwitch('{{ market }}.{{ code }}', 'navi', 'next')"{% endif %}>
+                    <i class="fas fa-angle-right"></i>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+    <script src="{% static 'base/js/jquery-3.7.0.min.js' %}"></script>
+    <script src="{% static 'base/lib/Highcharts/js/highstock.js' %}"></script>
+<script type="module">
+    import { baseInit } from "{% static 'base/js/base.js' %}";
+    import { initChartPage } from "{% static 'stock/js/func.js' %}";
+    document.addEventListener('DOMContentLoaded', () => {
+        baseInit();
+        initChartPage({
+            marketCode: "{{ market }}.{{ code }}",
+            name: "{{ name }}",
+            cat: "{{ cat }}",
+            view: "{{ view }}",
+            screen: "{{ screen }}",
+            interval: {{ interval }},
+            trendAct: {{ trend_act|safe }},
+            navi: {{ navi|lower }},
+            naviIndex: "{{ navi_index }}",
+            naviCount: "{{ navi_count }}",
+            naviPrev: {{ navi_prev|lower }},
+            naviNext: {{ navi_next|lower }},
+            showPilot: {{ show_pilot|lower }},
+            pilotPrev: {{ pilot_prev|lower }},
+            pilotNext: {{ pilot_next|lower }},
+            site: "focus/view"
+        });
+    });
+</script>
+{% endblock %}

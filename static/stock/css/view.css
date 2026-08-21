@@ -1,0 +1,334 @@
+/* ========== 根容器 ========== */
+:root {
+    /* 底部导航栏默认高度 */
+    --navi-bar-height: 20px;
+}
+
+.chart-page {
+    position: relative;
+    width: 100%;
+    height: var(--chart-height);
+    border-radius: 4px;
+    background: var(--color-bg-white);
+    box-sizing: border-box;
+}
+
+/* 当隐藏底部导航栏时，将变量归零 */
+.chart-page.no-navi {
+    --navi-bar-height: 0px;
+}
+
+.chart-container {
+    width: 100%;
+    height: 100%;
+    border-radius: 4px;
+}
+
+/* ========== 通用占位层：与图表尺寸位置完全一致 ========== */
+.chart-placeholder {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-white);
+    z-index: 1;
+    box-sizing: border-box;
+}
+
+.chart-placeholder-text {
+    font-size: 0.85rem;
+    color: var(--color-nav-item);
+}
+
+/* ========== 分时视图 ========== */
+.chart-trend-wrap {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    /* 高度减去导航栏高度，再减去chart-navi-bar的高度 */
+    height: calc(100% - var(--navi-bar-height));
+    box-sizing: border-box;
+}
+
+/* 顶部通栏：固定高度，全程占位 */
+.chart-top-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 32px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    box-sizing: border-box;
+    background: #ffffff;
+    border-bottom: 1px solid var(--color-border-light);
+}
+
+/* 顶部通栏收起状态 */
+.chart-top-bar.is-fold {
+    height: 0;
+    opacity: 0;
+    border-bottom: none;
+    pointer-events: none;
+}
+
+.chart-top-left,
+.chart-top-center,
+.chart-top-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.chart-nav-group {
+    display: flex;
+    gap: 2px;
+}
+
+/* 统一图标按钮：固定尺寸，占位稳定 */
+.chart-icon-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-nav-item);
+    padding: 0;
+    font-size: 0.85rem;
+    border-radius: 2px;
+    transition: color 0.15s;
+    flex-shrink: 0;
+}
+
+.chart-icon-btn:hover {
+    color: var(--color-text-primary);
+}
+
+.chart-icon-btn.is-disabled {
+    color: var(--color-text-disabled);
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* 大盘行情文字 */
+.chart-market-text {
+    font-size: 0.8rem;
+    margin-left: 8px;
+    color: var(--color-text-primary);
+}
+
+.chart-market-text span {
+    margin-right: 8px;
+}
+
+/* 图形容器：顶部预留通栏高度，全程固定占位 */
+.chart-trend-canvas {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    position: relative;
+}
+
+/* 图表区同步收起顶部内边距 */
+.chart-trend-canvas.is-fold {
+    padding-top: 0;
+}
+
+/* 页码指示器：固定位置 */
+.chart-page-indicator {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    font-size: 0.8rem;
+    color: var(--color-nav-item);
+    z-index: 5;
+}
+
+/* ========== K线视图 ========== */
+.chart-kline-wrap {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    /* 高度减去导航栏高度，再减去chart-navi-bar的高度 */
+    height: calc(100% - var(--navi-bar-height));
+    box-sizing: border-box;
+}
+
+.chart-kline-header {
+    position: absolute;
+    top: 35px;
+    right: 15px;
+    height: 16px;
+    z-index: 3;
+    font-size: 0.9rem;
+}
+
+.chart-kline-metrics {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    width: 100%;
+    height: 15px;
+    z-index: 2;
+    font-size: 0.8rem;
+    line-height: 12px;
+}
+
+.metric-item {
+    display: inline-block;
+}
+.metric-split {
+    display: inline-block;
+    margin: 0 2px;
+    color: var(--color-border-dashed);
+}
+.metric-orange { color: orange; }
+.metric-black { color: var(--color-text-primary); }
+.metric-grey { color: #c0c0c0; }
+.metric-blue { color: #1aadce; }
+
+/* K线参数栏：固定尺寸固定位置 */
+.chart-param {
+    position: absolute;
+    top: 10px;
+    right: 5px;
+    height: 24px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.chart-param.is-loaded {
+    opacity: 1;
+}
+
+.chart-stock-name {
+    position: absolute;
+    top: 35px;
+    right: 5px;
+    height: 24px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: opacity 0.2s;
+    font-size: 14px;
+}
+
+.param-label {
+    font-size: 14px;
+    line-height: 20px;
+    padding: 0 5px;
+}
+
+.param-input {
+    display: inline-block;
+    min-width: 10px;
+    height: 20px;
+    line-height: 20px;
+    border: 0;
+    font-size: 14px;
+    opacity: 0.7;
+    outline: none;
+    cursor: pointer;
+    text-align: center;
+    background: transparent;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+/* ========== 通用按钮 ========== */
+.chart-btn {
+    line-height: 18px;
+    padding: 0 2px;
+    text-align: center;
+    background: transparent;
+    color: var(--color-text-primary);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chart-btn:hover {
+    border-color: var(--color-border-light);
+}
+
+.chart-param .chart-btn {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+/* ========== 底部导航栏：固定底部，顶边紧贴图表底部 ========== */
+.chart-navi-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    /* 核心修改：固定在底部，移除动态top计算 */
+    bottom: 0;
+    width: 100%;
+    height: var(--navi-bar-height, 20px); 
+    z-index: 3;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    box-sizing: border-box;
+    opacity: 0.7;
+}
+
+
+.chart-navi-center,
+.chart-navi-left,
+.chart-navi-right {
+    height: 20px;
+}
+
+
+.chart-navi-group {
+    display: flex;
+}
+
+.chart-navi-item {
+    font-size: 14px;
+    align-items: center;
+    padding: 0 10px;
+    color: var(--color-text-primary);
+}
+
+.chart-navi-item.is-disabled {
+    color: #c0c0c0;
+    cursor: not-allowed;
+}
+
+/* ========== 工具类 ========== */
+.pointer {
+    cursor: pointer;
+}
+
+.is-disabled {
+    pointer-events: none;
+}
+
+/* 过渡动画，全程平滑 */
+.chart-top-bar,
+.chart-trend-canvas,
+.chart-param {
+    transition: all 0.3s ease;
+}
