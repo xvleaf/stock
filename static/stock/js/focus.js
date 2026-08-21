@@ -261,7 +261,7 @@ export function initFocusPlus(config) {
     const errText = document.getElementById('errorText');
 
     if (!codeInput) return;
-    const chartInit = config.chartInit || {};
+    const initChart = config.initChart || {};
     let nameFetchTimer = null;
 
     // ---- 辅助函数：销毁 Highcharts 实例 ----
@@ -321,10 +321,10 @@ export function initFocusPlus(config) {
                             market: market,
                             name: data.name,
                             // cat: cat,
-                            view: chartInit.view || 'kline',
-                            navi: chartInit.navi || false,
-                            kline: chartInit.kline,
-                            trend: chartInit.trend,
+                            view: initChart.view || 'kline',
+                            navi: initChart.navi || false,
+                            kline: initChart.kline,
+                            trend: initChart.trend,
                             deci: deci
                         };
 
