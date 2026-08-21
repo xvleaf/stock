@@ -10,6 +10,7 @@ const KLINE_DENSITY = {
 // ========== K线图全局状态变量 ==========
 let klineChart = null;
 let klineData = {};
+let initIdx = null;
 
 // ==================== K线图逻辑 ====================
 export function initKlineChart() {    
@@ -21,6 +22,8 @@ export function initKlineChart() {
         renderklineData();
         hideChartPlaceholder();
         renderKlineParamBar();
+        initIdx = firstSatisfyIndex(klineData.volume, klineData.deadline)
+        updateKlineMetrics(initIdx);
     });
 }
 
@@ -44,6 +47,7 @@ async function fetchKlineData() {
 
 function renderklineData() {    
     const { ohlc, volume, tp, fl, up, av, lw, ma, mv, deal, deadline: rawDeadline, deci, freq } = klineData;
+    
     // 前端计算显示区间，宽度与原请求参数保持一致
     const showResult = calcShowValues(
         [...ohlc], [...volume], freq, rawDeadline
@@ -116,7 +120,7 @@ function renderklineData() {
                         <tr><td>最高 ${point.high.toFixed(priceDecimal)}</td>
                             <td style="padding-left:10px">最低 ${point.low.toFixed(priceDecimal)}</td></tr>
                         <tr><td>涨幅 ${klineData.ohlc[point.index][5]}%</td>
-                            <td style="padding-left:10px">成交 ${(klineData.volume[point.index][1] / 1000).toFixed(0)}K</td></tr>
+                            <td style="padding-left:10px">成交 ${(klineData.volume[point.index][1] / 10000).toFixed(0)}W</td></tr>
                     </table>
                 `;
             }
@@ -153,54 +157,82 @@ function renderklineData() {
 function syncVolumeColor(chart) {
     const ohlcSeries = chart.series[0];
     const volumeSeries = chart.series[1];
+    if (!ohlcSeries || !volumeSeries) return;
     ohlcSeries.points.forEach((point, index) => {
         const volPoint = volumeSeries.points[index];
-        if (!volPoint) return;
+        if (!volPoint || !volPoint.graphic || !volPoint.graphic.element) return;
         const color = point.close >= point.open ? 'purple' : 'gray';
         volPoint.graphic.element.setAttribute('fill', color);
     });
 }
-
 function renderKlineParamBar() {
     const paramBar = document.getElementById('klineParam');
     if (!paramBar) return;
-    // K/D 值判空
-    const kEl = document.getElementById('kValue');
-    const dEl = document.getElementById('dValue');
-    if (kEl) kEl.textContent = klineData.k ?? '-';
-    if (dEl) dEl.textContent = klineData.d ?? '-';
-    // 复权按钮判空
-    const rightBtn = document.getElementById('btnRight');
-    if (rightBtn) {
-        const rightVal = klineData.right === 'adj' ? 'adj' : 'normal';
-        rightBtn.innerHTML = rightVal === 'adj' 
-            ? '<i class="fas fa-sync"></i>' 
-            : '<i class="fas fa-ban"></i>';
+
+    // 批量获取元素（减少 DOM 查询）
+    const elements = {
+        k: document.getElementById('kValueItem'),
+        d: document.getElementById('dValueItem'),
+        right: document.getElementById('changeRightItem'),
+        freqDay: document.getElementById('changeFreqDay'),
+        freqWeek: document.getElementById('changeFreqWeek'),
+        freqMonth: document.getElementById('changeFreqMonth')
+    };
+
+    // 更新 K/D 值
+    if (elements.k) elements.k.textContent = klineData.k ?? '--';
+    if (elements.d) elements.d.textContent = klineData.d ?? '--';
+
+    // 更新复权按钮（使用配置对象）
+    if (elements.right) {
+        const isQFQ = klineData.right === 'qfq';
+        elements.right.innerHTML = isQFQ
+            ? '<i class="metric-dark fas fa-repeat"></i>'
+            : '<i class="metric-grey fas fa-ban"></i>';
     }
-    paramBar.classList.add('is-loaded');
+
+    // 更新频率按钮（使用配置数组）
+    const freqMap = [
+        { el: elements.freqDay, value: 'D', icon: 'fa-sun' },
+        { el: elements.freqWeek, value: 'W', icon: 'fa-star-of-life' },
+        { el: elements.freqMonth, value: 'M', icon: 'fa-moon' }
+    ];
+
+    const currentFreq = klineData.freq;
+    freqMap.forEach(({ el, value, icon }) => {
+        if (!el) return;
+        const isActive = currentFreq === value;
+        const colorClass = isActive ? 'metric-dark' : 'metric-grey';
+        el.innerHTML = `<i class="${colorClass} fas ${icon}"></i>`;
+    });
+
+    // 显示参数栏
+    paramBar.classList.remove('d-none');
 }
 
 function updateKlineMetrics(index) {
     const ohlc = klineData.ohlc;
     // 基础数据不存在或索引越界，直接退出
     if (!ohlc || index < 0 || index >= ohlc.length) return;
-    // 全部指标统一从 klineExtra 取值，未加载完成则兜底为空对象
-    // const extra = klineExtra || {};
-    // const { ma, mv, tp, up, av, lw, fl } = extra;
     const { ma, mv, tp, up, av, lw, fl } = klineData;
     // 封装安全取值：数组存在 + 索引合法 + 值存在
     const getVal = (arr, idx) => arr && idx < arr.length ? arr[idx][1] : undefined;
-    
+    // 安全设置元素文本
+    const setText = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    };
+
     // 收盘价、涨跌幅来自基础数据
-    document.getElementById('klineClose').textContent = ohlc[index][4] ?? '--';
-    document.getElementById('klinePercent').textContent = (ohlc[index][5] ?? '--') + '%';
-    document.getElementById('klineMa').textContent = getVal(ma, index) ?? '--';
-    document.getElementById('klineMv').textContent = getVal(mv, index) ? (getVal(mv, index) / 10000).toFixed(0) + 'W' : '--';
-    document.getElementById('klineTp').textContent = getVal(tp, index) ?? '--';
-    document.getElementById('klineUp').textContent = getVal(up, index) ?? '--';
-    document.getElementById('klineAv').textContent = getVal(av, index) ?? '--';
-    document.getElementById('klineLw').textContent = getVal(lw, index) ?? '--';
-    document.getElementById('klineFl').textContent = getVal(fl, index) ?? '--';
+    setText('klineClose', ohlc[index][4] ?? '--');
+    setText('klinePercent', (ohlc[index][5] ?? '--') + '%');
+    setText('klineMa', getVal(ma, index) ?? '--');
+    setText('klineMv', getVal(mv, index) ? (getVal(mv, index) / 10000).toFixed(0) + 'W' : '--');
+    setText('klineTp', getVal(tp, index) ?? '--');
+    setText('klineUp', getVal(up, index) ?? '--');
+    setText('klineAv', getVal(av, index) ?? '--');
+    setText('klineLw', getVal(lw, index) ?? '--');
+    setText('klineFl', getVal(fl, index) ?? '--');
 }
 
 /**
@@ -248,7 +280,8 @@ function calcShowValues(ohlc, volume, freq, deadline = -1) {
         const lastTs = volume[count - 1][0];
         for (let i = 1; i <= missing; i++) {
             const ts = lastTs + i * increment;
-            ohlc.push([ts, 0, 0, 0, 0, 0]);
+            // 用 null 占位，Highcharts 不会渲染价格为 0 的假K线
+            ohlc.push([ts, null, null, null, null, null]);
             volume.push([ts, 0]);
         }
         indexDdl = volume.length - 1;

@@ -25,8 +25,6 @@ def chart_data_api(request):
 
     if (code and market):
         if func == 'get-kline-data':
-            
-
             return kline.kline_data_for_chart('E', f'{code}.{market}')
         elif func == 'get-trend-data':
             init = params.get('init')

@@ -34,24 +34,20 @@
         </table>
     </div>
     {# K线参数栏 #}
-    <div class="chart-param" id="klineParam">
-        <span class="param-label metric-black">k</span>
+    <div class="chart-param d-none" id="klineParam">
+        <span class="param-label metric-dark">k</span>
         <div id="kValueItem" contenteditable="true" class="param-input">-</div>
-        <span class="param-label metric-black">d</span>
+        <span class="param-label metric-dark">d</span>
         <div id="dValueItem" contenteditable="true" class="param-input">-</div>
-        <div id="changeRightItem" class="param-label metric-grey pointer" onclick="toggleRight()" title="复权切换">
-            <i class="fas fa-repeat"></i>
+        <div id="changeRightItem" class="param-label pointer" onclick="toggleRight()">
         </div>
-        <div id="changeFreqDay" class="param-label metric-grey pointer" onclick="changeFreq('D')" title="日线">
-            <i class="fas fa-sun"></i>
+        <div id="changeFreqDay" class="param-label pointer" onclick="changeFreq('D')">
         </div>
-        <div id="changeFreqWeek" class="param-label metric-grey pointer" onclick="changeFreq('W')" title="周线">
-            <i class="fas fa-star-of-life"></i>
+        <div id="changeFreqWeek" class="param-label pointer" onclick="changeFreq('W')">
         </div>
-        <div id="changeFreqMonth" class="param-label metric-grey pointer" onclick="changeFreq('M')" title="月线">
-            <i class="fas fa-moon"></i>
+        <div id="changeFreqMonth" class="param-label pointer" onclick="changeFreq('M')">
         </div>
-        <div id="fullScreenItem" class="param-label metric-grey pointer" onclick="toggleFullscreen('{{ screen }}')" title="全屏">
+        <div id="fullScreenItem" class="param-label metric-grey pointer" onclick="toggleFullscreen()">
             <i class="fas fa-expand"></i>
         </div>
     </div>

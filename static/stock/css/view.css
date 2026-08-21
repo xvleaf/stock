@@ -196,6 +196,7 @@
 }
 .metric-orange { color: orange; }
 .metric-black { color: var(--color-text-primary); }
+.metric-dark { color: #555555; }
 .metric-grey { color: #c0c0c0; }
 .metric-blue { color: #1aadce; }
 
@@ -209,10 +210,6 @@
     display: flex;
     align-items: center;
     gap: 4px;
-}
-
-.chart-param.is-loaded {
-    opacity: 1;
 }
 
 .chart-stock-name {

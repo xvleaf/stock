@@ -198,10 +198,10 @@ function initPageElements() {
     }
     
     // K线参数栏默认占位
-    if (pageConfig.view === 'kline') {
-        document.getElementById('kValueItem').textContent = pageConfig.kline.k;
-        document.getElementById('dValueItem').textContent = pageConfig.kline.d;
-    }
+    //if (pageConfig.view === 'kline') {
+    //    document.getElementById('kValueItem').textContent = pageConfig.kline.k;
+    //    document.getElementById('dValueItem').textContent = pageConfig.kline.d;
+    //}
 
     // 全屏按钮图标
     /**
