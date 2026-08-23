@@ -1,7 +1,7 @@
 /* ========== 根容器 ========== */
 :root {
     /* 底部导航栏默认高度 */
-    --navi-bar-height: 20px;
+    --navi-bar-height: 25px;
 }
 
 .chart-page {
@@ -20,7 +20,8 @@
 
 .chart-container {
     width: 100%;
-    height: 100%;
+    /* 高度减去导航栏高度，再减去chart-navi-bar的高度 */
+    height: calc(100% - var(--navi-bar-height));
     border-radius: 4px;
 }
 
@@ -157,13 +158,26 @@
 
 /* ========== K线视图 ========== */
 .chart-kline-wrap {
-    position: absolute;
-    top: 0;
-    left: 0;
+    background: #ffffff;
     width: 100%;
-    /* 高度减去导航栏高度，再减去chart-navi-bar的高度 */
-    height: calc(100% - var(--navi-bar-height));
     box-sizing: border-box;
+    
+    /* ---- 断点变量（与全局一致） ---- */
+    --switch1: clamp(0px, (100vw - var(--bp1) * 1px) * 9999, 9999px);
+    --switch2: clamp(0px, (100vw - var(--bp2) * 1px) * 9999, 9999px);
+    --switch3: clamp(0px, (100vw - var(--bp3) * 1px) * 9999, 9999px);
+
+    /* ---- 高度 ---- */
+    height: calc(0.9 * max(
+        var(--h4),
+        max(
+            var(--h3),
+            max(
+                var(--h2),
+                var(--h1) - var(--switch1)
+            ) - var(--switch2)
+        ) - var(--switch3)
+    )) !important;
 }
 
 .chart-kline-header {
@@ -228,7 +242,7 @@
 .param-label {
     font-size: 14px;
     line-height: 20px;
-    padding: 0 5px;
+    padding: 0 2px;
 }
 
 .param-input {
@@ -328,4 +342,115 @@
 .chart-trend-canvas,
 .chart-param {
     transition: all 0.3s ease;
+}
+
+/* ---------- 伪全屏核心样式 ---------- */
+#chartPage.pseudo-fullscreen {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 99999 !important;
+    background: var(--color-bg-body);
+    margin: 0;
+    padding: 2px;
+    display: flex;
+    justify-content: center;        /* 水平居中 */
+    /* align-items: center;            垂直居中 */
+    box-sizing: border-box;
+}
+/* 居中容器 .chart-kline-wrap 使用断点宽度/高度 */
+#chartPage.pseudo-fullscreen .chart-kline-wrap {
+    position: relative;             /* 成为内部绝对定位元素的包含块 */
+    max-width: none;
+    margin: 0;                      /* 居中由父容器 flex 完成 */
+    flex-shrink: 0;                 /* 防止被压缩（父容器是 flex） */
+
+    /* ---- 断点变量（与全局一致） ---- */
+    --switch1: clamp(0px, (100vw - var(--bp1) * 1px) * 9999, 9999px);
+    --switch2: clamp(0px, (100vw - var(--bp2) * 1px) * 9999, 9999px);
+    --switch3: clamp(0px, (100vw - var(--bp3) * 1px) * 9999, 9999px);
+
+    /* ---- 宽度 ---- */
+    width: max(
+        var(--w4),
+        max(
+            var(--w3),
+            max(
+                var(--w2),
+                var(--w1) - var(--switch1)
+            ) - var(--switch2)
+        ) - var(--switch3)
+    ) !important;
+
+    /* ---- 高度 ---- */
+    height: max(
+        var(--h4),
+        max(
+            var(--h3),
+            max(
+                var(--h2),
+                var(--h1) - var(--switch1)
+            ) - var(--switch2)
+        ) - var(--switch3)
+    ) !important;
+}
+
+#chartPage.pseudo-fullscreen .chart-container {
+    width: 100%;
+    /* 高度减去chart-navi-bar的高度 */
+    height: calc(100% - var(--navi-bar-height));
+}
+
+/* 内部的指标、参数、名称相对于 .chart-kline-wrap 定位，宽度受限于父容器 */
+#chartPage.pseudo-fullscreen .chart-kline-metrics {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    width: auto !important;
+    height: 15px;
+    z-index: 2;
+    font-size: 0.8rem;
+    line-height: 12px;
+}
+
+#chartPage.pseudo-fullscreen .chart-param {
+    position: absolute;
+    top: 10px;
+    right: 5px;
+    height: 24px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+#chartPage.pseudo-fullscreen .chart-stock-name {
+    position: absolute;
+    top: 35px;
+    right: 5px;
+    height: 24px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 14px;
+}
+
+#chartPage.pseudo-fullscreen .chart-navi-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--navi-bar-height, 20px);
+}
+
+/* 页面禁用滚动 */
+body.pseudo-fullscreen-open {
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }

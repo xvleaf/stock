@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
-from .fetch import quote, tushare
+from .fetch import quote, tushare, kline
 from .forms.forms import FocusStockForm
 from . import cash, func
 from .models.models import CashConfig, StockList, FocusStock
@@ -27,7 +27,8 @@ def focus_list(request):
         if data.get('action') == 'sort':
             ordered_codes = data.get('codes', [])
             for i, c in enumerate(ordered_codes):
-                FocusStock.objects.filter(code=c).update(sort_order=i)
+                # 排序从 1 开始
+                FocusStock.objects.filter(code=c[0], market=c[1]).update(sort_order=i+1)
             return JsonResponse({'msg': 'done'})
 
         result = []
@@ -37,9 +38,10 @@ def focus_list(request):
             close, change = quote.get_last_price(fs.tscode, deci)  
             result.append({
                 'code': fs.code,
-                'tscode': fs.tscode,
+                'market': fs.market,
                 'close': close, 
                 'change': change,
+                'deci': deci
             })
             
         return JsonResponse(result, safe=False, json_dumps_params={'ensure_ascii': False})
@@ -51,12 +53,13 @@ def focus_list(request):
         deci = 2 if fs.cat == 'stock' else 3
         items.append({
             'code': fs.code,
-            'tscode': fs.tscode,
+            'market': fs.market,
             'name': fs.name,
             'plan_price': round(fs.plan_price, deci),
             'win_ratio': round(fs.win_ratio, 0),
             'close': '--',
             'change': '--',
+            'deci': deci
         })
     return render(request, 'focus-list.html', {
         'list': items,
@@ -87,30 +90,31 @@ def focus_plus(request):
                 focus.sort_order = max_sort
                 focus.save()
                 focus.save_history(action='create')
-                return redirect('focus_view', code=focus.tscode)
+                return redirect('focus_view', market=focus.market, code=focus.code)
     else:
         initial = {}
         form = FocusStockForm(initial=initial)
-    
-    kline = {
+        
+    kline_dict = {
         'freq': func.get_session(request.session, 'freq', 'D'),
         'right': func.get_session(request.session, 'right', 'qfq'),
-        'k': func.get_session(request.session, 'k', 10),
-        'd': func.get_session(request.session, 'd', 30),
+        'k': func.get_session(request.session, 'k', kline.KLINE_EMA_CONFIG['D']['k']),
+        'd': func.get_session(request.session, 'd', kline.KLINE_EMA_CONFIG['D']['d']),
         'deci': 2 if cat == 'stock' else 3
     }
-    trend = {
+    trend_dict = {
         # 'interval':TREND_REQUEST_INTERVAL
     }
-    navi = {
+    navi_dict = {
         'showNavi': True,
         'naviIndex': 0,
         'naviCount': 0,
-        'naviPrev': None,
-        'naviNext': None,
-        'showPilot': None,
+        'naviPrev': True,
+        'naviNext': True,
+        'showPilot': True,
         'pilotPrev': None,
-        'pilotNext': None
+        'pilotNext': None,
+        'backList':None
     }
     chart_init = {
         'site': 'focus/plus',
@@ -120,9 +124,9 @@ def focus_plus(request):
         'name': name,
         'cat': cat,
         'view': 'kline',
-        'kline': kline,
-        'trend': trend,
-        'navi': navi
+        'kline': kline_dict,
+        'trend': trend_dict,
+        'navi': navi_dict
     }
 
     return render(request, 'focus-plus.html', {
@@ -131,6 +135,10 @@ def focus_plus(request):
         # 需转换为 JSON 字符串
         'chart': json.dumps(chart_init)   
     })
+
+
+def focus_view(request, market, code):
+    print(code)
 
 
 @require_http_methods(["GET"])

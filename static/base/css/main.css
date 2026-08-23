@@ -27,7 +27,7 @@
     --menu-radius-default: 8px;
     /* 需要计算，不带 px */
     --padding-page-left-right: 10;
-    /* 三个断点，四个宽度区间 */
+    /* 三个断点，四个宽度/高度区间 */
     /* bp1 与精简导航栏同时修改 */
     --bp1: 1200;     /* 第一断点 */
     --bp2: 1440;     /* 第二断点 */
@@ -36,6 +36,10 @@
     --w2: 85%;       /* 第一断点 ≤ 视口 < 第二断点 */
     --w3: 70%;       /* 第二断点 ≤ 视口 < 第三断点 */
     --w4: 60%;       /* 视口 ≥ 第三断点 */
+    --h1: 100vh;     /* 视口 < 第一断点 */
+    --h2: 85vh;      /* 第一断点 ≤ 视口 < 第二断点 */
+    --h3: 70vh;      /* 第二断点 ≤ 视口 < 第三断点 */
+    --h4: 60vh;      /* 视口 ≥ 第三断点 */
 }
 /* 滚动条全局隐藏（仅 html 作为滚动容器，body 不设 overflow 避免嵌套滚动容器吞掉滚轮事件） */
 html {
@@ -157,8 +161,8 @@ body {
 /* ---- 表单 ---- */
 .form-wrap {
     margin: 0 auto;
-    padding: 16px;
-    overflow-x: auto;
+    padding: 5px;
+    overflow-x: hidden;  /* 禁止水平滚动 */
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
     scrollbar-color: rgba(0, 0, 0, 0.18) transparent;

@@ -1,8 +1,8 @@
-import { request, Highcharts, pageConfig, priceDecimal, setPriceDecimal, hideChartPlaceholder, showChartError } from './func.js';
+import { postRequest, Highcharts, pageConfig, priceDecimal, setPriceDecimal, hideChartPlaceholder, showChartError } from './func.js';
 
 // ========== 分时图全局状态变量 ==========
+export let trendChart = null;
 let trendTimer = null;
-let trendChart = null;
 let trendIndex = 0;
 let trendIndexNew = 0;
 let ohlcData = [];
@@ -33,9 +33,17 @@ export async function initTrendChart() {
     }, pageConfig.interval);
 }
 
+// ---- 销毁 trendChart 实例 ----
+export function destroyTrendChart() {
+    if (trendChart) {
+        trendChart.destroy();
+        trendChart = null;
+    }
+}
+
 /**
 async function fetchMarketQuote() {
-    const data = await request.async('/chart/data', {
+    const data = await postRequest('/chart/data', {
         site: pageConfig.site,
         cat: pageConfig.cat,
         code: pageConfig.marketCode,
@@ -52,7 +60,7 @@ async function fetchMarketQuote() {
  */
 
 async function fetchTrendData(isInitial) {
-    const data = await request.async('/chart/data', {
+    const data = await postRequest('/chart/data', {
         site: pageConfig.site,
         cat: pageConfig.cat,
         code: pageConfig.marketCode,

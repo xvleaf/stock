@@ -1,19 +1,5 @@
-/**
- * 导出: initFocusList, initFocusPlus, initFocusView
- */
 'use strict';
-import { refreshQuotes, getCsrfToken, initChartPage, pageConfig } from './func.js';
-
-function postJSON(url, data) {
-    return fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-        body: JSON.stringify(data),
-    }).then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-    });
-}
+import { postRequest, refreshQuotes, chartPageContainer, initChartPage, destroyChart } from './func.js';
 
 // ===================== focus-list 页面 =====================
 export function initFocusList(interval) {
@@ -46,12 +32,11 @@ export function initFocusList(interval) {
 
     function saveSortOrder() {
         const codes = Array.from(tbody.querySelectorAll('tr[data-code]'))
-            .map(tr => tr.dataset.code);
-        postJSON('/focus/list', { action: 'sort', codes })
+            .map(tr => tr.dataset.code.split('.')); // split 为[code, market]
+        postRequest('/focus/list', { action: 'sort', codes })
             .then(() => console.log('排序已保存'))
             .catch(err => {
                 console.warn('排序保存失败:', err);
-                alert('排序保存失败');
             });
     }
 
@@ -246,7 +231,6 @@ export function initFocusList(interval) {
 
 
 export function initFocusPlus(config) {
-    const chartPageContainer = document.getElementById('chartPageContainer');
     const catSel = document.querySelector('[name="cat_choice"]');
     const marketSel = document.querySelector('[name="market_choice"]');
     const codeInput = document.getElementById('id_code_input');
@@ -264,24 +248,6 @@ export function initFocusPlus(config) {
     const initChart = config.initChart || {};
     let nameFetchTimer = null;
 
-    // ---- 辅助函数：销毁 Highcharts 实例 ----
-    function destroyChartInstance() {
-        if (window.Highcharts && window.Highcharts.charts) {
-            const charts = window.Highcharts.charts;
-            for (let i = charts.length - 1; i >= 0; i--) {
-                const chart = charts[i];
-                if (chart && chart.container && chartPageContainer && chartPageContainer.contains(chart.container)) {
-                    chart.destroy();
-                }
-            }
-        }
-    }
-
-    function hideChartAndDestroy() {
-        if (chartPageContainer) chartPageContainer.style.display = 'none';
-        destroyChartInstance();
-    }
-    
     // 清除 form 错误提示
     function clearFormErr() {                        
         if (formErr) {                            
@@ -295,15 +261,14 @@ export function initFocusPlus(config) {
         const market = marketSel?.value || 'SH';
         const cat = catSel?.value || 'stock';
         const deci = cat === 'stock'?2:3;
-                
+         
         // 清除之前的定时器
         clearTimeout(nameFetchTimer);
 
         // 代码无效：清空名称，隐藏图表，销毁实例
         if (!code || code.length < 4) {
             if (nameInput) nameInput.value = '';
-            hideChartAndDestroy();
-            if (errText) { errText.style.display = 'none'; }
+            if (errText) { errText.classList.add('d-none'); }
             return;
         }
 
@@ -317,41 +282,43 @@ export function initFocusPlus(config) {
                         
                         // 构建动态图表配置
                         const chartConfig = {
+                            site: initChart.site,
                             code: code,
                             market: market,
                             name: data.name,
-                            // cat: cat,
+                            cat: cat,
                             view: initChart.view || 'kline',
                             navi: initChart.navi || false,
                             kline: initChart.kline,
                             trend: initChart.trend,
                             deci: deci
                         };
-
+                        
                         if (errText) {
                             errText.textContent = '';
-                            errText.style.display = 'none';
+                            errText.classList.add('d-none');
                         }
 
-                        // 先销毁旧图表，再初始化新图表
-                        destroyChartInstance();
                         if (chartPageContainer) {
-                            chartPageContainer.style.display = ''; // 显示
+                            chartPageContainer.classList.remove('d-none'); // 显示
                             initChartPage(chartConfig);
                         }
                     } else {
                         nameInput.value = '';
-                        hideChartAndDestroy();
                         if (errText) {
                             errText.textContent = '未找到该股票代码';
-                            errText.style.display = 'block';
+                            errText.classList.remove('d-none');
+                            chartPageContainer.classList.add('d-none');
+                            destroyChart();
                         }
                     }
                 })
                 .catch(() => {
                     if (errText) {
                         errText.textContent = '网络请求失败';
-                        errText.style.display = 'block';
+                        errText.classList.remove('d-none');
+                        chartPageContainer.classList.add('d-none');
+                        destroyChart();
                     }
                 });
         }, 1000);

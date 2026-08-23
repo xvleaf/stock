@@ -7,12 +7,12 @@
 {% endblock %}
 
 {% block content %}
-<div class="form-wrap">
-    {# K 线/分时图 #}
-    <div id="chartPageContainer"></div>
+{# K 线/分时图 #}
+<div class="d-none" id="chartPageContainer"></div>
 
+<div class="form-wrap">
     {# 错误信息 #}
-    <div id="errorText" class="alert alert-danger" style="display:none;"></div>
+    <div id="errorText" class="d-none alert alert-danger"></div>
     {% if form.errors %}
         <div id="formError" class="alert alert-danger">
             {% for field, errors in form.errors.items %}{{ errors|join:", " }}{% endfor %}
@@ -58,6 +58,15 @@
             </div>
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
+                    <label class="form-label">允许数量</label>
+                    <div class="input-group">
+                        {{ form.allowed_qty }}
+                        <span class="input-group-text">股</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
                     <label class="form-label">计划报价</label>
                     {{ form.plan_price }}
                 </div>
@@ -66,15 +75,6 @@
                 <div class="mb-3">
                     <label class="form-label">计划数量</label>
                     {{ form.plan_qty }}
-                </div>
-            </div>
-            <div class="col-md-3 col-sm-6">
-                <div class="mb-3">
-                    <label class="form-label">允许数量</label>
-                    <div class="input-group">
-                        {{ form.allowed_qty }}
-                        <span class="input-group-text">股</span>
-                    </div>
                 </div>
             </div>
         </div>
@@ -87,6 +87,15 @@
             </div>
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
+                    <label class="form-label">盈利机会</label>
+                    <div class="input-group">
+                        {{ form.win_ratio }}
+                        <span class="input-group-text">%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
                     <label class="form-label">目标价格</label>
                     {{ form.target_price }}
                 </div>
@@ -95,12 +104,6 @@
                 <div class="mb-3">
                     <label class="form-label">止损价格</label>
                     {{ form.stop_price }}
-                </div>
-            </div>
-            <div class="col-md-3 col-sm-6">
-                <div class="mb-3">
-                    <label class="form-label">盈利机会</label>
-                    {{ form.win_ratio }}
                 </div>
             </div>
         </div>

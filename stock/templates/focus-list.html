@@ -25,15 +25,15 @@
         </thead>
         <tbody id="stockBody">
             {% for item in list %}
-            <tr data-code="{{ item.tscode }}">
+            <tr data-code="{{ item.code }}.{{ item.market }}">
                 <td style="width: 17.5%;">
-                    <a class="table-code-text" href="/focus/view/{{ item.tscode }}">{{ item.code }}</a>
+                    <a class="table-code-text" href="/focus/view/{{ item.market }}/{{ item.code }}">{{ item.code }}</a>
                 </td>
                 <td style="width: 22.5%;">
                     <span>{{ item.name }}</span>
                 </td>
                 <td style="width: 15%;">
-                    <span id="close-{{ item.tscode }}">--</span>
+                    <span id="close-{{ item.code }}.{{ item.market }}">--</span>
                 </td>
                 <td style="width: 15%;">
                     <span>{{ item.plan_price }}</span>
@@ -42,7 +42,7 @@
                     <span>{{ item.win_ratio }}</span>
                 </td>
                 <td style="width: 15%;">
-                    <span id="change-{{ item.tscode }}">--</span>
+                    <span id="change-{{ item.code }}.{{ item.market }}">--</span>
                 </td>
             </tr>
             {% endfor %}

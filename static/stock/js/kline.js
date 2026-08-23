@@ -1,4 +1,4 @@
-import { request, Highcharts, pageConfig, priceDecimal, setPriceDecimal, hideChartPlaceholder, showChartError } from './func.js';
+import { postRequest, Highcharts, pageConfig, priceDecimal, setPriceDecimal, hideChartPlaceholder, reloadChartView, showChartError } from './func.js';
 
 // K 线密度参数
 const BREAKPOINT_FOR_KLINE = 1440;
@@ -8,9 +8,8 @@ const KLINE_DENSITY = {
 };
 
 // ========== K线图全局状态变量 ==========
-let klineChart = null;
+export let klineChart = null;
 let klineData = {};
-let initIdx = null;
 
 // ==================== K线图逻辑 ====================
 export function initKlineChart() {    
@@ -22,21 +21,42 @@ export function initKlineChart() {
         renderklineData();
         hideChartPlaceholder();
         renderKlineParamBar();
-        initIdx = firstSatisfyIndex(klineData.volume, klineData.deadline)
+        let initIdx = firstSatisfyIndex(klineData.volume, klineData.deadline)
         updateKlineMetrics(initIdx);
     });
+}
+
+// ---- 销毁 klineChart 实例 ----
+export function destroyKlineChart() {
+    if (klineChart) {
+        klineChart.destroy();
+        klineChart = null;
+    }
+}
+
+export function refreshKlineDensity() {
+    if (!klineData || Object.keys(klineData).length === 0) {
+        return;
+    }
+    if (klineChart) {
+        klineChart.destroy();
+        klineChart = null;
+    }
+    // 重新调用渲染
+    renderklineData();
 }
 
 /** 非股票类数据接口 cat 备用 */
 async function fetchKlineData() {
     let code = pageConfig.code;
     let market = pageConfig.market;
+    // let cat = pageConfig.cat;
     
     if(code && market) {        
-        const data = await request.async('/chart/data', {
-            // cat: pageConfig.cat,
+        const data = await postRequest('/chart/data', {
             code: code,
             market: market,
+            // cat: cat,
             func: 'get-kline-data',
         });
         if (!data) return false;
@@ -60,6 +80,7 @@ function renderklineData() {
         lang: { rangeSelectorZoom: '' },
         global: { useUTC: false, timezone: 'Asia/Shanghai' }
     });
+    
     klineChart = Highcharts.stockChart('chartContainer', {
         chart: {
             spacing: [0, 5, 0, 5],
@@ -107,21 +128,31 @@ function renderklineData() {
             split: true,
             animation: false,
             useHTML: true,
+            backgroundColor: '#fff', // 设置整个 tooltip 背景色
+            borderRadius: 16,          // Highcharts 自带的圆角
+            style: {
+                fontSize: '13px'       // 全局字体大小
+            },
             formatter: function () {
                 const point = this.points[0].point;
                 updateKlineMetrics(point.index);
                 const date = new Date(point.x);
                 const dateStr = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
                 return `
+                    <div>
                     <b>${dateStr}</b>
                     <table>
                         <tr><td>收盘 ${point.close.toFixed(priceDecimal)}</td>
-                            <td style="padding-left:10px">开盘 ${point.open.toFixed(priceDecimal)}</td></tr>
+                            <td style="padding-left:10px">开盘 ${point.open.toFixed(priceDecimal)}</td>
+                        </tr>
                         <tr><td>最高 ${point.high.toFixed(priceDecimal)}</td>
-                            <td style="padding-left:10px">最低 ${point.low.toFixed(priceDecimal)}</td></tr>
+                            <td style="padding-left:10px">最低 ${point.low.toFixed(priceDecimal)}</td>
+                        </tr>
                         <tr><td>涨幅 ${klineData.ohlc[point.index][5]}%</td>
-                            <td style="padding-left:10px">成交 ${(klineData.volume[point.index][1] / 10000).toFixed(0)}W</td></tr>
+                            <td style="padding-left:10px">成交 ${(klineData.volume[point.index][1] / 10000).toFixed(0)}万</td>
+                        </tr>
                     </table>
+                    </div>
                 `;
             }
         },
@@ -165,6 +196,7 @@ function syncVolumeColor(chart) {
         volPoint.graphic.element.setAttribute('fill', color);
     });
 }
+
 function renderKlineParamBar() {
     const paramBar = document.getElementById('klineParam');
     if (!paramBar) return;
@@ -180,12 +212,19 @@ function renderKlineParamBar() {
     };
 
     // 更新 K/D 值
-    if (elements.k) elements.k.textContent = klineData.k ?? '--';
-    if (elements.d) elements.d.textContent = klineData.d ?? '--';
+    if (elements.k) {
+        elements.k.textContent = klineData.k ?? '--';
+        priceChannel('k', elements.k);
+    }
+    if (elements.d) {
+        elements.d.textContent = klineData.d ?? '--';
+        priceChannel('d', elements.d);
+    }
 
     // 更新复权按钮（使用配置对象）
     if (elements.right) {
-        const isQFQ = klineData.right === 'qfq';
+        const isQFQ = klineData.right === 'qfq'; 
+        elements.right.onclick = toggleRight;
         elements.right.innerHTML = isQFQ
             ? '<i class="metric-dark fas fa-repeat"></i>'
             : '<i class="metric-grey fas fa-ban"></i>';
@@ -201,8 +240,12 @@ function renderKlineParamBar() {
     const currentFreq = klineData.freq;
     freqMap.forEach(({ el, value, icon }) => {
         if (!el) return;
+        
         const isActive = currentFreq === value;
         const colorClass = isActive ? 'metric-dark' : 'metric-grey';
+        el.addEventListener('click', (event) => changeFreq(value, event));
+        el.classList.toggle('pointer', !isActive);
+        el.classList.toggle('is-disabled', isActive);
         el.innerHTML = `<i class="${colorClass} fas ${icon}"></i>`;
     });
 
@@ -234,6 +277,68 @@ function updateKlineMetrics(index) {
     setText('klineLw', getVal(lw, index) ?? '--');
     setText('klineFl', getVal(fl, index) ?? '--');
 }
+
+function priceChannel(key, el) {
+    function getRawValue(element) {
+        return element.textContent.trim();
+    }
+
+    function isValidNumber(str) {
+        if (str === '') return false;
+        const num = Number(str);
+        // 只允许正数，'--' 会被转为 NaN
+        return !isNaN(num) && num > 0;
+    }
+
+    // 获取初始内容，若非有效数字则强制设为 '-'
+    let lastValidValue = getRawValue(el);
+    if (!isValidNumber(lastValidValue)) {
+        lastValidValue = '--';
+        el.textContent = '--';
+    }
+
+    let blurTimer = null; // 定时器句柄
+
+    el.addEventListener('blur', function() {
+        // 清除之前的定时器，防止多次执行
+        if (blurTimer) {
+            clearTimeout(blurTimer);
+            blurTimer = null;
+        }
+
+        // 延迟执行校验逻辑
+        blurTimer = setTimeout(() => {
+            const currentRaw = getRawValue(this);
+
+            // 校验当前输入
+            if (isValidNumber(currentRaw)) {
+                // 有效数字：标准化（去除前导零）
+                const normalized = Number(currentRaw).toString();
+                this.textContent = normalized;
+
+                // 判断是否发生了变化
+                if (normalized !== lastValidValue) {
+                    reloadChartView(key, normalized);
+                    // 更新缓存为当前有效值
+                    lastValidValue = normalized;
+                }
+            } else {
+                // 无效输入：回退到上次有效值
+                this.textContent = lastValidValue;
+            }
+            blurTimer = null; // 重置定时器句柄
+        }, 500); // 延迟500毫秒
+    });
+}
+
+function toggleRight() {
+    reloadChartView('right', '');
+};
+
+function changeFreq(freq) {
+    reloadChartView('freq', freq);
+};
+
 
 /**
  * 二分查找左匹配，找数组中第0列第一个 >= target 的索引，找不到返回数组长度

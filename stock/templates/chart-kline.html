@@ -1,62 +1,64 @@
 <div class="chart-page" id="chartPage">
     <div class="chart-kline-wrap">
         {# 占位层 #}
-        <div class="chart-placeholder" id="klinePlaceholder">
+        <div id="klinePlaceholder" class="chart-placeholder">
             <div class="chart-placeholder-text">图表加载中...</div>
         </div>
         <div id="chartContainer" class="chart-container"></div>
+
+        {# K线指标栏 #}
+        <div class="chart-kline-metrics">
+            <table>
+                <tr>
+                    <td><span id="klineClose" class="metric-item">-</span>
+                        <span class="metric-split">,</span>
+                        <span id="klinePercent" class="metric-item">-</span>
+                        <span class="metric-split">,</span>
+                        <span id="klineMa" class="metric-item metric-orange">-</span>
+                        <span class="metric-split">,</span>
+                        <span id="klineMv" class="metric-item metric-black">-</span>
+                    </td>
+                </tr>
+                <tr>
+                    <td><span id="klineTp" class="metric-item metric-grey">-</span>
+                        <span class="metric-split">,</span>
+                        <span id="klineUp" class="metric-item metric-blue">-</span>
+                        <span class="metric-split">,</span>
+                        <span id="klineAv" class="metric-item metric-black">-</span>
+                        <span class="metric-split">,</span>
+                        <span id="klineLw" class="metric-item metric-blue">-</span>
+                        <span class="metric-split">,</span>
+                        <span id="klineFl" class="metric-item metric-grey">-</span>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        {# K线参数栏 #}
+        <div class="chart-param d-none" id="klineParam">
+            <span class="param-label metric-dark">k</span>
+            <div id="kValueItem" contenteditable="true" class="param-input">-</div>
+            <span class="param-label metric-dark">d</span>
+            <div id="dValueItem" contenteditable="true" class="param-input">-</div>
+            <div id="changeRightItem" class="param-label pointer">
+            </div>
+            <div id="changeFreqDay" class="param-label pointer">
+            </div>
+            <div id="changeFreqWeek" class="param-label pointer">
+            </div>
+            <div id="changeFreqMonth" class="param-label pointer">
+            </div>
+            <div id="fullScreen" class="param-label metric-dark pointer" >
+                <i class="fas fa-expand"></i>
+            </div>
+        </div>
+
+        {# 股票信息：点击名称切换K线/分时图 #}
+        <div class="chart-stock-name">
+            <span id="naviIndicator" class="chart-kline-navi"></span>
+            <span id="nameItem" class="pointer"></span>
+            <span id="codeItem"></span>
+        </div>
+        
+        {% block chart-navi %}{% include "chart-navi.html" %}{% endblock %}
     </div>
-    {# K线指标栏 #}
-    <div class="chart-kline-metrics">
-        <table>
-            <tr>
-                <td><span id="klineClose" class="metric-item">-</span>
-                    <span class="metric-split">,</span>
-                    <span id="klinePercent" class="metric-item">-</span>
-                    <span class="metric-split">,</span>
-                    <span id="klineMa" class="metric-item metric-orange">-</span>
-                    <span class="metric-split">,</span>
-                    <span id="klineMv" class="metric-item metric-black">-</span>
-                </td>
-            </tr>
-            <tr>
-                <td><span id="klineTp" class="metric-item metric-grey">-</span>
-                    <span class="metric-split">,</span>
-                    <span id="klineUp" class="metric-item metric-blue">-</span>
-                    <span class="metric-split">,</span>
-                    <span id="klineAv" class="metric-item metric-black">-</span>
-                    <span class="metric-split">,</span>
-                    <span id="klineLw" class="metric-item metric-blue">-</span>
-                    <span class="metric-split">,</span>
-                    <span id="klineFl" class="metric-item metric-grey">-</span>
-                </td>
-            </tr>
-        </table>
-    </div>
-    {# K线参数栏 #}
-    <div class="chart-param d-none" id="klineParam">
-        <span class="param-label metric-dark">k</span>
-        <div id="kValueItem" contenteditable="true" class="param-input">-</div>
-        <span class="param-label metric-dark">d</span>
-        <div id="dValueItem" contenteditable="true" class="param-input">-</div>
-        <div id="changeRightItem" class="param-label pointer" onclick="toggleRight()">
-        </div>
-        <div id="changeFreqDay" class="param-label pointer" onclick="changeFreq('D')">
-        </div>
-        <div id="changeFreqWeek" class="param-label pointer" onclick="changeFreq('W')">
-        </div>
-        <div id="changeFreqMonth" class="param-label pointer" onclick="changeFreq('M')">
-        </div>
-        <div id="fullScreenItem" class="param-label metric-grey pointer" onclick="toggleFullscreen()">
-            <i class="fas fa-expand"></i>
-        </div>
-    </div>
-    {# 股票信息：点击名称切换K线/分时图 #}
-    <div class="chart-stock-name">
-        <span id="naviIndicator" class="chart-kline-navi"></span>
-        <span id="viewModeItem" class="pointer" onclick="viewModeChange()" title="点击切换分时图">{{ name|default:"NAME" }}</span>
-        <span id="jumpLinkItem" class="{% if is_linkable %}pointer{% endif %}"
-              {% if is_linkable %}onclick="jumpToLink('{{ cat }}', '{{ market }}', '{{ code }}')"{% endif %}>{{ code|default:"CODE" }}</span>
-    </div>
-     {% block chart-navi %}{% include "chart-navi.html" %}{% endblock %}
 </div>

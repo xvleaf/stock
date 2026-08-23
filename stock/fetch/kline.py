@@ -8,8 +8,20 @@ from stock import func
 # 交易休息时间
 KLINE_START_DATE = os.getenv('KLINE_START_DATE')
 
+KLINE_MA_CONFIG = {
+    'D': {'ma': int(os.getenv('KLINE_MA_DAY')), 'mv': int(os.getenv('KLINE_MV_DAY'))},
+    'W': {'ma': int(os.getenv('KLINE_MA_WEEK')), 'mv': int(os.getenv('KLINE_MV_WEEK'))},
+    'M': {'ma': int(os.getenv('KLINE_MA_MONTH')),'mv': int(os.getenv('KLINE_MV_MONTH'))},
+}
 
-def kline_data_for_chart(asset, tscode, freq='D', right='qfq', k=10, d=30, deci=2):
+KLINE_EMA_CONFIG = {
+    'D': {'k': int(os.getenv('KLINE_EMA_K_DAY')), 'd': int(os.getenv('KLINE_EMA_D_DAY'))},
+    'W': {'k': int(os.getenv('KLINE_EMA_K_WEEK')), 'd': int(os.getenv('KLINE_EMA_D_WEEK'))},
+    'M': {'k': int(os.getenv('KLINE_EMA_K_MONTH')), 'd': int(os.getenv('KLINE_EMA_D_MONTH'))},
+}
+
+
+def kline_data_for_chart(asset, tscode, freq='D', right='qfq', k=None, d=None, deci=2):
     """
     获取 k 线，包括轨道线
     :param asset: E股票 I沪深指数 FD基金 CB可转债
@@ -40,6 +52,10 @@ def kline_data_for_chart(asset, tscode, freq='D', right='qfq', k=10, d=30, deci=
     if df.empty:
         return JsonResponse(df)
 
+    if k is None:
+        k = KLINE_EMA_CONFIG[freq]['k']
+    if d is None:
+        d = KLINE_EMA_CONFIG[freq]['d']
     # 一次性返回完整数据
     result = _handle_kline_full(df, freq, right, k, d, deci)
 
@@ -67,8 +83,8 @@ def _handle_kline_full(df, freq, right, k, d, deci):
     tp, up, av, lw, fl = _calc_ema_track_line(df, k, d, deci)
 
     # 简单均线与均量线
-    ma = _calc_simple_ma_line(df, 'close', window=200, deci=deci)
-    mv = _calc_simple_ma_line(df, 'vol', window=20, deci=0)
+    ma = _calc_simple_ma_line(df, 'close', window=KLINE_MA_CONFIG[freq]['ma'], deci=deci)
+    mv = _calc_simple_ma_line(df, 'vol', window=KLINE_MA_CONFIG[freq]['mv'], deci=0)
 
     deadline = func.date_to_timestamp(df['trade_date'].iloc[-1]) if not df.empty else 0
 

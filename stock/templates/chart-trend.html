@@ -18,12 +18,12 @@
                 <button class="chart-icon-btn"><i class="fas fa-xmark"></i></button>
         </div>
     </div>
-
+    
     {# 股票信息：点击名称切换K线/分时图 #}
     <div class="chart-stock-name">
         <span id="naviIndicator" class="chart-kline-navi"></span>
-        <span id="viewModeItem" class="pointer" onclick="viewModeChange()" title="点击切换K线图">{{ name|default:"NAME" }}</span>
-        <span id="jumpLinkItem" class="{% if is_linkable %}pointer{% endif %}"
+        <span id="nameItem" class="pointer" onclick="viewModeChange()" title="点击切换分时图">{{ name|default:"NAME" }}</span>
+        <span id="codeItem" class="{% if is_linkable %}pointer{% endif %}"
               {% if is_linkable %}onclick="jumpToLink('{{ cat }}', '{{ market }}', '{{ code }}')"{% endif %}>{{ code|default:"CODE" }}</span>
     </div>
 

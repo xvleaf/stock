@@ -1,16 +1,15 @@
 {# 底部导航栏 #}
-<div id="naviContainer" class="chart-navi-bar">
+<div id="naviContainer" class="chart-navi-bar d-none">
         
     <div class="chart-navi-left">
         <div class="chart-navi-group">
             <div id="naviPrevItem" class="chart-navi-item"><i class="fas fa-angle-left"></i></div>
-            <div id="pilotPrevItem" class="chart-navi-item"><i class="fas fa-angle-up"></i></div>
+            <div id="pilotPrevItem" class="chart-navi-item d-none"><i class="fas fa-angle-up"></i></div>
         </div>
     </div>
     <div class="chart-navi-center">
         <div class="chart-navi-group">
-            <div class="chart-navi-item pointer" onclick="toggleComment()"><i class="fas fa-comment-alt"></i></div>
-            <div class="chart-navi-item pointer" onclick="backToList()">
+            <div id="backList" class="chart-navi-item d-none pointer">
                 <i class="fas fa-list"></i>
             </div>
         </div>
@@ -18,7 +17,7 @@
 
     <div class="chart-navi-right">
         <div class="chart-navi-group">
-            <div id="pilotNextItem" class="chart-navi-item"><i class="fas fa-angle-down"></i></div>
+            <div id="pilotNextItem" class="chart-navi-item d-none"><i class="fas fa-angle-down"></i></div>
             <div id="naviNextItem" class="chart-navi-item"><i class="fas fa-angle-right"></i></div>
         </div>
     </div>
