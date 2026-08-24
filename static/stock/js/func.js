@@ -108,10 +108,12 @@ async function loadChartPage() {
     const container = document.getElementById('chartPageContainer');
 
     try {
-        reqChartView('view', pageConfig.view)
-        
         // 销毁旧图表
         destroyChart();
+
+        // 请求新视图HTML并等待渲染完成
+        await reqChartView('view', pageConfig.view);
+        
         container.classList.remove('d-none');
 
         // 根据视图初始化图表
@@ -129,9 +131,9 @@ async function loadChartPage() {
     }
 }
 
-export function reqChartView(func, value) {
+export async function reqChartView(func, value) {
     clearTrendTimer();
-    postRequest('/chart/view', {
+    const res = await postRequest('/chart/view', {
         func: func,
         value: value,
         site: pageConfig.site,
@@ -139,9 +141,10 @@ export function reqChartView(func, value) {
         name: pageConfig.name,
         market: pageConfig.market,
         cat: pageConfig.cat
-    }).then(res => {
-        document.getElementById('chartPageContainer').innerHTML = res.html;
     });
+    if (res && res.html) {
+        document.getElementById('chartPageContainer').innerHTML = res.html;
+    }
 }
 
 export function showChartError(text) {
