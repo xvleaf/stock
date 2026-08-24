@@ -1,8 +1,13 @@
-import { debounceLayout } from '../../base/js/base.js';
-import { trendChart, initTrendChart, destroyTrendChart, renderTrendActionButtons, clearTrendTimer } from './trend.js';
+import { trendChart, initTrendChart, destroyTrendChart, clearTrendTimer } from './trend.js';
 import { klineChart, initKlineChart, destroyKlineChart, refreshKlineDensity } from './kline.js';
 
-// ========== 全局依赖兼容层 ==========
+// ========== 公共全局状态变量 ==========
+let isFullscreen = false;   // 记录当前是否处于伪全屏状态
+export const Highcharts = window.Highcharts;
+export const chartPageContainer = document.getElementById('chartPageContainer');
+export let pageConfig = {};
+export let priceDecimal = 2;
+
 export function getCsrfToken() {
     const cookie = document.cookie.split(';')
         .map(c => c.trim())
@@ -61,20 +66,16 @@ export const layer = window.layer || {
     close: () => {}
 };
 
-// ========== 公共全局状态变量 ==========
-export const Highcharts = window.Highcharts;
-export const chartPageContainer = document.getElementById('chartPageContainer');
-export let pageConfig = {};
-export let priceDecimal = 2;
 export function setPriceDecimal(val) {
     priceDecimal = Number(val) || 2;
 }
 
-/**
- * 页面入口初始化
- */
-export function initChartPage(chartConfig) {
-    pageConfig = chartConfig;
+export function setPageConfig(config) {
+    pageConfig = config;
+}
+
+/** 页面入口初始化 */
+export function initChartPage() {
     loadChartPage();
     bindGlobalKeyboard();
     // 滚动收起交互
@@ -98,7 +99,48 @@ export function initChartPage(chartConfig) {
                     trendChart.reflow();
                 }
             }
-        }, 200); // 防抖延迟
+        }, 500); // 防抖延迟
+    });
+}
+
+/** 加载图表页面 */
+async function loadChartPage() {
+    const container = document.getElementById('chartPageContainer');
+
+    try {
+        reqChartView('view', pageConfig.view)
+        
+        // 销毁旧图表
+        destroyChart();
+        container.classList.remove('d-none');
+
+        // 根据视图初始化图表
+        if (pageConfig.view === 'kline') {
+            initKlineChart();
+        } else {
+            initTrendChart();
+        }
+
+        // ----- 恢复全屏状态（如果之前是全屏） -----
+        restoreFullscreen();
+    } catch (error) {
+        console.error('图表加载失败:', error);
+        showChartError(`图表加载失败：${error.message}`);
+    }
+}
+
+export function reqChartView(func, value) {
+    clearTrendTimer();
+    postRequest('/chart/view', {
+        func: func,
+        value: value,
+        site: pageConfig.site,
+        code: pageConfig.code,
+        name: pageConfig.name,
+        market: pageConfig.market,
+        cat: pageConfig.cat
+    }).then(res => {
+        document.getElementById('chartPageContainer').innerHTML = res.html;
     });
 }
 
@@ -120,49 +162,9 @@ export function destroyChart() {
     }
 }
 
-async function loadChartPage(retryCount = 0, maxRetries = 3) {    
-    const container = document.getElementById('chartPageContainer');   
-
-    try {
-        const response = await fetch(`/chart/view?view=${pageConfig.view}`);
-        if (!response.ok) {
-            showChartError(`加载失败：(${response.status})`);
-        }
-        
-        const html = await response.text();
-        
-        // 如果内容为空，进行重试
-        if (!html || html.trim() === '') {
-            if (retryCount < maxRetries) {
-                console.log(`数据为空，${retryCount + 1}秒后进行第 ${retryCount + 1} 次重试...`);
-                await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 10000));
-                return loadChartPage(retryCount + 1, maxRetries);
-            } else {
-                console.log(`尝试 ${maxRetries} 次后仍未收到数据`);
-            }
-        }
-
-        destroyChart();
-
-        // 成功接收到数据
-        container.innerHTML = html;
-        container.classList.remove('d-none');
-
-        initPageElements();
-
-        if (pageConfig.view === 'kline') {
-            initKlineChart();
-        } else {
-            initTrendChart();
-        }
-    } catch (error) {
-        showChartError(`图表加载失败：${error.message}`);
-    }
-}
-
 /* 隐藏占位层，显示图表 */
 export function hideChartPlaceholder() {
-    const placeholderId = pageConfig.view === 'trend' ? 'trendPlaceholder' : 'klinePlaceholder';
+    const placeholderId = 'chartPlaceholder';
     const placeholder = document.getElementById(placeholderId);
     if (placeholder) {
         placeholder.style.display = 'none';
@@ -172,10 +174,9 @@ export function hideChartPlaceholder() {
 /**
  * 初始化页面所有UI元素
  */
-function initPageElements() {
+export function initPageElements() {
     const nameItem = document.getElementById('nameItem');
     const codeItem = document.getElementById('codeItem');
-    const fullScreen = document.getElementById('fullScreen');
     const naviContainer = document.getElementById('naviContainer');
 
     if (nameItem) {
@@ -190,6 +191,7 @@ function initPageElements() {
         }
     }
     
+    const fullScreen = document.getElementById('fullScreen');
     if (fullScreen) {
         fullScreen.onclick = toggleFullScreen;
     }
@@ -198,16 +200,16 @@ function initPageElements() {
         naviContainer.classList.remove('d-none');
         const naviPrevItem = document.getElementById('naviPrevItem');
         const naviNextItem = document.getElementById('naviNextItem');
-        updateNavItemState('naviPrev', naviPrevItem);
-        updateNavItemState('naviNext', naviNextItem);
+        initNavItemState('naviPrev', naviPrevItem);
+        initNavItemState('naviNext', naviNextItem);
         
         if (pageConfig.navi.showPilot) {            
             const pilotPrevItem = document.getElementById('pilotPrevItem');
             const pilotNextItem = document.getElementById('pilotNextItem');
             pilotPrevItem.classList.remove('d-none');
             pilotNextItem.classList.remove('d-none');
-            updateNavItemState('pilotPrev', pilotPrevItem);
-            updateNavItemState('pilotNext', pilotNextItem);
+            initNavItemState('pilotPrev', pilotPrevItem);
+            initNavItemState('pilotNext', pilotNextItem);
         }
 
         if (pageConfig.navi.backList) {
@@ -225,8 +227,7 @@ function initPageElements() {
     }
 }
 
-// ==================== 全局交互函数 ====================
-function updateNavItemState(key, navItem) {
+function initNavItemState(key, navItem) {
     const enabled = !!pageConfig.navi[key];
 
     // 更新样式（互斥切换）
@@ -296,32 +297,70 @@ function bindGlobalKeyboard() {
 function toggleFullScreen() {
     const chartPage = document.getElementById('chartPage');    
     const fullscreenBtn = document.getElementById('fullScreen');
+    if (!chartPage) return;
+
     const isFull = chartPage.classList.contains('pseudo-fullscreen');
 
     if (isFull) {
         // 退出伪全屏
         chartPage.classList.remove('pseudo-fullscreen');
         document.body.classList.remove('pseudo-fullscreen-open');
-        fullscreenBtn.innerHTML = '<i class="fas fa-expand"></i>';
+        if (fullscreenBtn) fullscreenBtn.innerHTML = '<i class="fas fa-expand"></i>';
+        isFullscreen = false;
     } else {
         // 进入伪全屏
         chartPage.classList.add('pseudo-fullscreen');
         document.body.classList.add('pseudo-fullscreen-open');
-        fullscreenBtn.innerHTML = '<i class="fas fa-compress"></i>' 
+        if (fullscreenBtn) fullscreenBtn.innerHTML = '<i class="fas fa-compress"></i>';
+        isFullscreen = true;
     }
     
-    // 延迟执行，等待 DOM 布局稳定
+    // 延迟执行图表自适应
     setTimeout(() => {
-        // 先尝试用 reflow 自适应
-        if (klineChart && typeof klineChart.reflow === 'function') {
-            klineChart.reflow();
-        }
-        // 如果视图是 K 线，则重新计算密度并重建图表
         if (pageConfig.view === 'kline') {
+            if (klineChart && typeof klineChart.reflow === 'function') {
+                klineChart.reflow();
+            }
+            // 刷新密度（如果需要）
             refreshKlineDensity();
+        } else if (pageConfig.view === 'trend') {
+            if (trendChart && typeof trendChart.reflow === 'function') {
+                trendChart.reflow();
+            }
         }
-    }, 200); // 适当增加延迟，确保容器尺寸已更新
-};
+    }, 500);
+}
+
+function restoreFullscreen() {
+    if (!isFullscreen) return;
+    const chartPage = document.getElementById('chartPage');
+    const fullscreenBtn = document.getElementById('fullScreen');
+    if (!chartPage) return;
+
+    // 应用全屏类
+    chartPage.classList.add('pseudo-fullscreen');
+    document.body.classList.add('pseudo-fullscreen-open');
+
+    // 更新按钮图标
+    if (fullscreenBtn) {
+        fullscreenBtn.innerHTML = '<i class="fas fa-compress"></i>';
+    }
+
+    // 重新触发图表自适应
+    setTimeout(() => {
+        if (pageConfig.view === 'kline') {
+            if (klineChart && typeof klineChart.reflow === 'function') {
+                klineChart.reflow();
+            }
+            // 刷新密度
+            refreshKlineDensity();
+        } else if (pageConfig.view === 'trend') {
+            if (trendChart && typeof trendChart.reflow === 'function') {
+                trendChart.reflow();
+            }
+        }
+    }, 500);
+}
 
 function naviSwitch(type, action) {
     postRequest(`/${pageConfig.site}`, {
@@ -340,7 +379,7 @@ function naviSwitch(type, action) {
 
 function viewModeChange() {
     pageConfig.view = pageConfig.view === 'kline' ? 'trend' : 'kline';
-    reloadChartView('view', pageConfig.view); 
+    loadChartPage(); 
 };
 
 function jumpToLink() {
@@ -394,19 +433,6 @@ window.dealAction = function (marketCode) {
 };
 
 // ==================== 内部工具函数 ====================
-export function reloadChartView(func, value) {
-    clearTrendTimer();
-    postRequest('/chart/view', {
-        func: func,
-        value: value,
-        code: pageConfig.code,
-        market: pageConfig.market,
-        // cat: pageConfig.cat
-    }).then(html => {
-        document.getElementById('chartPageContainer').innerHTML = html;
-        loadChartPage();
-    });
-}
 
 function saveScrollPosition() {
     const scrollTop = document.querySelector('.base-root')?.scrollTop || 0;

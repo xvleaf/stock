@@ -1,7 +1,7 @@
 <div class="chart-page" id="chartPage">
-    <div class="chart-kline-wrap">
+    <div class="chart-wrap">
         {# 占位层 #}
-        <div id="klinePlaceholder" class="chart-placeholder">
+        <div id="chartPlaceholder" class="chart-placeholder">
             <div class="chart-placeholder-text">图表加载中...</div>
         </div>
         <div id="chartContainer" class="chart-container"></div>
@@ -34,7 +34,7 @@
             </table>
         </div>
         {# K线参数栏 #}
-        <div class="chart-param d-none" id="klineParam">
+        <div id="klineParam" class="chart-param d-none">
             <span class="param-label metric-dark">k</span>
             <div id="kValueItem" contenteditable="true" class="param-input">-</div>
             <span class="param-label metric-dark">d</span>

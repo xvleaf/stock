@@ -1,6 +1,7 @@
 import pandas as pd
 import datetime
 import decimal
+from .fetch import kline, trend
 
 # 类型转换映射：类型名 -> 转换函数（用于 get_session 将字符串还原为对应类型）
 TYPE_CONVERTERS = {
@@ -17,6 +18,11 @@ def date_to_timestamp(date_obj):
     return int(date_obj.timestamp() * 1000)
 
 
+
+"""
+包括：
+view, kline_params, trend_params, navi_params
+"""
 def set_session(session, key, value):
     """
     将值存入 session
@@ -36,16 +42,20 @@ def set_session(session, key, value):
     session[key] = wrapped
 
 
-def get_session(session, key, default=None):
+def get_session(session, key, init=None):
     """
     从 session 中取值
     如果存储时是经过包装的类型，则自动还原为原始类型
-    如果键不存在，返回 default
+    如果键不存在，返回 init
     """
+    
     # 显式检查键是否存在，避免使用默认值引发的歧义
     if key not in session:
-        return default
+        print(key, init)
+        return init
+
     wrapped = session[key]
+
     # 检查是否为包装的类型字典
     if isinstance(wrapped, dict) and '__type__' in wrapped and '__value__' in wrapped:
         type_name = wrapped['__type__']

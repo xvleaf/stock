@@ -1,4 +1,4 @@
-import { postRequest, Highcharts, pageConfig, priceDecimal, setPriceDecimal, hideChartPlaceholder, reloadChartView, showChartError } from './func.js';
+import { postRequest, Highcharts, pageConfig, initPageElements, priceDecimal, setPriceDecimal, hideChartPlaceholder, reqChartView, showChartError } from './func.js';
 
 // K 线密度参数
 const BREAKPOINT_FOR_KLINE = 1440;
@@ -13,17 +13,25 @@ let klineData = {};
 
 // ==================== K线图逻辑 ====================
 export function initKlineChart() {    
-    fetchKlineData().then(success => {
-        if (!success) {
+    fetchKlineData('get-kline-data')
+        .then(data => {
+            if (!data) {
+                showChartError('K线数据加载失败');
+                return;
+            }
+
+            klineData = data;
+            renderklineData();
+            hideChartPlaceholder();
+            renderKlineParamBar();
+            
+            const initIdx = firstSatisfyIndex(klineData.volume, klineData.deadline);
+            renderKlineMetrics(initIdx);
+        })
+        .catch(error => {
+            console.error('initKlineChart 初始化异常:', error);
             showChartError('K线数据加载失败');
-            return;
-        }
-        renderklineData();
-        hideChartPlaceholder();
-        renderKlineParamBar();
-        let initIdx = firstSatisfyIndex(klineData.volume, klineData.deadline)
-        updateKlineMetrics(initIdx);
-    });
+        });
 }
 
 // ---- 销毁 klineChart 实例 ----
@@ -46,23 +54,40 @@ export function refreshKlineDensity() {
     renderklineData();
 }
 
-/** 非股票类数据接口 cat 备用 */
-async function fetchKlineData() {
-    let code = pageConfig.code;
-    let market = pageConfig.market;
-    // let cat = pageConfig.cat;
+async function fetchKlineData(func) {
+    const { code, market, cat } = pageConfig; // 解构赋值
     
-    if(code && market) {        
-        const data = await postRequest('/chart/data', {
-            code: code,
-            market: market,
-            // cat: cat,
-            func: 'get-kline-data',
-        });
-        if (!data) return false;
-        klineData = data;
-        return true;
+    if (!code || !market) {
+        console.warn('fetchChartData: 参数缺失 code 或 market');
+        return false;
     }
+    
+    try {
+        const data = await postRequest('/chart/data', {
+            func,
+            code,
+            market,
+            cat,
+        });
+        
+        // 如果接口返回了数据（即使是空数组也视为成功，但 null/undefined 视为失败）
+        return data ?? false; 
+    } catch (error) {
+        console.error('fetchChartData 请求异常:', error);
+        return false;
+    }
+}
+
+function syncVolumeColor(chart) {
+    const ohlcSeries = chart.series[0];
+    const volumeSeries = chart.series[1];
+    if (!ohlcSeries || !volumeSeries) return;
+    ohlcSeries.points.forEach((point, index) => {
+        const volPoint = volumeSeries.points[index];
+        if (!volPoint || !volPoint.graphic || !volPoint.graphic.element) return;
+        const color = point.close >= point.open ? 'purple' : 'gray';
+        volPoint.graphic.element.setAttribute('fill', color);
+    });
 }
 
 function renderklineData() {    
@@ -135,7 +160,7 @@ function renderklineData() {
             },
             formatter: function () {
                 const point = this.points[0].point;
-                updateKlineMetrics(point.index);
+                renderKlineMetrics(point.index);
                 const date = new Date(point.x);
                 const dateStr = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
                 return `
@@ -182,18 +207,6 @@ function renderklineData() {
             // 交易信号：分红
             { type: 'scatter', data: deal.divd, yAxis: 0, color: 'blue', enableMouseTracking: false, marker: { symbol: 'diamond', radius: 4 } }
         ]
-    });
-}
-
-function syncVolumeColor(chart) {
-    const ohlcSeries = chart.series[0];
-    const volumeSeries = chart.series[1];
-    if (!ohlcSeries || !volumeSeries) return;
-    ohlcSeries.points.forEach((point, index) => {
-        const volPoint = volumeSeries.points[index];
-        if (!volPoint || !volPoint.graphic || !volPoint.graphic.element) return;
-        const color = point.close >= point.open ? 'purple' : 'gray';
-        volPoint.graphic.element.setAttribute('fill', color);
     });
 }
 
@@ -249,11 +262,14 @@ function renderKlineParamBar() {
         el.innerHTML = `<i class="${colorClass} fas ${icon}"></i>`;
     });
 
+    // 初始化页面元素（按钮、导航等）
+    initPageElements();
+
     // 显示参数栏
     paramBar.classList.remove('d-none');
 }
 
-function updateKlineMetrics(index) {
+function renderKlineMetrics(index) {
     const ohlc = klineData.ohlc;
     // 基础数据不存在或索引越界，直接退出
     if (!ohlc || index < 0 || index >= ohlc.length) return;
@@ -318,7 +334,7 @@ function priceChannel(key, el) {
 
                 // 判断是否发生了变化
                 if (normalized !== lastValidValue) {
-                    reloadChartView(key, normalized);
+                    reqChartView(key, normalized);
                     // 更新缓存为当前有效值
                     lastValidValue = normalized;
                 }
@@ -332,13 +348,12 @@ function priceChannel(key, el) {
 }
 
 function toggleRight() {
-    reloadChartView('right', '');
+    reqChartView('right', '');
 };
 
 function changeFreq(freq) {
-    reloadChartView('freq', freq);
+    reqChartView('freq', freq);
 };
-
 
 /**
  * 二分查找左匹配，找数组中第0列第一个 >= target 的索引，找不到返回数组长度

@@ -20,6 +20,14 @@ KLINE_EMA_CONFIG = {
     'M': {'k': int(os.getenv('KLINE_EMA_K_MONTH')), 'd': int(os.getenv('KLINE_EMA_D_MONTH'))},
 }
 
+KLINE_PARAMS_INIT = {
+    'freq': 'D',
+    'right': 'qfq',
+    'k': KLINE_EMA_CONFIG['D']['k'],
+    'd': KLINE_EMA_CONFIG['D']['d'],
+    'deci': 2
+}
+
 
 def kline_data_for_chart(asset, tscode, freq='D', right='qfq', k=None, d=None, deci=2):
     """
@@ -60,6 +68,17 @@ def kline_data_for_chart(asset, tscode, freq='D', right='qfq', k=None, d=None, d
     result = _handle_kline_full(df, freq, right, k, d, deci)
 
     return JsonResponse(result)
+
+
+def get_kline_params(session):
+    kline_params = func.get_session(session, 'kline_params', KLINE_PARAMS_INIT)
+    return kline_params
+
+
+def set_kline_params(session, key, value):
+    kline_params = func.get_session(session, 'kline_params', KLINE_PARAMS_INIT)
+    kline_params[key] = value
+    func.set_session(session, 'kline_params', kline_params)
 
 
 def _handle_kline_full(df, freq, right, k, d, deci):

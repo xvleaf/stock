@@ -1,4 +1,4 @@
-import { postRequest, Highcharts, pageConfig, priceDecimal, setPriceDecimal, hideChartPlaceholder, showChartError } from './func.js';
+import { postRequest, Highcharts, pageConfig, initPageElements, priceDecimal, setPriceDecimal, hideChartPlaceholder, showChartError } from './func.js';
 
 // ========== 分时图全局状态变量 ==========
 export let trendChart = null;
@@ -10,27 +10,39 @@ let volumeData = [];
 let ohlcNewData = [];
 let volumeNewData = [];
 let preClosePrice = 0;
-let tickInterval = 0;
+let tickInterval = 20000;
 let tickMax = 0;
 let tickMin = 0;
 
-// ==================== 分时图逻辑 ====================
+// ==================== 初始化入口 ====================
 export async function initTrendChart() {
+    // 重置索引
     trendIndex = 0;
     trendIndexNew = 0;
-    await Promise.all([
-        fetchTrendData(true)
-    ]);
-    if (ohlcData.length > 0) {
+
+    const hasData = await loadTrendData('0');
+    if (hasData) {
         renderTrendChart();
         hideChartPlaceholder();
+        renderTrendParamBar();
     } else {
         showChartError('数据加载失败');
+        return;
     }
+
+    // 清除旧的定时器
+    if (trendTimer) {
+        clearInterval(trendTimer);
+        trendTimer = null;
+    }
+
+    // 启动定时轮询
     trendTimer = setInterval(async () => {
-        const hasNew = await fetchTrendData(false);
-        if (hasNew && trendChart) updateTrendChart();
-    }, pageConfig.interval);
+        const hasNew = await loadTrendData('1');
+        if (hasNew && trendChart) {
+            updateTrendChart();
+        }
+    }, tickInterval);
 }
 
 // ---- 销毁 trendChart 实例 ----
@@ -41,58 +53,59 @@ export function destroyTrendChart() {
     }
 }
 
-/**
-async function fetchMarketQuote() {
-    const data = await postRequest('/chart/data', {
-        site: pageConfig.site,
-        cat: pageConfig.cat,
-        code: pageConfig.marketCode,
-        func: 'quote'
-    });
-    if (!data) return;
-    const market = data.market;
-    document.getElementById('marketName').textContent = market.n || '--';
-    document.getElementById('marketPrice').textContent = 
-        market.c !== '-' ? Number(market.c).toFixed(2) : '--';
-    document.getElementById('marketChange').textContent = 
-        market.p !== '-' ? market.p + '%' : '--';
+async function fetchTrendData(step) {
+    try {
+        const { code, market, cat } = pageConfig; // 解构赋值
+        
+        if (!code || !market) {
+            console.warn('fetchChartData: 参数缺失 code 或 market');
+            return false;
+        }
+
+        const requestData = {
+            func: 'get-trend-data',
+            code: code,
+            market: market,
+            cat: cat,
+            step: step // step 为 0 为初始化数据，为 1 为增量数据更新
+        };
+        const data = await postRequest('/chart/data', requestData);
+        return data ?? null;
+    } catch (error) {
+        console.error('分时数据请求失败:', error);
+        return null;
+    }
 }
- */
 
-async function fetchTrendData(isInitial) {
-    const data = await postRequest('/chart/data', {
-        site: pageConfig.site,
-        cat: pageConfig.cat,
-        code: pageConfig.marketCode,
-        func: 'trend',
-        init: isInitial ? '0' : '1'
-    });
-    if (!data) return false;
+async function loadTrendData(step) {
+    const data = await fetchTrendData(step);
+    if (!data) {
+        return false;
+    }
 
-    // 更新公共轴参数
     preClosePrice = data.pc;
-    setPriceDecimal(data.deci);
-    tickInterval = data.tick_itv;
+    setPriceDecimal(data.deci);   
     tickMax = data.tick_max;
     tickMin = data.tick_min;
 
-    // 初始化 或 后端标记交易日切换：全量替换数据并重绘
-    if (isInitial || data.reset) {
+    // 判断是否需要全量重置（初始化 或 后端标记 reset）
+    if (step === '0' || data.reset) {
         ohlcData = data.ohlc;
         volumeData = data.volume;
         trendIndex = data.index;
-        
-        // 非初始化的重置（交易日自动切换），主动重绘图表
-        if (!isInitial && trendChart) {
+
+        // 非初始化的重置（交易日切换）,需主动重绘图表
+        if (step === '1' && trendChart) {
             renderTrendChart();
         }
     } else {
-        // 正常日内增量更新
+        // 正常增量更新
         ohlcNewData = data.ohlc;
         volumeNewData = data.volume;
         trendIndexNew = data.index;
     }
 
+    // 返回是否存在有效数据（索引 > 0 表示至少有一个数据）
     return trendIndex > 0;
 }
 
@@ -203,7 +216,8 @@ function updateTrendChart() {
 /**
  * 渲染分时操作按钮
  */
-export function renderTrendActionButtons() {
+function renderTrendParamBar() {
+    /**
     const act = pageConfig.trendAct;
     const exitBtn = document.getElementById('btnExit');
     const editBtn = document.getElementById('btnEdit');
@@ -223,6 +237,13 @@ export function renderTrendActionButtons() {
     else editBtn.style.visibility = 'hidden';
     if (act.deal === 'deal') dealBtn.innerHTML = '<i class="fas fa-cart-shopping"></i>';
     else dealBtn.style.visibility = 'hidden';
+    */
+    const paramBar = document.getElementById('trendParam');
+    if (!paramBar) return;
+    initPageElements();
+    
+    // 显示参数栏
+    paramBar.classList.remove('d-none');
 }
 
 /**

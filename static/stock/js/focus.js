@@ -1,5 +1,5 @@
 'use strict';
-import { postRequest, refreshQuotes, chartPageContainer, initChartPage, destroyChart } from './func.js';
+import { postRequest, refreshQuotes, chartPageContainer, setPageConfig, initChartPage, destroyChart } from './func.js';
 
 // ===================== focus-list 页面 =====================
 export function initFocusList(interval) {
@@ -32,7 +32,7 @@ export function initFocusList(interval) {
 
     function saveSortOrder() {
         const codes = Array.from(tbody.querySelectorAll('tr[data-code]'))
-            .map(tr => tr.dataset.code.split('.')); // split 为[code, market]
+            .map(tr => tr.dataset.code.split('.'));   // split 为[code, market]
         postRequest('/focus/list', { action: 'sort', codes })
             .then(() => console.log('排序已保存'))
             .catch(err => {
@@ -94,7 +94,7 @@ export function initFocusList(interval) {
             dragRow = row;
             touchStartY = e.touches[0].clientY;
 
-            // 启动长按定时器（500ms）
+            // 启动长按定时器
             longPressTimer = setTimeout(() => {
                 // 进入拖拽模式
                 isDragging = true;
@@ -260,7 +260,6 @@ export function initFocusPlus(config) {
         const code = (codeInput?.value || '').trim();
         const market = marketSel?.value || 'SH';
         const cat = catSel?.value || 'stock';
-        const deci = cat === 'stock'?2:3;
          
         // 清除之前的定时器
         clearTimeout(nameFetchTimer);
@@ -281,7 +280,7 @@ export function initFocusPlus(config) {
                         nameInput.value = data.name;
                         
                         // 构建动态图表配置
-                        const chartConfig = {
+                        let config = {
                             site: initChart.site,
                             code: code,
                             market: market,
@@ -291,17 +290,19 @@ export function initFocusPlus(config) {
                             navi: initChart.navi || false,
                             kline: initChart.kline,
                             trend: initChart.trend,
-                            deci: deci
+                            deci: initChart.deci
                         };
-                        
+
+                        setPageConfig(config);
+
                         if (errText) {
                             errText.textContent = '';
                             errText.classList.add('d-none');
                         }
 
                         if (chartPageContainer) {
-                            chartPageContainer.classList.remove('d-none'); // 显示
-                            initChartPage(chartConfig);
+                            chartPageContainer.classList.remove('d-none');
+                            initChartPage();
                         }
                     } else {
                         nameInput.value = '';
@@ -387,6 +388,3 @@ export function initFocusPlus(config) {
         fetchStockInfo();
     }
 }
-
-
-

@@ -7,13 +7,11 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
-from .fetch import quote, tushare, kline
+from .fetch import quote, tushare, kline, trend
 from .forms.forms import FocusStockForm
-from . import cash, func
+from . import cash, func, chart
 from .models.models import CashConfig, StockList, FocusStock
 from django.db import connection, transaction
-
-TREND_REQUEST_INTERVAL = int(os.environ.get('TREND_REQUEST_INTERVAL', 60000))
 
 
 # ===================== 关注清单 =====================
@@ -45,7 +43,7 @@ def focus_list(request):
             })
             
         return JsonResponse(result, safe=False, json_dumps_params={'ensure_ascii': False})
-
+    
     items = []
     # models 自带 sort_order 排序，因此不需要进行排序
     focus_qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING)
@@ -63,7 +61,7 @@ def focus_list(request):
         })
     return render(request, 'focus-list.html', {
         'list': items,
-        'interval': TREND_REQUEST_INTERVAL,
+        'interval': trend.TREND_REQUEST_INTERVAL
     })
 
 
@@ -94,40 +92,16 @@ def focus_plus(request):
     else:
         initial = {}
         form = FocusStockForm(initial=initial)
-        
-    kline_dict = {
-        'freq': func.get_session(request.session, 'freq', 'D'),
-        'right': func.get_session(request.session, 'right', 'qfq'),
-        'k': func.get_session(request.session, 'k', kline.KLINE_EMA_CONFIG['D']['k']),
-        'd': func.get_session(request.session, 'd', kline.KLINE_EMA_CONFIG['D']['d']),
-        'deci': 2 if cat == 'stock' else 3
-    }
-    trend_dict = {
-        # 'interval':TREND_REQUEST_INTERVAL
-    }
-    navi_dict = {
-        'showNavi': True,
-        'naviIndex': 0,
-        'naviCount': 0,
-        'naviPrev': True,
-        'naviNext': True,
-        'showPilot': True,
-        'pilotPrev': None,
-        'pilotNext': None,
-        'backList':None
-    }
+    
     chart_init = {
         'site': 'focus/plus',
-        'func': 'plus',
         'code': code,
         'market': market,
         'name': name,
-        'cat': cat,
-        'view': 'kline',
-        'kline': kline_dict,
-        'trend': trend_dict,
-        'navi': navi_dict
+        'cat': cat
     }
+    page_config = chart.get_page_config(request.session, cat)
+    chart_init.update(page_config)
 
     return render(request, 'focus-plus.html', {
         'form': form, 

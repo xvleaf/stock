@@ -37,9 +37,9 @@
     --w3: 70%;       /* 第二断点 ≤ 视口 < 第三断点 */
     --w4: 60%;       /* 视口 ≥ 第三断点 */
     --h1: 100vh;     /* 视口 < 第一断点 */
-    --h2: 85vh;      /* 第一断点 ≤ 视口 < 第二断点 */
-    --h3: 70vh;      /* 第二断点 ≤ 视口 < 第三断点 */
-    --h4: 60vh;      /* 视口 ≥ 第三断点 */
+    --h2: 90vh;      /* 第一断点 ≤ 视口 < 第二断点 */
+    --h3: 80vh;      /* 第二断点 ≤ 视口 < 第三断点 */
+    --h4: 75vh;      /* 视口 ≥ 第三断点 */
 }
 /* 滚动条全局隐藏（仅 html 作为滚动容器，body 不设 overflow 避免嵌套滚动容器吞掉滚轮事件） */
 html {
@@ -274,18 +274,13 @@ body {
 #mainNav .navbar-inner,
 .page-content,
 #fixedHeader .fixed-header-inner {
+    /* clamp(MIN, VAL, MAX)，三个数里取中间值，与顺序无关 */
     --switch1: clamp(0px, (100vw - var(--bp1) * 1px) * 9999, 9999px);
     --switch2: clamp(0px, (100vw - var(--bp2) * 1px) * 9999, 9999px);
     --switch3: clamp(0px, (100vw - var(--bp3) * 1px) * 9999, 9999px);
     width: max(
         var(--w4),
-        max(
-            var(--w3),
-            max(
-                var(--w2),
-                var(--w1) - var(--switch1)
-            ) - var(--switch2)
-        ) - var(--switch3)
+        max(var(--w3), max(var(--w2), var(--w1) - var(--switch1)) - var(--switch2)) - var(--switch3)
     );
     margin: 0 auto;
 }

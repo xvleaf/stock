@@ -3,18 +3,22 @@ import datetime
 import pytz
 import pandas as pd
 from . import ashare
+from stock import func
 
 AM_START = int(os.environ.get('STOCK_TRADE_AM_START', 34200))   # 09:30
 AM_END   = int(os.environ.get('STOCK_TRADE_AM_END', 41400))     # 11:30
 PM_START = int(os.environ.get('STOCK_TRADE_PM_START', 46800))   # 13:00
 PM_END   = int(os.environ.get('STOCK_TRADE_PM_END', 54000))     # 15:00
 
+TREND_PARAMS_INIT = {
+}
 
-def trend_data_for_chart(tscode, init, session, deci=2):
+
+def trend_data_for_chart(session, tscode, step, deci=2):
     """
     获取分时图数据
     :param tscode: 股票代码（如 '000333.SZ'）
-    :param init: 字符串 '0' 表示初始化，'1' 表示增量更新
+    :param step: 字符串 '0' 表示初始化，'1' 表示增量更新
     :param session: django session 对象（用于记录最后数据的时间戳和当前交易日）
     :return: 字典，格式与 trend.js 的预期一致
     """
@@ -47,7 +51,7 @@ def trend_data_for_chart(tscode, init, session, deci=2):
 
     # 核心判断：是否需要全量重置
     # 触发条件：初始化请求 / 交易日发生切换（盘前→开盘、跨周末/节假日、停牌后复牌等）
-    need_reset = (init == '0') or (session_trade_date != current_trade_date)
+    need_reset = (step == '0') or (session_trade_date != current_trade_date)
 
     # 构建 ohlc / volume 数据列表
     ohlc = []
@@ -59,11 +63,11 @@ def trend_data_for_chart(tscode, init, session, deci=2):
         percent = (delta / pre_close * 100) if pre_close != 0 else 0.0
         ohlc.append([ts, close, percent, delta])
         volume.append([ts, row['volume']])
-
+        
     # 计算 Y 轴参数
     tick_min, tick_max, tick_itv = _calc_tick_params(df, pre_close, deci)
 
-    # ========== 全量重置场景 ==========
+    # 全量重置场景
     if need_reset:
         session['current_trade_date'] = current_trade_date
         if ohlc:
@@ -80,7 +84,7 @@ def trend_data_for_chart(tscode, init, session, deci=2):
             'reset': True
         }
 
-    # ========== 正常增量更新场景（交易日未变化） ==========
+    # 正常增量更新场景（交易日未变化）
     last_ts = session.get('last_timestamp', None)
     new_ohlc = []
     new_volume = []
@@ -90,7 +94,6 @@ def trend_data_for_chart(tscode, init, session, deci=2):
                 new_ohlc.append(o_item)
                 new_volume.append(v_item)
     else:
-        # 无历史时间戳兜底，返回全量
         new_ohlc = ohlc
         new_volume = volume
 
@@ -108,6 +111,17 @@ def trend_data_for_chart(tscode, init, session, deci=2):
         'tick_min': tick_min,
         'reset': False
     }
+
+
+def get_trend_params(session):
+    trend_params = func.get_session(session, 'trend_params', TREND_PARAMS_INIT)
+    return trend_params
+
+
+def set_trend_params(session, key, value):
+    trend_params = func.get_session(session, 'trend_params', TREND_PARAMS_INIT)
+    trend_params[key] = value
+    func.set_session(session, 'trend_params', trend_params)
 
 
 def _get_today_minute_data(code):

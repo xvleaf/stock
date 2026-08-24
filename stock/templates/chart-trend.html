@@ -1,31 +1,29 @@
 <div class="chart-page" id="chartPage">
-    <div class="chart-trend-wrap">
-        {# 图形容器 #}
-        <div class="chart-trend-canvas">
-            {# 占位层 #}
-            <div class="chart-placeholder" id="trendPlaceholder">
-                <div class="chart-placeholder-text">图表加载中...</div>
+    <div class="chart-wrap">
+        {# 占位层 #}
+        <div id="chartPlaceholder" class="chart-placeholder">
+            <div class="chart-placeholder-text">图表加载中...</div>
+        </div>
+        <div id="chartContainer" class="chart-container"></div>
+
+        <div id="trendParam" class="chart-param d-none">
+            <button class="chart-icon-btn" id="btnExit"></button>
+            <button class="chart-icon-btn" id="btnEdit"></button>
+            <button class="chart-icon-btn" id="btnDeal"></button>
+            <button class="chart-icon-btn"><i class="fas fa-chevron-down"></i></button>
+            
+            <div id="fullScreen" class="param-label metric-dark pointer" >
+                <i class="fas fa-expand"></i>
             </div>
-            <div id="chartContainer" class="chart-container"></div>
         </div>
-
-        <div class="chart-param">
-                <button class="chart-icon-btn" id="btnExit"></button>
-                <button class="chart-icon-btn" id="btnEdit"></button>
-                <button class="chart-icon-btn" id="btnDeal"></button>
-                <button class="chart-icon-btn" id="btnFullscreen"></button>
-                <button class="chart-icon-btn"><i class="fas fa-chevron-down"></i></button>
-                <button class="chart-icon-btn"><i class="fas fa-xmark"></i></button>
-        </div>
-    </div>
     
-    {# 股票信息：点击名称切换K线/分时图 #}
-    <div class="chart-stock-name">
-        <span id="naviIndicator" class="chart-kline-navi"></span>
-        <span id="nameItem" class="pointer" onclick="viewModeChange()" title="点击切换分时图">{{ name|default:"NAME" }}</span>
-        <span id="codeItem" class="{% if is_linkable %}pointer{% endif %}"
-              {% if is_linkable %}onclick="jumpToLink('{{ cat }}', '{{ market }}', '{{ code }}')"{% endif %}>{{ code|default:"CODE" }}</span>
+        {# 股票信息：点击名称切换K线/分时图 #}
+        <div class="chart-stock-name">
+            <span id="naviIndicator" class="chart-kline-navi"></span>
+            <span id="nameItem" class="pointer"></span>
+            <span id="codeItem"></span>
+        </div>
+        
+        {% block chart-navi %}{% include "chart-navi.html" %}{% endblock %}
     </div>
-
-     {% block chart-navi %}{% include "chart-navi.html" %}{% endblock %}
 </div>

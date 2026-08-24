@@ -157,7 +157,7 @@
 }
 
 /* ========== K线视图 ========== */
-.chart-kline-wrap {
+.chart-wrap {
     background: #ffffff;
     width: 100%;
     box-sizing: border-box;
@@ -169,14 +169,8 @@
 
     /* ---- 高度 ---- */
     height: calc(0.9 * max(
-        var(--h4),
-        max(
-            var(--h3),
-            max(
-                var(--h2),
-                var(--h1) - var(--switch1)
-            ) - var(--switch2)
-        ) - var(--switch3)
+        var(--h4), 
+        max(var(--h3), max(var(--h2), var(--h1) - var(--switch1)) - var(--switch2)) - var(--switch3)
     )) !important;
 }
 
@@ -362,40 +356,27 @@
     /* align-items: center;            垂直居中 */
     box-sizing: border-box;
 }
-/* 居中容器 .chart-kline-wrap 使用断点宽度/高度 */
-#chartPage.pseudo-fullscreen .chart-kline-wrap {
+/* 居中容器 .chart-wrap 使用断点宽度/高度 */
+#chartPage.pseudo-fullscreen .chart-wrap {
     position: relative;             /* 成为内部绝对定位元素的包含块 */
     max-width: none;
     margin: 0;                      /* 居中由父容器 flex 完成 */
     flex-shrink: 0;                 /* 防止被压缩（父容器是 flex） */
 
-    /* ---- 断点变量（与全局一致） ---- */
     --switch1: clamp(0px, (100vw - var(--bp1) * 1px) * 9999, 9999px);
     --switch2: clamp(0px, (100vw - var(--bp2) * 1px) * 9999, 9999px);
     --switch3: clamp(0px, (100vw - var(--bp3) * 1px) * 9999, 9999px);
 
     /* ---- 宽度 ---- */
     width: max(
-        var(--w4),
-        max(
-            var(--w3),
-            max(
-                var(--w2),
-                var(--w1) - var(--switch1)
-            ) - var(--switch2)
-        ) - var(--switch3)
+        var(--w3),
+        max(var(--w2), var(--w1) - var(--switch2)) - var(--switch3)
     ) !important;
 
     /* ---- 高度 ---- */
     height: max(
-        var(--h4),
-        max(
-            var(--h3),
-            max(
-                var(--h2),
-                var(--h1) - var(--switch1)
-            ) - var(--switch2)
-        ) - var(--switch3)
+        var(--h4), 
+        max(var(--h3), max(var(--h2), var(--h1) - var(--switch1)) - var(--switch2)) - var(--switch3)
     ) !important;
 }
 
@@ -405,7 +386,7 @@
     height: calc(100% - var(--navi-bar-height));
 }
 
-/* 内部的指标、参数、名称相对于 .chart-kline-wrap 定位，宽度受限于父容器 */
+/* 内部的指标、参数、名称相对于 .chart-wrap 定位，宽度受限于父容器 */
 #chartPage.pseudo-fullscreen .chart-kline-metrics {
     position: absolute;
     top: 5px;

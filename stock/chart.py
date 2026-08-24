@@ -9,8 +9,21 @@ from django.views.decorators.http import require_http_methods
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 from .fetch import tushare, kline, trend, quote
+from . import func
 from .models.models import FocusStock, FocusHistory, TransOrder, TransDeal, TransReview
 from .forms.forms import FocusStockForm, TransDealForm, CashConfigForm, ReviewForm
+
+NAVI_PARAMS_INIT = {
+    'showNavi': False,
+    'naviIndex': 0,
+    'naviCount': 0,
+    'naviPrev': False,
+    'naviNext': False,
+    'showPilot': False,
+    'pilotPrev': False,
+    'pilotNext': False,
+    'backList':False
+}
 
 
 @require_http_methods(["POST"])
@@ -19,28 +32,27 @@ def chart_data_api(request):
         params = json.loads(request.body)
     except json.JSONDecodeError:
         return _json_error('无效JSON')
-    func = params.get('func')
-    code = params.get('code', '')
-    market = params.get('market', '')
+    params_func = params.get('func')
+    params_code = params.get('code', '')
+    params_market = params.get('market', '')
 
-    if (code and market):
-        if func == 'get-kline-data':
-            return kline.kline_data_for_chart('E', f'{code}.{market}')
-        elif func == 'get-trend-data':
-            init = params.get('init')
-            data = trend.get_trend_data(code, init, request.session)
+    if (params_code and params_market):
+        if params_func == 'get-kline-data':
+            return kline.kline_data_for_chart('E', f'{params_code}.{params_market}')
+        elif params_func == 'get-trend-data':
+            step = params.get('step')
+            data = trend.trend_data_for_chart(request.session, f'{params_code}.{params_market}', step)
             return JsonResponse(data)
-        elif func == 'navi':
-            return _navi_switch(params.get('site', ''), code, params.get('value', ''))
+        elif params_func == 'navi':
+            return _navi_switch(params.get('site', ''), params_code, params.get('value', ''))
         else:
             return _json_error('不支持的功能')
     else:
          return _json_error('缺少股票信息')
 
 
-@require_http_methods(["GET"])
+@require_http_methods(["POST"])
 def chart_view_api(request):
-    """视图切换，返回局部 HTML（func.js reloadChartView 用 innerHTML 替换）"""
     """
     try:
         params = json.loads(request.body)
@@ -72,10 +84,82 @@ def chart_view_api(request):
     }
     context.update(navi)
     """
-    view = request.GET.get('view', 'kline') 
-    template = 'chart-kline.html' if view == 'kline' else 'chart-trend.html'
 
-    return render(request, template, {})
+    """
+    处理图表视图切换、参数更新，返回新的图表 HTML 片段
+    """
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': '无效JSON'}, status=400)
+
+    param_func = data.get('func')
+    param_value = data.get('value')
+    param_site = data.get('site')
+    param_code = data.get('code')
+    param_name = data.get('name')
+    param_market = data.get('market')
+    param_cat = data.get('cat')
+    
+    if not all([param_func, param_code, param_market]):
+        return JsonResponse({'error': '参数缺失'}, status=400)
+
+    if param_func == 'view':
+        func.set_session(request.session, 'view', param_value)
+    elif param_func in ['k', 'd', 'right', 'freq']:
+        kline.set_kline_params(request.session, param_func, param_value)
+    else:
+        return JsonResponse({'error': f'未知功能: {param_func}'}, status=400)
+
+    context = {
+        'site': param_site,
+        'code': param_code,
+        'name': param_name,
+        'market': param_market,
+        'cat': param_cat
+    }
+    page_config = get_page_config(request.session, param_cat)
+    context.update(page_config)
+
+    view_mode = func.get_session(request.session, 'view', 'kline')
+    html_template = 'chart-kline.html' if  view_mode == 'kline' else 'chart-trend.html'
+    html_content = render(request, html_template, context).content.decode('utf-8')
+
+    return JsonResponse({'html': html_content})
+
+
+def get_page_config(session, cat):   
+    view_init = func.get_session(session, 'view', 'kline')
+    deci = 2 if cat == 'stock' else 3
+    
+    if (view_init == 'kline'):
+        kline.set_kline_params(session, 'deci', deci)
+        kline_init = kline.get_kline_params(session)
+        trend_init = {}
+    else:
+        kline_init = {}
+        trend_init = trend.get_trend_params(session)
+
+    navi_init = get_navi_params(session)
+
+    return {
+        'view': view_init,
+        'kline': kline_init,
+        'trend': trend_init,
+        'navi': navi_init,
+        'deci': deci
+    }
+
+
+def get_navi_params(session):
+    navi_params = func.get_session(session, 'navi_params', NAVI_PARAMS_INIT)
+    return navi_params
+
+
+def set_navi_params(session, key, value):
+    navi_params = func.get_session(session, 'navi_params', NAVI_PARAMS_INIT)
+    navi_params[key] = value
+    func.set_session(session, 'navi_params', navi_params)
 
 
 def _navi_context(site, current_code, queryset, code_field='code'):
