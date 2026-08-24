@@ -51,7 +51,6 @@ def get_session(session, key, init=None):
     
     # 显式检查键是否存在，避免使用默认值引发的歧义
     if key not in session:
-        print(key, init)
         return init
 
     wrapped = session[key]

@@ -90,7 +90,7 @@ function syncVolumeColor(chart) {
     });
 }
 
-function renderklineData() {    
+function renderklineData() {
     const { ohlc, volume, tp, fl, up, av, lw, ma, mv, deal, deadline: rawDeadline, deci, freq } = klineData;
     
     // 前端计算显示区间，宽度与原请求参数保持一致
@@ -355,9 +355,7 @@ function changeFreq(freq) {
     reqChartView('freq', freq);
 };
 
-/**
- * 二分查找左匹配，找数组中第0列第一个 >= target 的索引，找不到返回数组长度
- */
+//二分查找左匹配，找数组中第0列第一个 >= target 的索引，找不到返回数组长度
 function firstSatisfyIndex(arr, target) {
     let left = 0;
     let right = arr.length;
@@ -372,15 +370,8 @@ function firstSatisfyIndex(arr, target) {
     return left < arr.length ? left : arr.length - 1;
 }
 
-/**
- * @param {Array} ohlc K线数据
- * @param {Array} volume 成交量数据
- * @param {String} freq 周期 D/W/M
- * @param {Number} deadline 截止时间戳，-1 表示取最后一根
- * @returns {Object} { show_std, show_max, show_min, ohlc, volume, deadline }
- */
 function calcShowValues(ohlc, volume, freq, deadline = -1) {
-    const width = window.innerWidth;
+    const width = document.getElementById('chartContainer').clientWidth;
     const count = volume.length;
     // 周期对应的毫秒增量
     const dayMs = 86400000;

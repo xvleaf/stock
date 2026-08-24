@@ -324,7 +324,7 @@ function toggleFullScreen() {
             if (klineChart && typeof klineChart.reflow === 'function') {
                 klineChart.reflow();
             }
-            // 刷新密度（如果需要）
+            // 刷新密度
             refreshKlineDensity();
         } else if (pageConfig.view === 'trend') {
             if (trendChart && typeof trendChart.reflow === 'function') {

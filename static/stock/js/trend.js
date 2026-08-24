@@ -3,6 +3,7 @@ import { postRequest, Highcharts, pageConfig, initPageElements, priceDecimal, se
 // ========== 分时图全局状态变量 ==========
 export let trendChart = null;
 let trendTimer = null;
+let trendInterval = 20000;
 let trendIndex = 0;
 let trendIndexNew = 0;
 let ohlcData = [];
@@ -10,7 +11,7 @@ let volumeData = [];
 let ohlcNewData = [];
 let volumeNewData = [];
 let preClosePrice = 0;
-let tickInterval = 20000;
+let tickItv = 0;
 let tickMax = 0;
 let tickMin = 0;
 
@@ -42,7 +43,7 @@ export async function initTrendChart() {
         if (hasNew && trendChart) {
             updateTrendChart();
         }
-    }, tickInterval);
+    }, trendInterval);
 }
 
 // ---- 销毁 trendChart 实例 ----
@@ -87,13 +88,14 @@ async function loadTrendData(step) {
     setPriceDecimal(data.deci);   
     tickMax = data.tick_max;
     tickMin = data.tick_min;
+    tickItv = data.tick_itv;
 
     // 判断是否需要全量重置（初始化 或 后端标记 reset）
     if (step === '0' || data.reset) {
         ohlcData = data.ohlc;
         volumeData = data.volume;
         trendIndex = data.index;
-
+        
         // 非初始化的重置（交易日切换）,需主动重绘图表
         if (step === '1' && trendChart) {
             renderTrendChart();
@@ -134,14 +136,14 @@ function renderTrendChart() {
             type: 'datetime',
             ordinal: true,
             connectNulls: true,
-            tickInterval: 30 * 60 * 1000   // 新增：每30分钟一个刻度
+            tickItv: 30 * 60 * 1000   // 新增：每30分钟一个刻度
         },
         yAxis: [
             {
                 height: '75%',
                 min: tickMin,
                 max: tickMax,
-                tickInterval: tickInterval,
+                tickItv: tickItv,
                 labels: {
                     x: -2,
                     formatter: function () {
@@ -209,7 +211,7 @@ function updateTrendChart() {
     trendIndexNew = trendIndex;
     trendChart.update({
         series: [{ data: ohlcData }, { data: volumeData }],
-        yAxis: [{ min: tickMin, max: tickMax, tickInterval: tickInterval }]
+        yAxis: [{ min: tickMin, max: tickMax, tickItv: tickItv }]
     });
 }
 
