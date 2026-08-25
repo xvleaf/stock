@@ -21,7 +21,7 @@ def date_to_timestamp(date_obj):
 
 """
 包括：
-view, kline_params, trend_params, navi_params
+view, kline_params, trend_params, navi_params, trend_data_last_timestamp
 """
 def set_session(session, key, value):
     """

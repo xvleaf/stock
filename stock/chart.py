@@ -33,12 +33,13 @@ def chart_data_api(request):
     except json.JSONDecodeError:
         return _json_error('无效JSON')
     params_func = params.get('func')
-    params_code = params.get('code', '')
-    params_market = params.get('market', '')
+    params_code = params.get('code', None)
+    params_market = params.get('market', None)    
+    params_cat = params.get('cat', 'E')
 
     if (params_code and params_market):
         if params_func == 'get-kline-data':
-            return kline.kline_data_for_chart('E', f'{params_code}.{params_market}')
+            return kline.kline_data_for_chart(request.session, params_cat, params_market, params_code)
         elif params_func == 'get-trend-data':
             step = params.get('step')
             data = trend.trend_data_for_chart(request.session, f'{params_code}.{params_market}', step)
@@ -53,38 +54,6 @@ def chart_data_api(request):
 
 @require_http_methods(["POST"])
 def chart_view_api(request):
-    """
-    try:
-        params = json.loads(request.body)
-    except json.JSONDecodeError:
-        return _json_error('无效JSON')
-    code = params.get('code', '')
-    func = params.get('func')
-    value = params.get('value', '')
-    
-    focus = FocusStock.objects.filter(code=code).first()
-    view_mode = 'trend'
-    if func == 'view':
-        view_mode = value
-    elif func in ('period', 'freq'):
-        view_mode = 'kline'
-    watching_qs = FocusStock.objects.filter(
-        status=FocusStock.STATUS_WATCHING).order_by('sort_order', '-focus_time')
-    navi = _navi_context('focus/view', code, watching_qs)
-    context = {
-        "name": focus.name if focus else '',
-        "code": code, "display_code": pure_code_of(code),
-        "cat": focus.cat if focus else 'stock',
-        "view": view_mode, "screen": "norm",
-        "interval": TREND_REQUEST_INTERVAL,
-        "trend_act": {"exit": "end", "edit": "edit", "deal": "deal"},
-        "show_pilot": False, "pilot_prev": False, "pilot_next": False,
-        "show_tool_bar": True, "is_linkable": True,
-        "focus": focus, "deci": calc.get_price_decimal(pure_code_of(code)),
-    }
-    context.update(navi)
-    """
-
     """
     处理图表视图切换、参数更新，返回新的图表 HTML 片段
     """
@@ -106,7 +75,11 @@ def chart_view_api(request):
 
     if param_func == 'view':
         func.set_session(request.session, 'view', param_value)
-    elif param_func in ['k', 'd', 'right', 'freq']:
+    elif param_func in ['k', 'd']:
+        kline.set_kline_params(request.session, param_func, int(param_value))
+    elif param_func == 'right':
+        kline.set_kline_params(request.session, param_func, param_value)
+    elif param_func == 'freq':
         kline.set_kline_params(request.session, param_func, param_value)
     else:
         return JsonResponse({'error': f'未知功能: {param_func}'}, status=400)

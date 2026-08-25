@@ -1,4 +1,4 @@
-import { postRequest, Highcharts, pageConfig, initPageElements, priceDecimal, setPriceDecimal, hideChartPlaceholder, reqChartView, showChartError } from './func.js';
+import { postRequest, Highcharts, pageConfig, initPageElements, priceDecimal, setPriceDecimal, hideChartPlaceholder, loadChartPage, showChartError, setPageConfig } from './func.js';
 
 // K 线密度参数
 const BREAKPOINT_FOR_KLINE = 1440;
@@ -61,7 +61,7 @@ async function fetchKlineData(func) {
         console.warn('fetchChartData: 参数缺失 code 或 market');
         return false;
     }
-    
+    console.log(pageConfig);
     try {
         const data = await postRequest('/chart/data', {
             func,
@@ -238,9 +238,8 @@ function renderKlineParamBar() {
     if (elements.right) {
         const isQFQ = klineData.right === 'qfq'; 
         elements.right.onclick = toggleRight;
-        elements.right.innerHTML = isQFQ
-            ? '<i class="metric-dark fas fa-repeat"></i>'
-            : '<i class="metric-grey fas fa-ban"></i>';
+        elements.right.classList.toggle('metric-grey', !isQFQ);
+        elements.right.classList.toggle('metric-dark', isQFQ);
     }
 
     // 更新频率按钮（使用配置数组）
@@ -333,8 +332,11 @@ function priceChannel(key, el) {
                 this.textContent = normalized;
 
                 // 判断是否发生了变化
-                if (normalized !== lastValidValue) {
-                    reqChartView(key, normalized);
+                if (normalized !== lastValidValue) {                                    
+                    let copyPageConfig = pageConfig;
+                    copyPageConfig.kline[key] = normalized;
+                    setPageConfig(copyPageConfig);
+                    loadChartPage(key, normalized);
                     // 更新缓存为当前有效值
                     lastValidValue = normalized;
                 }
@@ -348,11 +350,19 @@ function priceChannel(key, el) {
 }
 
 function toggleRight() {
-    reqChartView('right', '');
+    let copyPageConfig = pageConfig;
+    let right = copyPageConfig.kline['right'];
+    right = right === 'qfq' ? null : 'qfq';
+    copyPageConfig.kline['right'] =right;
+    setPageConfig(copyPageConfig);
+    loadChartPage('right', right);
 };
 
 function changeFreq(freq) {
-    reqChartView('freq', freq);
+    let copyPageConfig = pageConfig;
+    copyPageConfig.kline['freq'] = freq;
+    setPageConfig(copyPageConfig);
+    loadChartPage('freq', freq);
 };
 
 //二分查找左匹配，找数组中第0列第一个 >= target 的索引，找不到返回数组长度
@@ -371,6 +381,7 @@ function firstSatisfyIndex(arr, target) {
 }
 
 function calcShowValues(ohlc, volume, freq, deadline = -1) {
+    // 使用父容器宽度，否则全屏时宽度不对
     const width = document.getElementById('chartContainer').clientWidth;
     const count = volume.length;
     // 周期对应的毫秒增量

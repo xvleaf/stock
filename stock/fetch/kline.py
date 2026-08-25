@@ -29,21 +29,32 @@ KLINE_PARAMS_INIT = {
 }
 
 
-def kline_data_for_chart(asset, tscode, freq='D', right='qfq', k=None, d=None, deci=2):
+def kline_data_for_chart(session, cat, market, code):
     """
-    获取 k 线，包括轨道线
+    tushare 获取 k 线，包括轨道线
     :param asset: E股票 I沪深指数 FD基金 CB可转债
     :param tscode: str '000333.SZ'
     :param freq：'D'日线 'W'周线 'M'月线
     :param right: 'qfq' 或 None
     """
+    tscode = f'{code}.{market}'
+    
+    deci_map = {'stock': 2}
+    asset_map = {'stock': 'E'}
 
+    kline_params = get_kline_params(session)
+    freq = kline_params['freq']
+    right = kline_params['right']
+    k = kline_params['k']
+    d = kline_params['d']
+    deci = deci_map[cat]
+    print(cat, market, code, freq, right, k, d ,deci)
     # 取近两年日线数据
     start = KLINE_START_DATE # or (datetime.datetime.now() - datetime.timedelta(days=730)).strftime('%Y%m%d')
     end = datetime.datetime.now().strftime('%Y%m%d')
 
     df = tushare.get_kline_data(
-        asset=asset,
+        asset=asset_map[cat],
         tscode=tscode,
         start=start,
         end=end,
@@ -60,10 +71,6 @@ def kline_data_for_chart(asset, tscode, freq='D', right='qfq', k=None, d=None, d
     if df.empty:
         return JsonResponse(df)
 
-    if k is None:
-        k = KLINE_EMA_CONFIG[freq]['k']
-    if d is None:
-        d = KLINE_EMA_CONFIG[freq]['d']
     # 一次性返回完整数据
     result = _handle_kline_full(df, freq, right, k, d, deci)
 

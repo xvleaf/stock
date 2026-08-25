@@ -5,13 +5,13 @@ import pandas as pd
 from . import ashare
 from stock import func
 
+QUOTE_REQUEST_INTERVAL = int(os.environ.get('QUOTE_REQUEST_INTERVAL', 20000))   # 09:30
 AM_START = int(os.environ.get('STOCK_TRADE_AM_START', 34200))   # 09:30
 AM_END   = int(os.environ.get('STOCK_TRADE_AM_END', 41400))     # 11:30
 PM_START = int(os.environ.get('STOCK_TRADE_PM_START', 46800))   # 13:00
 PM_END   = int(os.environ.get('STOCK_TRADE_PM_END', 54000))     # 15:00
 
-TREND_PARAMS_INIT = {
-}
+TREND_PARAMS_INIT = {}
 
 
 def trend_data_for_chart(session, tscode, step, deci=2):
@@ -19,7 +19,7 @@ def trend_data_for_chart(session, tscode, step, deci=2):
     获取分时图数据
     :param tscode: 股票代码（如 '000333.SZ'）
     :param step: 字符串 '0' 表示初始化，'1' 表示增量更新
-    :param session: django session 对象（用于记录最后数据的时间戳和当前交易日）
+    :param session: django session 对象
     :return: 字典，格式与 trend.js 的预期一致
     """
     tscode = tscode.upper()
@@ -28,10 +28,8 @@ def trend_data_for_chart(session, tscode, step, deci=2):
     else:
         code = 'sh' + tscode.replace('.SH', '')
 
-    # 获取最新交易日分钟线 + 对应前收盘价（全部从分钟线推导，无外部依赖）
     df, pre_close = _get_today_minute_data(code)
     if df is None or pre_close is None:
-        # 无数据时返回空结构
         return {
             'ohlc': [],
             'volume': [],
@@ -41,41 +39,30 @@ def trend_data_for_chart(session, tscode, step, deci=2):
             'tick_itv': 0,
             'tick_max': 0,
             'tick_min': 0,
-            'reset': False
+            'reset': False,
+            'last_valid_idx': -1
         }
 
-    # 当前分时数据对应的交易日
     current_trade_date = df.index.date[-1].strftime('%Y-%m-%d')
-    # 从 Session 读取上一次记录的交易日
     session_trade_date = session.get('current_trade_date', None)
 
-    # 核心判断：是否需要全量重置
-    # 触发条件：初始化请求 / 交易日发生切换（盘前→开盘、跨周末/节假日、停牌后复牌等）
     need_reset = (step == '0') or (session_trade_date != current_trade_date)
 
-    # 构建 ohlc / volume 数据列表
-    ohlc = []
-    volume = []
-    for idx, row in df.iterrows():
-        ts = int(idx.timestamp() * 1000)          # 毫秒时间戳
-        close = row['close']
-        delta = close - pre_close
-        percent = (delta / pre_close * 100) if pre_close != 0 else 0.0
-        ohlc.append([ts, close, percent, delta])
-        volume.append([ts, row['volume']])
-        
+    # 有效数据最后时间戳
+    last_valid_ts = int(df.index[-1].timestamp() * 1000) if not df.empty else None
+
     # 计算 Y 轴参数
     tick_min, tick_max, tick_itv = _calc_tick_params(df, pre_close, deci)
 
-    # 全量重置场景
+    # ----- 重置场景：返回全天完整数据（含空数据） -----
     if need_reset:
         session['current_trade_date'] = current_trade_date
-        if ohlc:
-            session['last_timestamp'] = ohlc[-1][0]
+        session['last_timestamp'] = last_valid_ts
+        full_ohlc, full_volume, last_valid_idx = _build_full_day_data(df, pre_close)
         return {
-            'ohlc': ohlc,
-            'volume': volume,
-            'index': len(ohlc),
+            'ohlc': full_ohlc,
+            'volume': full_volume,
+            'index': last_valid_idx + 1,
             'pc': pre_close,
             'deci': deci,
             'tick_itv': tick_itv,
@@ -84,26 +71,40 @@ def trend_data_for_chart(session, tscode, step, deci=2):
             'reset': True
         }
 
-    # 正常增量更新场景（交易日未变化）
+    # ----- 增量更新：仅返回新出现的有效数据 -----
     last_ts = session.get('last_timestamp', None)
     new_ohlc = []
     new_volume = []
+
     if last_ts is not None:
-        for o_item, v_item in zip(ohlc, volume):
-            if o_item[0] > last_ts:
-                new_ohlc.append(o_item)
-                new_volume.append(v_item)
+        for idx, row in df.iterrows():
+            ts = int(idx.timestamp() * 1000)
+            if ts > last_ts:
+                close = row['close']
+                delta = close - pre_close
+                percent = (delta / pre_close * 100) if pre_close != 0 else 0.0
+                new_ohlc.append([ts, close, percent, delta])
+                new_volume.append([ts, row['volume']])
     else:
-        new_ohlc = ohlc
-        new_volume = volume
+        # 若 last_ts 为 None，返回所有有效数据
+        for idx, row in df.iterrows():
+            ts = int(idx.timestamp() * 1000)
+            close = row['close']
+            delta = close - pre_close
+            percent = (delta / pre_close * 100) if pre_close != 0 else 0.0
+            new_ohlc.append([ts, close, percent, delta])
+            new_volume.append([ts, row['volume']])
 
     if new_ohlc:
         session['last_timestamp'] = new_ohlc[-1][0]
+        last_valid_idx = len(new_ohlc) - 1   # 新数据中最后一个有效点索引
+    else:
+        last_valid_idx = -1   # 无新数据
 
     return {
         'ohlc': new_ohlc,
         'volume': new_volume,
-        'index': len(new_ohlc),
+        'index': last_valid_idx + 1,
         'pc': pre_close,
         'deci': deci,
         'tick_itv': tick_itv,
@@ -111,6 +112,7 @@ def trend_data_for_chart(session, tscode, step, deci=2):
         'tick_min': tick_min,
         'reset': False
     }
+
 
 
 def get_trend_params(session):
@@ -181,6 +183,84 @@ def _get_today_minute_data(code):
         return None, None
 
 
+def _build_full_day_data(df, pre_close, deci=2):
+    """
+    根据实际分钟数据 df 和前收盘价 pre_close，生成全天交易时段（仅 AM_START~AM_END 和 PM_START~PM_END）的完整分钟序列。
+    对缺失的数据点（无成交）保留 NaN（不填充任何值），前端可识别为空。
+    返回 (ohlc, volume, last_valid_idx)
+        ohlc: 完整列表，每个元素为 [timestamp, close, percent, delta]，若 close 为 NaN，则 percent/delta 为 None
+        volume: 完整列表，每个元素为 [timestamp, volume]，若 volume 缺失则为 None
+        last_valid_idx: 最后一个有效数据在 ohlc 中的索引（基于原始 df 的最后一个时间戳）
+    """
+    if df is None or df.empty:
+        return [], [], -1
+
+    tz = pytz.timezone('Asia/Shanghai')
+    target_date = df.index.date[-1]
+
+    # 构造上午时段索引
+    am_start_dt = datetime.datetime.combine(
+        target_date,
+        datetime.time(AM_START // 3600, (AM_START % 3600) // 60)
+    )
+    am_end_dt = datetime.datetime.combine(
+        target_date,
+        datetime.time(AM_END // 3600, (AM_END % 3600) // 60)
+    )
+    am_index = pd.date_range(start=am_start_dt, end=am_end_dt, freq='1min', tz=tz)
+
+    # 构造下午时段索引
+    pm_start_dt = datetime.datetime.combine(
+        target_date,
+        datetime.time(PM_START // 3600, (PM_START % 3600) // 60)
+    )
+    pm_end_dt = datetime.datetime.combine(
+        target_date,
+        datetime.time(PM_END // 3600, (PM_END % 3600) // 60)
+    )
+    pm_index = pd.date_range(start=pm_start_dt, end=pm_end_dt, freq='1min', tz=tz)
+
+    full_index = am_index.union(pm_index).sort_values()
+
+    # 重新索引，保留 NaN，不填充任何值
+    full_df = df.reindex(full_index)
+
+    # 提取 close 和 volume（可能为 NaN）
+    close_series = full_df['close']
+    volume_series = full_df['volume']
+
+    ohlc = []
+    volume = []
+    for idx in full_index:
+        ts = int(idx.timestamp() * 1000)
+        close_val = close_series.loc[idx]
+        if pd.isna(close_val):
+            # 空数据点：close 为 NaN，delta 和 percent 为 None
+            ohlc.append([ts, None, None, None])
+        else:
+            # 有效数据点：计算涨跌幅
+            delta = close_val - pre_close
+            percent = (delta / pre_close * 100) if pre_close != 0 else 0.0
+            ohlc.append([ts, close_val, percent, delta])
+
+        # volume：如果缺失则为 None
+        vol_val = volume_series.loc[idx]
+        if pd.isna(vol_val):
+            volume.append([ts, None])
+        else:
+            volume.append([ts, vol_val])
+
+    # 查找最后一个有效数据的位置（基于原始 df 的最后一条记录）
+    last_valid_ts = int(df.index[-1].timestamp() * 1000)
+    last_valid_idx = -1
+    for i, item in enumerate(ohlc):
+        if item[0] == last_valid_ts:
+            last_valid_idx = i
+            break
+
+    return ohlc, volume, last_valid_idx
+
+
 def _is_trading_time(dt):
     """
     判断给定时间是否在交易时段内
@@ -219,3 +299,5 @@ def _calc_tick_params(df, pre_close, deci=2):
         tick_itv = 0.01
 
     return lower, upper, tick_itv
+
+

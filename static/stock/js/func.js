@@ -76,7 +76,7 @@ export function setPageConfig(config) {
 
 /** 页面入口初始化 */
 export function initChartPage() {
-    loadChartPage();
+    loadChartPage('view', pageConfig.view);
     bindGlobalKeyboard();
     // 滚动收起交互
     initScrollFold(); 
@@ -104,46 +104,38 @@ export function initChartPage() {
 }
 
 /** 加载图表页面 */
-async function loadChartPage() {
-    const container = document.getElementById('chartPageContainer');
+export async function loadChartPage(func, value) {
+    try {            
+        const res = await postRequest('/chart/view', {
+            func: func,
+            value: value,
+            site: pageConfig.site,
+            code: pageConfig.code,
+            name: pageConfig.name,
+            market: pageConfig.market,
+            cat: pageConfig.cat
+        });
 
-    try {
-        // 销毁旧图表
-        destroyChart();
+        if (res && res.html) {                
+            destroyChart();
+            clearTrendTimer();
 
-        // 请求新视图HTML并等待渲染完成
-        await reqChartView('view', pageConfig.view);
-        
-        container.classList.remove('d-none');
+            const container = document.getElementById('chartPageContainer');
+            container.innerHTML = res.html;
+            container.classList.remove('d-none');
 
-        // 根据视图初始化图表
-        if (pageConfig.view === 'kline') {
-            initKlineChart();
-        } else {
-            initTrendChart();
+            // 根据视图初始化图表
+            if (pageConfig.view === 'kline') {
+                initKlineChart();
+            } else {
+                initTrendChart();
+            }        
+            // 恢复全屏状态（如果之前是全屏）
+            restoreFullscreen();
         }
-
-        // ----- 恢复全屏状态（如果之前是全屏） -----
-        restoreFullscreen();
     } catch (error) {
         console.error('图表加载失败:', error);
         showChartError(`图表加载失败：${error.message}`);
-    }
-}
-
-export async function reqChartView(func, value) {
-    clearTrendTimer();
-    const res = await postRequest('/chart/view', {
-        func: func,
-        value: value,
-        site: pageConfig.site,
-        code: pageConfig.code,
-        name: pageConfig.name,
-        market: pageConfig.market,
-        cat: pageConfig.cat
-    });
-    if (res && res.html) {
-        document.getElementById('chartPageContainer').innerHTML = res.html;
     }
 }
 
@@ -382,7 +374,7 @@ function naviSwitch(type, action) {
 
 function viewModeChange() {
     pageConfig.view = pageConfig.view === 'kline' ? 'trend' : 'kline';
-    loadChartPage(); 
+    loadChartPage('view', pageConfig.view); 
 };
 
 function jumpToLink() {

@@ -61,7 +61,7 @@ def focus_list(request):
         })
     return render(request, 'focus-list.html', {
         'list': items,
-        'interval': trend.TREND_REQUEST_INTERVAL
+        'interval': trend.QUOTE_REQUEST_INTERVAL
     })
 
 
