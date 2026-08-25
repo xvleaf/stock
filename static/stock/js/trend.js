@@ -5,7 +5,6 @@ export let trendChart = null;
 let trendTimer = null;
 let trendInterval = 20000;
 let trendIndex = 0;
-let trendIndexNew = 0;
 let ohlcData = [];
 let volumeData = [];
 let ohlcNewData = [];
@@ -17,10 +16,6 @@ let tickMin = 0;
 
 // ==================== 初始化入口 ====================
 export async function initTrendChart() {
-    // 重置索引
-    trendIndex = 0;
-    trendIndexNew = 0;
-
     const hasData = await loadTrendData('0');
     if (hasData) {
         renderTrendChart();
@@ -80,35 +75,45 @@ async function fetchTrendData(step) {
 
 async function loadTrendData(step) {
     const data = await fetchTrendData(step);
-    if (!data) {
-        return false;
-    }
+    if (!data) return false;
 
     preClosePrice = data.pc;
-    setPriceDecimal(data.deci);   
+    setPriceDecimal(data.deci);
     tickMax = data.tick_max;
     tickMin = data.tick_min;
     tickItv = data.tick_itv;
 
-    // 判断是否需要全量重置（初始化 或 后端标记 reset）
     if (step === '0' || data.reset) {
+        // 全量替换数据
         ohlcData = data.ohlc;
         volumeData = data.volume;
-        trendIndex = data.index;
-        
-        // 非初始化的重置（交易日切换）,需主动重绘图表
+        // 若为增量阶段触发的重置（交易日切换），直接更新图表数据
         if (step === '1' && trendChart) {
-            renderTrendChart();
+            updateChartData(ohlcData, volumeData, tickMin, tickMax, tickItv);
         }
     } else {
-        // 正常增量更新
+        // 增量更新：保存新数据，按时间戳合并
         ohlcNewData = data.ohlc;
         volumeNewData = data.volume;
-        trendIndexNew = data.index;
+        updateTrendChart(); // 内部按时间戳更新
     }
 
-    // 返回是否存在有效数据（索引 > 0 表示至少有一个数据）
-    return trendIndex > 0;
+    return ohlcData.some(item => item[1] !== null && item[1] !== undefined);
+}
+
+function updateChartData(ohlc, volume, min, max, itv) {
+    if (!trendChart) return;
+    trendChart.update({
+        series: [
+            { data: ohlc, connectNulls: true },
+            { data: volume }
+        ],
+        yAxis: [{
+            min: min,
+            max: max,
+            tickItv: itv
+        }]
+    });
 }
 
 function renderTrendChart() {
@@ -190,29 +195,57 @@ function renderTrendChart() {
             }
         },
         series: [
-            { type: 'spline', data: ohlcData, yAxis: 1, lineColor: 'gray', keys: ['x', 'y', 'percent', 'delta'] },
-            { type: 'column', data: volumeData, yAxis: 2, color: 'gray' }
+            { 
+                type: 'spline', 
+                data: ohlcData, 
+                yAxis: 1, 
+                lineColor: 'gray', 
+                keys: ['x', 'y', 'percent', 'delta'],
+                connectNulls: true   // 强制连接空值点 
+            },
+            { 
+                type: 'column', 
+                data: volumeData, 
+                yAxis: 2, 
+                color: 'gray' 
+            }
         ]
     });
 }
 
 function updateTrendChart() {
-    if (trendIndexNew <= 0 || !trendChart) return;
+    if (!trendChart) return;
+    if (ohlcNewData.length === 0) return;
+
+    // 按时间戳查找并更新已有数据
     for (let i = 0; i < ohlcNewData.length; i++) {
-        if (trendIndex < ohlcData.length) {
-            ohlcData[trendIndex] = ohlcNewData[i];
-            volumeData[trendIndex] = volumeNewData[i];
+        const newPoint = ohlcNewData[i];
+        const ts = newPoint[0];
+        const idx = ohlcData.findIndex(item => item[0] === ts);
+        if (idx !== -1) {
+            ohlcData[idx] = newPoint;
+            volumeData[idx] = volumeNewData[i];
         } else {
-            ohlcData.push(ohlcNewData[i]);
-            volumeData.push(volumeNewData[i]);
+            console.warn('时间戳未找到，可能数据不一致:', ts);
         }
-        trendIndex++;
     }
-    trendIndexNew = trendIndex;
+
+    // 更新图表
     trendChart.update({
-        series: [{ data: ohlcData }, { data: volumeData }],
-        yAxis: [{ min: tickMin, max: tickMax, tickItv: tickItv }]
+        series: [
+            { data: ohlcData, connectNulls: true },
+            { data: volumeData }
+        ],
+        yAxis: [{
+            min: tickMin,
+            max: tickMax,
+            tickItv: tickItv
+        }]
     });
+
+    // 清空新数据缓存，避免重复处理
+    ohlcNewData = [];
+    volumeNewData = [];
 }
 
 /**

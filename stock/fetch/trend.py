@@ -30,48 +30,43 @@ def trend_data_for_chart(session, tscode, step, deci=2):
 
     df, pre_close = _get_today_minute_data(code)
     if df is None or pre_close is None:
+        # 无数据时重置 session 时间戳
+        session['last_timestamp'] = None
         return {
             'ohlc': [],
             'volume': [],
-            'index': 0,
             'pc': 0.0,
             'deci': deci,
             'tick_itv': 0,
             'tick_max': 0,
             'tick_min': 0,
             'reset': False,
-            'last_valid_idx': -1
         }
 
     current_trade_date = df.index.date[-1].strftime('%Y-%m-%d')
     session_trade_date = session.get('current_trade_date', None)
-
     need_reset = (step == '0') or (session_trade_date != current_trade_date)
 
-    # 有效数据最后时间戳
-    last_valid_ts = int(df.index[-1].timestamp() * 1000) if not df.empty else None
-
-    # 计算 Y 轴参数
+    last_valid_ts = int(df.index[-1].timestamp() * 1000)
     tick_min, tick_max, tick_itv = _calc_tick_params(df, pre_close, deci)
 
-    # ----- 重置场景：返回全天完整数据（含空数据） -----
+    # ----- 重置场景：返回全天完整数据 -----
     if need_reset:
+        full_ohlc, full_volume, _ = _build_full_day_data(df, pre_close)
         session['current_trade_date'] = current_trade_date
         session['last_timestamp'] = last_valid_ts
-        full_ohlc, full_volume, last_valid_idx = _build_full_day_data(df, pre_close)
         return {
             'ohlc': full_ohlc,
             'volume': full_volume,
-            'index': last_valid_idx + 1,
             'pc': pre_close,
             'deci': deci,
             'tick_itv': tick_itv,
             'tick_max': tick_max,
             'tick_min': tick_min,
-            'reset': True
+            'reset': True,
         }
 
-    # ----- 增量更新：仅返回新出现的有效数据 -----
+    # ----- 增量更新：仅返回新数据 -----
     last_ts = session.get('last_timestamp', None)
     new_ohlc = []
     new_volume = []
@@ -86,33 +81,34 @@ def trend_data_for_chart(session, tscode, step, deci=2):
                 new_ohlc.append([ts, close, percent, delta])
                 new_volume.append([ts, row['volume']])
     else:
-        # 若 last_ts 为 None，返回所有有效数据
-        for idx, row in df.iterrows():
-            ts = int(idx.timestamp() * 1000)
-            close = row['close']
-            delta = close - pre_close
-            percent = (delta / pre_close * 100) if pre_close != 0 else 0.0
-            new_ohlc.append([ts, close, percent, delta])
-            new_volume.append([ts, row['volume']])
+        # session 丢失时间戳，强制返回全量数据并标记重置
+        full_ohlc, full_volume, _ = _build_full_day_data(df, pre_close)
+        session['current_trade_date'] = current_trade_date
+        session['last_timestamp'] = last_valid_ts
+        return {
+            'ohlc': full_ohlc,
+            'volume': full_volume,
+            'pc': pre_close,
+            'deci': deci,
+            'tick_itv': tick_itv,
+            'tick_max': tick_max,
+            'tick_min': tick_min,
+            'reset': True,
+        }
 
     if new_ohlc:
         session['last_timestamp'] = new_ohlc[-1][0]
-        last_valid_idx = len(new_ohlc) - 1   # 新数据中最后一个有效点索引
-    else:
-        last_valid_idx = -1   # 无新数据
 
     return {
         'ohlc': new_ohlc,
         'volume': new_volume,
-        'index': last_valid_idx + 1,
         'pc': pre_close,
         'deci': deci,
         'tick_itv': tick_itv,
         'tick_max': tick_max,
         'tick_min': tick_min,
-        'reset': False
+        'reset': False,
     }
-
 
 
 def get_trend_params(session):
