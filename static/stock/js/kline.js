@@ -61,7 +61,7 @@ async function fetchKlineData(func) {
         console.warn('fetchChartData: 参数缺失 code 或 market');
         return false;
     }
-    console.log(pageConfig);
+    
     try {
         const data = await postRequest('/chart/data', {
             func,
@@ -291,6 +291,9 @@ function renderKlineMetrics(index) {
     setText('klineAv', getVal(av, index) ?? '--');
     setText('klineLw', getVal(lw, index) ?? '--');
     setText('klineFl', getVal(fl, index) ?? '--');
+
+    const klineMetrics = document.getElementById('klineMetrics');
+    if (klineMetrics) klineMetrics.classList.remove('d-none');
 }
 
 function priceChannel(key, el) {

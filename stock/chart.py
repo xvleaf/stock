@@ -114,7 +114,6 @@ def get_page_config(session, site, cat):
     deci = 2 if cat == 'stock' else 3
         
     trend_params_map = {
-        'focus/plus': {'plus': False, 'exit': True, 'edit': False, 'deal': True, 'divd': False},
         'focus/view': {'plus': False, 'exit': True, 'edit': True, 'deal': True, 'divd': False},
         'trans/view': {'plus': False, 'exit': False, 'edit': True, 'deal': True, 'divd': True},
         'review/view': {'plus': True, 'exit': False, 'edit': False, 'deal': False, 'divd': False}
