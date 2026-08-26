@@ -45,10 +45,10 @@ def kline_data_for_chart(session, cat, market, code):
     kline_params = get_kline_params(session)
     freq = kline_params['freq']
     right = kline_params['right']
-    k = kline_params['k']
-    d = kline_params['d']
+    k = int(kline_params['k'])
+    d = int(kline_params['d'])
     deci = deci_map[cat]
-    print(cat, market, code, freq, right, k, d ,deci)
+    
     # 取近两年日线数据
     start = KLINE_START_DATE # or (datetime.datetime.now() - datetime.timedelta(days=730)).strftime('%Y%m%d')
     end = datetime.datetime.now().strftime('%Y%m%d')

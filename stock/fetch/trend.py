@@ -11,8 +11,6 @@ AM_END   = int(os.environ.get('STOCK_TRADE_AM_END', 41400))     # 11:30
 PM_START = int(os.environ.get('STOCK_TRADE_PM_START', 46800))   # 13:00
 PM_END   = int(os.environ.get('STOCK_TRADE_PM_END', 54000))     # 15:00
 
-TREND_PARAMS_INIT = {}
-
 
 def trend_data_for_chart(session, tscode, step, deci=2):
     """
@@ -109,17 +107,6 @@ def trend_data_for_chart(session, tscode, step, deci=2):
         'tick_min': tick_min,
         'reset': False,
     }
-
-
-def get_trend_params(session):
-    trend_params = func.get_session(session, 'trend_params', TREND_PARAMS_INIT)
-    return trend_params
-
-
-def set_trend_params(session, key, value):
-    trend_params = func.get_session(session, 'trend_params', TREND_PARAMS_INIT)
-    trend_params[key] = value
-    func.set_session(session, 'trend_params', trend_params)
 
 
 def _get_today_minute_data(code):

@@ -25,6 +25,14 @@ NAVI_PARAMS_INIT = {
     'backList':False
 }
 
+TREND_PARAMS_INIT = {
+    'plus': False, 
+    'exit': False, 
+    'edit': False, 
+    'deal': False, 
+    'divd': False
+}
+
 
 @require_http_methods(["POST"])
 def chart_data_api(request):
@@ -91,7 +99,7 @@ def chart_view_api(request):
         'market': param_market,
         'cat': param_cat
     }
-    page_config = get_page_config(request.session, param_cat)
+    page_config = get_page_config(request.session, param_site, param_cat)
     context.update(page_config)
 
     view_mode = func.get_session(request.session, 'view', 'kline')
@@ -101,9 +109,16 @@ def chart_view_api(request):
     return JsonResponse({'html': html_content})
 
 
-def get_page_config(session, cat):   
+def get_page_config(session, site, cat):   
     view_init = func.get_session(session, 'view', 'kline')
     deci = 2 if cat == 'stock' else 3
+        
+    trend_params_map = {
+        'focus/plus': {'plus': False, 'exit': True, 'edit': False, 'deal': True, 'divd': False},
+        'focus/view': {'plus': False, 'exit': True, 'edit': True, 'deal': True, 'divd': False},
+        'trans/view': {'plus': False, 'exit': False, 'edit': True, 'deal': True, 'divd': True},
+        'review/view': {'plus': True, 'exit': False, 'edit': False, 'deal': False, 'divd': False}
+    }
     
     if (view_init == 'kline'):
         kline.set_kline_params(session, 'deci', deci)
@@ -111,7 +126,7 @@ def get_page_config(session, cat):
         trend_init = {}
     else:
         kline_init = {}
-        trend_init = trend.get_trend_params(session)
+        trend_init = trend_params_map[site] if site in trend_params_map else TREND_PARAMS_INIT
 
     navi_init = get_navi_params(session)
 

@@ -100,7 +100,8 @@ def focus_plus(request):
         'name': name,
         'cat': cat
     }
-    page_config = chart.get_page_config(request.session, cat)
+
+    page_config = chart.get_page_config(request.session, 'focus/plus1', cat)
     chart_init.update(page_config)
 
     return render(request, 'focus-plus.html', {

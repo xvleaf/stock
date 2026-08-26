@@ -252,29 +252,21 @@ function updateTrendChart() {
  * 渲染分时操作按钮
  */
 function renderTrendParamBar() {
-    /**
-    const act = pageConfig.trendAct;
-    const exitBtn = document.getElementById('btnExit');
-    const editBtn = document.getElementById('btnEdit');
-    const dealBtn = document.getElementById('btnDeal');
-    if (!act || act === 'None') {
-        exitBtn.style.visibility = 'hidden';
-        editBtn.style.visibility = 'hidden';
-        dealBtn.style.visibility = 'hidden';
-        return;
-    }
-    if (act.exit === 'exit') exitBtn.innerHTML = '<i class="fas fa-xmark"></i>';
-    else if (act.exit === 'end') exitBtn.innerHTML = '<i class="fas fa-trash-can"></i>';
-    else exitBtn.style.visibility = 'hidden';
-    if (act.edit === 'edit') editBtn.innerHTML = '<i class="fas fa-pen-to-square"></i>';
-    else if (act.edit === 'plus') editBtn.innerHTML = '<i class="fas fa-plus"></i>';
-    else if (act.edit === 'divd') editBtn.innerHTML = '<i class="fas fa-coins"></i>';
-    else editBtn.style.visibility = 'hidden';
-    if (act.deal === 'deal') dealBtn.innerHTML = '<i class="fas fa-cart-shopping"></i>';
-    else dealBtn.style.visibility = 'hidden';
-    */
     const paramBar = document.getElementById('trendParam');
     if (!paramBar) return;
+    
+    const plusBtn = document.getElementById('plusBtn');
+    const exitBtn = document.getElementById('exitBtn');
+    const editBtn = document.getElementById('editBtn');
+    const dealBtn = document.getElementById('dealBtn');
+    const divdBtn = document.getElementById('divdBtn');
+    
+    plusBtn.classList.toggle('d-none', !pageConfig.trend.plus);
+    exitBtn.classList.toggle('d-none', !pageConfig.trend.exit);
+    editBtn.classList.toggle('d-none', !pageConfig.trend.edit);
+    dealBtn.classList.toggle('d-none', !pageConfig.trend.deal);
+    divdBtn.classList.toggle('d-none', !pageConfig.trend.divd);
+
     initPageElements();
     
     // 显示参数栏
