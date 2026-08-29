@@ -39,6 +39,11 @@ export async function initTrendChart() {
             updateTrendChart();
         }
     }, trendInterval);
+    
+    const event = new CustomEvent('chartLoaded', { 
+        detail: { site: pageConfig.site, view: pageConfig.view } 
+    });
+    window.dispatchEvent(event);
 }
 
 // ---- 销毁 trendChart 实例 ----
@@ -267,7 +272,7 @@ function renderTrendParamBar() {
     dealBtn.classList.toggle('d-none', !pageConfig.trend.deal);
     divdBtn.classList.toggle('d-none', !pageConfig.trend.divd);
 
-    initPageElements();
+    initPageElements();   
     
     // 显示参数栏
     paramBar.classList.remove('d-none');

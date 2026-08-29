@@ -129,6 +129,22 @@ export async function loadChartPage(func, value) {
                 initKlineChart();
             } else {
                 initTrendChart();
+                
+                // 监听 chartLoaded 事件
+                window.addEventListener('chartLoaded', (e) => {
+                    // 仅当当前站点为 focus/view 且图表加载完成时绑定
+                    if (e.detail && e.detail.site === 'focus/view') {
+                        const editBtn = document.getElementById('editBtn');
+                        if (!editBtn || editBtn.dataset.bound) return;  
+                        editBtn.dataset.bound = 'true';
+                        editBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const saveBtn = document.getElementById('saveBtn');
+                            const isEditing = !saveBtn?.classList.contains('d-none');
+                            editAction(!isEditing);
+                        });
+                    }
+                });
             }        
             // 恢复全屏状态（如果之前是全屏）
             restoreFullscreen();
@@ -398,6 +414,40 @@ function backToList() {
     window.location.href = routeMap[pageConfig.site] || '/focus/list';
 };
 
+export function editAction(enable) {
+    const form = document.getElementById('focusForm');
+    const editFieldIds = [
+        'id_focus_date', 
+        'id_plan_price', 
+        'id_plan_qty', 
+        'id_target_price', 
+        'id_stop_price',
+        'id_comments'
+    ];
+    const inputs = form.querySelectorAll('input, textarea');
+    const trendParam = document.getElementById('trendParam');
+    const saveBtn = document.getElementById('saveBtn');
+    const cancelBtn = document.getElementById('cancelEditBtn');
+
+    inputs.forEach(input => {
+        if (editFieldIds.includes(input.id)) {
+            input.readOnly = !enable;
+            // 进入编辑模式时，将日期设为今天
+            if (enable && input.id === 'id_focus_date') {
+                const today = new Date().toISOString().split('T')[0];
+                input.value = today;
+            }
+        } else {
+            input.readOnly = true;
+        }
+    }); 
+
+    trendParam?.classList.toggle('d-none', enable);
+    saveBtn?.classList.toggle('d-none', !enable);
+    cancelBtn?.classList.toggle('d-none', !enable);  
+    cancelBtn?.addEventListener('click', () => window.location.reload());
+}
+
 window.exitAction = function (marketCode) {
     const msg = pageConfig.site === 'focus/view' ? '确定要结束关注吗？' : '确定要取消添加吗？';
     layer.confirm(msg, {
@@ -411,16 +461,6 @@ window.exitAction = function (marketCode) {
             window.location.href = '/focus/list';
         }
     });
-};
-
-window.editAction = function (marketCode) {
-    const routeMap = {
-        'focus/view': `/focus/edit/${marketCode}`,
-        'focus/plus': `/focus/view/${marketCode}`,
-        'trans/view': `/trans/divd/${marketCode}`
-    };
-    const url = routeMap[pageConfig.site] || `/focus/plus?code=${marketCode}`;
-    window.location.href = url;
 };
 
 window.dealAction = function (marketCode) {

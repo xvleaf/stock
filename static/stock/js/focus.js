@@ -1,5 +1,5 @@
 'use strict';
-import { postRequest, refreshQuotes, chartPageContainer, setPageConfig, initChartPage, destroyChart } from './func.js';
+import { postRequest, refreshQuotes, chartPageContainer, setPageConfig, initChartPage, destroyChart, editAction } from './func.js';
 
 // ===================== focus-list 页面 =====================
 export function initFocusList(interval) {
@@ -229,7 +229,7 @@ export function initFocusList(interval) {
     });
 }
 
-
+// ===================== focus-plus 页面 =====================
 export function initFocusPlus(config) {
     const catSel = document.querySelector('[name="cat_choice"]');
     const marketSel = document.querySelector('[name="market_choice"]');
@@ -239,8 +239,6 @@ export function initFocusPlus(config) {
     const qtyInput = document.getElementById('id_plan_qty');
     const targetInput = document.getElementById('id_target_price');
     const stopInput = document.getElementById('id_stop_price');
-    const allowedInput = document.getElementById('id_allowed_qty');
-    const ratioInput = document.getElementById('id_win_ratio');
     const formErr = document.getElementById('formError');
     const errText = document.getElementById('errorText');
 
@@ -249,8 +247,8 @@ export function initFocusPlus(config) {
     let nameFetchTimer = null;
 
     // 清除 form 错误提示
-    function clearFormErr() {                        
-        if (formErr) {                            
+    function clearFormErr() {
+        if (formErr) {
             formErr.textContent = '';
             formErr.style.display = 'none';
         }
@@ -260,46 +258,32 @@ export function initFocusPlus(config) {
         const code = (codeInput?.value || '').trim();
         const market = marketSel?.value || 'SH';
         const cat = catSel?.value || 'stock';
-         
+        
         // 清除之前的定时器
         clearTimeout(nameFetchTimer);
 
-        // 代码无效：清空名称，隐藏图表，销毁实例
         if (!code || code.length < 4) {
             if (nameInput) nameInput.value = '';
             if (errText) { errText.classList.add('d-none'); }
             return;
         }
 
-        // 延迟请求（防抖）
         nameFetchTimer = setTimeout(() => {
             fetch(`/focus/api/stock-name?code=${code}&market=${market}`)
                 .then(r => r.json())
                 .then(data => {
                     if (data.name) {
                         nameInput.value = data.name;
-                        
-                        // 构建动态图表配置
-                        let config = {
-                            site: initChart.site,
-                            code: code,
-                            market: market,
-                            name: data.name,
-                            cat: cat,
-                            view: initChart.view || 'kline',
-                            navi: initChart.navi || false,
-                            kline: initChart.kline,
-                            trend: initChart.trend,
-                            deci: initChart.deci
-                        };
-
-                        setPageConfig(config);
+                        initChart.code = code;
+                        initChart.name = data.name;
+                        initChart.market = market;
+                        initChart.cat = cat;
+                        setPageConfig(initChart);
 
                         if (errText) {
                             errText.textContent = '';
                             errText.classList.add('d-none');
                         }
-
                         if (chartPageContainer) {
                             chartPageContainer.classList.remove('d-none');
                             initChartPage();
@@ -325,54 +309,20 @@ export function initFocusPlus(config) {
         }, 1000);
     }
 
-    // ---- 允许购买数量 ----
-    function calcAllowed() {
-        const price = parseFloat(priceInput.value) || 0;
-        const capital = config.available || 0;
-        if (price <= 0 || capital <= 0) { allowedInput.value = 0; return; }
-        const maxQty = Math.floor(capital / price);
-        allowedInput.value = Math.floor(maxQty / 100) * 100;
-        checkQtyExceed();
-    }
-
-    // ---- 胜率 ----
-    function calcWinRatio() {
-        let buy = parseFloat(priceInput.value) || 0;
-        let target = parseFloat(targetInput.value) || 0;
-        let stop = parseFloat(stopInput.value) || 0;
-        if (buy <= 0) return 0;
-        if (stop >= buy) return 99;
-        if (target <= buy) return 0;
-
-        const ratio = Math.max(0, Math.min(99, Math.round((target - buy) / (target - stop) * 99)));        
-        ratioInput.value = ratio;
-        if (ratio === 0 || ratio === 99) {
-            ratioInput.style.color = '#00008B';
-            ratioInput.style.fontWeight = 'bold';
-        } else {
-            ratioInput.style.color = '';
-            ratioInput.style.fontWeight = '';
-        }
-    }
-    
-    // ---- 购买数量超限检查 ----
-    function checkQtyExceed() {
-        const planQty = parseInt(qtyInput?.value) || 0;
-        const allowed = parseInt(allowedInput?.value) || 0;
-        if (planQty > allowed && allowed > 0) {
-            allowedInput.style.color = '#8B0000';
-            allowedInput.style.fontWeight = 'bold';
-        } else {
-            allowedInput.style.color = '';
-            allowedInput.style.fontWeight = '';
-        }
-    }
-
-    // ---- 事件绑定 ----
-    priceInput.addEventListener('input', () => {calcAllowed(); calcWinRatio(); });
-    targetInput.addEventListener('input', calcWinRatio);
-    stopInput.addEventListener('input', calcWinRatio);
-    qtyInput?.addEventListener('input', checkQtyExceed);
+    // ---- 事件绑定（使用公共函数） ----
+    priceInput?.addEventListener('input', () => {
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', config.available);
+        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    });
+    targetInput?.addEventListener('input', () => {
+        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    });
+    stopInput?.addEventListener('input', () => {
+        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    });
+    qtyInput?.addEventListener('input', () => {
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', config.available);
+    });
 
     // catSel?.addEventListener('change', () => {clearFormErr(); fetchStockInfo()});
     marketSel?.addEventListener('change', () => {clearFormErr(); fetchStockInfo()});
@@ -380,11 +330,120 @@ export function initFocusPlus(config) {
     // codeInput?.addEventListener('input', () => {clearFormErr(); fetchStockInfo()});
 
     // 初始计算
-    calcAllowed();
-    calcWinRatio();
+    if (priceInput) {
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', config.available);
+        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    }
 
-    // ---- 页面初始化时，若已有代码，自动获取股票信息 ----
+    // 若已有代码，自动获取
     if (codeInput && codeInput.value.trim()) {
         fetchStockInfo();
     }
 }
+
+export function initFocusView(config) {
+    const form = document.getElementById('focusForm');
+    if (!form) return;
+
+    const editMode = config.editMode || false;
+    const capital = config.available || 0;
+    const initChart = config.initChart || {};
+
+    setPageConfig(initChart);
+
+    if (chartPageContainer) {
+        chartPageContainer.classList.remove('d-none');
+        initChartPage();
+    }
+
+    // ---- 绑定实时计算（使用公共函数） ----
+    document.getElementById('id_plan_price')?.addEventListener('input', () => {
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', capital);
+        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    });
+    document.getElementById('id_target_price')?.addEventListener('input', () => {
+        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    });
+    document.getElementById('id_stop_price')?.addEventListener('input', () => {
+        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    });
+    document.getElementById('id_plan_qty')?.addEventListener('input', () => {
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', capital);
+    });
+
+    // 初始计算
+    updateAllowedQty('id_plan_price', 'id_allowed_qty', capital);
+    updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+
+    // 初始状态
+    editAction(editMode);
+}
+
+/**
+ * @param {string} priceId - 计划价格输入框 ID
+ * @param {string} targetId - 目标价格输入框 ID
+ * @param {string} stopId - 止损价格输入框 ID
+ * @param {string} ratioId - 胜率输入框 ID
+ */
+function updateWinRatio(priceId, targetId, stopId, ratioId) {
+    const priceEl = document.getElementById(priceId);
+    const targetEl = document.getElementById(targetId);
+    const stopEl = document.getElementById(stopId);
+    const ratioEl = document.getElementById(ratioId);
+    if (!priceEl || !targetEl || !stopEl || !ratioEl) return;
+
+    const buy = parseFloat(priceEl.value) || 0;
+    const target = parseFloat(targetEl.value) || 0;
+    const stop = parseFloat(stopEl.value) || 0;
+
+    if (buy <= 0 || target <= buy) {
+        ratioEl.value = 0;
+        ratioEl.style.color = '';
+        ratioEl.style.fontWeight = '';
+        return;
+    } else if (stop >= buy) {
+        ratioEl.value = 99;
+        ratioEl.style.color = '';
+        ratioEl.style.fontWeight = '';
+        return;
+    }
+
+    const ratio = Math.max(0, Math.min(99, Math.round((target - buy) / (target - stop) * 99)));
+    ratioEl.value = ratio;
+    ratioEl.style.color = (ratio === 0 || ratio === 99) ? '#00008B' : '';
+    ratioEl.style.fontWeight = (ratio === 0 || ratio === 99) ? 'bold' : '';
+}
+
+/**
+ * @param {string} priceId - 计划价格输入框 ID
+ * @param {string} allowedId - 允许数量输入框 ID
+ * @param {number} capital - 可用资金
+ */
+function updateAllowedQty(priceId, allowedId, capital) {
+    const priceEl = document.getElementById(priceId);
+    const allowedEl = document.getElementById(allowedId);
+    if (!priceEl || !allowedEl) return;
+
+    const price = parseFloat(priceEl.value) || 0;
+    if (price <= 0 || !capital || capital <= 0) {
+        allowedEl.value = 0;
+        allowedEl.style.color = '';
+        allowedEl.style.fontWeight = '';
+        return;
+    }
+
+    const maxQty = Math.floor(capital / price);
+    const qty = Math.floor(maxQty / 100) * 100;
+    allowedEl.value = qty;
+    // 超限检查（计划数量 > 允许数量时高亮）
+    const planQty = parseInt(document.getElementById('id_plan_qty')?.value) || 0;
+    if (planQty > qty && qty > 0) {
+        allowedEl.style.color = '#8B0000';
+        allowedEl.style.fontWeight = 'bold';
+    } else {
+        allowedEl.style.color = '';
+        allowedEl.style.fontWeight = '';
+    }
+}
+
+

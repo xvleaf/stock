@@ -113,7 +113,37 @@ def focus_plus(request):
 
 
 def focus_view(request, market, code):
-    print(code)
+    focus = get_object_or_404(FocusStock, code=code, market=market, status=FocusStock.STATUS_WATCHING)
+
+    if request.method == 'POST':
+        form = FocusStockForm(request.POST, instance=focus, view_mode=True)
+        if form.is_valid():
+            updated = form.save(commit=False)
+            updated.win_ratio = _calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price)
+            updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price)
+            updated.save()
+            updated.save_history(action='edit')
+            return redirect('focus_view', market=market, code=code)
+    else:
+        form = FocusStockForm(instance=focus, view_mode=True)
+
+    # 图表配置
+    chart_init = {
+        'site': 'focus/view',
+        'code': code,
+        'market': market,
+        'name': focus.name,
+        'cat': focus.cat
+    }
+    page_config = chart.get_page_config(request.session, 'focus/view', focus.cat)
+    chart_init.update(page_config)
+
+    return render(request, 'focus-view.html', {
+        'form': form,
+        'chart': json.dumps(chart_init),
+        'edit_mode': False,
+        'available': CashConfig.get_config().available
+    })
 
 
 @require_http_methods(["GET"])
