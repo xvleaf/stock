@@ -269,7 +269,7 @@ export function initFocusPlus(config) {
         }
 
         nameFetchTimer = setTimeout(() => {
-            fetch(`/focus/api/stock-name?code=${code}&market=${market}`)
+            fetch(`/api/stock-name?code=${code}&market=${market}`)
                 .then(r => r.json())
                 .then(data => {
                     if (data.name) {

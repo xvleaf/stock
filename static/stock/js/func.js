@@ -374,16 +374,17 @@ function restoreFullscreen() {
 }
 
 function naviSwitch(type, action) {
-    postRequest(`/${pageConfig.site}`, {
+    postRequest(`/chart/view`, {
         func: type,
         value: action,
+        site: pageConfig.site,
         code: pageConfig.code,
         market: pageConfig.market,
-        // cat: pageConfig.cat
+        cat: pageConfig.cat
     }).then(res => {
         if (res) {
             saveScrollPosition();
-            window.location.href = `/${pageConfig.site}/${res.market}/${res.code}`;
+            window.location.href = `/${res.site}/${res.market}/${res.code}`;
         }
     });
 };

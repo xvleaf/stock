@@ -52,8 +52,6 @@ def chart_data_api(request):
             step = params.get('step')
             data = trend.trend_data_for_chart(request.session, f'{params_code}.{params_market}', step)
             return JsonResponse(data)
-        elif params_func == 'navi':
-            return _navi_switch(params.get('site', ''), params_code, params.get('value', ''))
         else:
             return _json_error('不支持的功能')
     else:
@@ -88,7 +86,21 @@ def chart_view_api(request):
     elif param_func == 'right':
         kline.set_kline_params(request.session, param_func, param_value)
     elif param_func == 'freq':
-        kline.set_kline_params(request.session, param_func, param_value)
+        kline.set_kline_params(request.session, param_func, param_value)        
+    elif param_func == 'navi':
+        navi_list = get_navi_list(param_site)
+        if navi_list:
+            code, market = set_navi_params(
+                request.session, 
+                param_site, 
+                param_code, 
+                param_market, 
+                navi_list, 
+                navi_shift = 1 if param_value == 'next' else -1
+            )
+            return JsonResponse({'site': param_site, 'code': code, 'market': market})
+        else:
+            return JsonResponse({'site': param_site, 'code': param_code, 'market': param_market})
     else:
         return JsonResponse({'error': f'未知功能: {param_func}'}, status=400)
 
@@ -116,7 +128,8 @@ def get_page_config(session, site, cat):
     trend_params_map = {
         'focus/view': {'plus': False, 'exit': True, 'edit': True, 'deal': True, 'divd': False},
         'trans/view': {'plus': False, 'exit': False, 'edit': True, 'deal': True, 'divd': True},
-        'review/view': {'plus': True, 'exit': False, 'edit': False, 'deal': False, 'divd': False}
+        'review/view/focus': {'plus': True, 'exit': False, 'edit': False, 'deal': False, 'divd': False},
+        'review/view/trans': {'plus': True, 'exit': False, 'edit': False, 'deal': False, 'divd': False}
     }
     
     if (view_init == 'kline'):
@@ -127,7 +140,7 @@ def get_page_config(session, site, cat):
         kline_init = {}
         trend_init = trend_params_map[site] if site in trend_params_map else TREND_PARAMS_INIT
 
-    navi_init = get_navi_params(session)
+    navi_init = get_navi_params(session, site)
 
     return {
         'view': view_init,
@@ -138,38 +151,61 @@ def get_page_config(session, site, cat):
     }
 
 
-def get_navi_params(session):
-    navi_params = func.get_session(session, 'navi_params', NAVI_PARAMS_INIT)
+def get_navi_params(session, site):
+    navi_params_limited = ['focus/view', 'trans/view', 'review/focus/view', 'review/trans/view']
+    if site in navi_params_limited:
+        navi_params = func.get_session(session, f'{site}-navi_params', NAVI_PARAMS_INIT)
+    else:
+        navi_params = NAVI_PARAMS_INIT
     return navi_params
 
 
-def set_navi_params(session, key, value):
-    navi_params = func.get_session(session, 'navi_params', NAVI_PARAMS_INIT)
-    navi_params[key] = value
-    func.set_session(session, 'navi_params', navi_params)
-
-
-def _navi_context(site, current_code, queryset, code_field='code'):
-    codes = list(queryset.values_list(code_field, flat=True))
-    total = len(codes)
+def set_navi_params(session, site, code, market, navi_list, navi_shift = 0):
+    total = len(navi_list)                    
     try:
-        idx = codes.index(current_code)
+        idx = navi_list.index((code, market)) + navi_shift
+        code, market = navi_list[idx]
     except ValueError:
-        idx = 0
-    return {
-        'navi': total > 1,
-        'navi_index': idx,
-        'navi_count': total,
-        'navi_prev': idx > 0,
-        'navi_next': idx < total - 1,
-        'navi_prev_code': codes[idx - 1] if idx > 0 else '',
-        'navi_next_code': codes[idx + 1] if idx < total - 1 else '',
+        idx = -1
+        total = 0
+    
+    navi_params = {
+        'showNavi': True,
+        'naviIndex': idx,
+        'naviCount': total,
+        'naviPrev': idx > 0,
+        'naviNext': idx < total - 1,
+        'showPilot': False,
+        'pilotPrev': False,
+        'pilotNext': False,
+        'backList':True
     }
+
+    func.set_session(session, f'{site}-navi_params', navi_params)
+
+    return code, market
+
+
+def get_navi_list(site):
+    if site == 'focus/view':
+        qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).order_by('sort_order')
+        navi_list = list(qs.values_list('code', 'market')) 
+    elif site == 'trans/view':
+        qs = TransOrder.objects.filter(status=TransOrder.STATUS_OPEN).order_by('-created_at')
+        navi_list = list(qs.values_list('code', 'market')) 
+    elif site == 'review/focus/view':
+        pass
+    elif site == 'review/trans/view':
+        pass
+    else:
+        navi_list = []
+
+    return navi_list
 
 
 def _navi_switch(site, current_code, direction):
     if site == 'focus/view':
-        qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).order_by('sort_order', '-focus_time')
+        qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).order_by('sort_order', '-focus_date')
         codes = list(qs.values_list('code', flat=True))
     elif site == 'trans/view':
         qs = TransOrder.objects.filter(status=TransOrder.STATUS_OPEN).order_by('-created_at')
