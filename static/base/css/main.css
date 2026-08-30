@@ -250,6 +250,13 @@ body {
 }
 .table-code-text {
     color: var(--color-link);
+    text-decoration: none;
+}
+/* 悬停、访问等状态也无下划线 */
+a.table-code-text:hover,
+a.table-code-text:visited,
+a.table-code-text:active {
+    text-decoration: none;
 }
 .chart-code-text {
     font-size: var(--font-size-base);

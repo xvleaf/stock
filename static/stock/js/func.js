@@ -1,5 +1,6 @@
 import { trendChart, initTrendChart, destroyTrendChart, clearTrendTimer } from './trend.js';
 import { klineChart, initKlineChart, destroyKlineChart, refreshKlineDensity } from './kline.js';
+import { changeFreq as klineChangeFreq, toggleRight as klineToggleRight } from './kline.js';
 
 // ========== 公共全局状态变量 ==========
 let isFullscreen = false;   // 记录当前是否处于伪全屏状态
@@ -306,40 +307,77 @@ function initNavItemState(key, navItem) {
 function bindGlobalKeyboard() {
     document.addEventListener('keydown', (e) => {
         const active = document.activeElement;
-        if (active.isContentEditable) return;
+        // 如果焦点在输入框、文本域或可编辑元素中，不触发导航
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+            return;
+        }
+
+        const navi = pageConfig.navi || {};
+        const isKline = pageConfig.view === 'kline';
+
         switch (e.key) {
             case 'ArrowUp':
-                if (pageConfig.showPilot && pageConfig.pilotPrev) {
+                if (navi.showPilot && navi.pilotPrev) {
                     naviSwitch('pilot', 'prev');
                     e.preventDefault();
                 }
                 break;
             case 'ArrowDown':
-                if (pageConfig.showPilot && pageConfig.pilotNext) {
+                if (navi.showPilot && navi.pilotNext) {
                     naviSwitch('pilot', 'next');
                     e.preventDefault();
                 }
                 break;
             case 'ArrowLeft':
-                if (pageConfig.navi && pageConfig.naviPrev) {
+                if (navi.showNavi && navi.naviPrev) {
                     naviSwitch('navi', 'prev');
                     e.preventDefault();
                 }
                 break;
             case 'ArrowRight':
-                if (pageConfig.navi && pageConfig.naviNext) {
+                if (navi.showNavi && navi.naviNext) {
                     naviSwitch('navi', 'next');
                     e.preventDefault();
                 }
                 break;
-            case 'm': changeFreq('M'); break;
-            case 'w': changeFreq('W'); break;
-            case 'd': changeFreq('D'); break;
-            case 'f': toggleFullscreen(); break;
-            case 'r': toggleRight(); break;
+            case 'v':
+                viewModeChange();
+                e.preventDefault();
+                break;
+            case 'm':
+                if (isKline && pageConfig.kline?.freq !== 'M') {
+                    klineChangeFreq('M');
+                    e.preventDefault();
+                }
+                break;
+            case 'w':
+                if (isKline && pageConfig.kline?.freq !== 'W') {
+                    klineChangeFreq('W');
+                    e.preventDefault();
+                }
+                break;
+            case 'd':
+                if (isKline && pageConfig.kline?.freq !== 'D') {
+                    klineChangeFreq('D');
+                    e.preventDefault();
+                }
+                break;
+            case 'r':
+                if (isKline) {
+                    klineToggleRight();
+                    e.preventDefault();
+                }
+                break;
+            case 'f':
+                toggleFullScreen();
+                e.preventDefault();
+                break;
+            default:
+                break;
         }
     });
 }
+
 
 function toggleFullScreen() {
     const chartPage = document.getElementById('chartPage');

@@ -353,7 +353,7 @@ function priceChannel(key, el) {
     });
 }
 
-function toggleRight() {
+export function toggleRight() {
     let copyPageConfig = pageConfig;
     let right = copyPageConfig.kline['right'];
     right = right === 'qfq' ? null : 'qfq';
@@ -362,7 +362,7 @@ function toggleRight() {
     loadChartPage('right', right);
 };
 
-function changeFreq(freq) {
+export function changeFreq(freq) {
     let copyPageConfig = pageConfig;
     copyPageConfig.kline['freq'] = freq;
     setPageConfig(copyPageConfig);
