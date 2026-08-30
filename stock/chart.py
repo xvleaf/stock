@@ -11,7 +11,7 @@ from django.utils import timezone
 from .fetch import tushare, kline, trend, quote
 from . import func
 from .models.models import FocusStock, FocusHistory, TransOrder, TransDeal, TransReview
-from .forms.forms import FocusStockForm, TransDealForm, CashConfigForm, ReviewForm
+from .forms.forms import FocusStockForm, TransDealForm, CashConfigForm, ReviewForm, CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES
 
 NAVI_PARAMS_INIT = {
     'showNavi': False,
@@ -96,18 +96,29 @@ def chart_view_api(request):
     elif param_func in ['navi', 'pilot']:
         navi_data = set_navi_data(
             request.session,
-            param_site, 
-            param_code, 
-            param_market, 
+            param_site,
+            param_code,
+            param_market,
             param_func,
             param_value
         )
-        
         if navi_data:
-            code, market = navi_data['navi_list'][navi_data['navi_params']['naviIndex']]
-            return JsonResponse({'site': param_site, 'code': code, 'market': market})
+            idx = navi_data['navi_params']['naviIndex']
+            code, market = navi_data['navi_list'][idx]
+            # 如果是 pilot 切换，需要知道当前选中的历史记录 ID
+            history_id = None
+            if param_func == 'pilot':
+                pilot_idx = navi_data['navi_params']['pilotIndex']
+                pilot_list = navi_data['pilot_list']
+                if pilot_list and 0 <= pilot_idx < len(pilot_list):
+                    history_id = pilot_list[pilot_idx][0] 
+            detail = _get_stock_detail(param_site, code, market, history_id)
+            if detail:
+                return JsonResponse(detail)
+            else:
+                return JsonResponse({'error': '股票不存在'}, status=404)
         else:
-            return JsonResponse({'site': param_site, 'code': param_code, 'market': param_market})
+            return JsonResponse({'error': '无可用股票'}, status=400)
     else:
         return JsonResponse({'error': f'未知功能: {param_func}'}, status=400)
 
@@ -301,6 +312,60 @@ def get_pilot_list(site, code, market):
     else:
         pass
     return pilot_list
+
+
+def _get_stock_detail(site, code, market, history_id=None):
+    if site in ['/focus/view', '/review/focus/view']:
+        if history_id:
+            history = FocusHistory.objects.filter(id=history_id).first()
+            if not history:
+                return {}
+            focus = history.focus
+            data = {
+                'code': focus.code,
+                'market': focus.market,
+                'name': focus.name,
+                'cat': focus.cat,
+                'focus_date': history.edit_date.strftime('%Y-%m-%d'),
+                'plan_price': float(history.plan_price) if history.plan_price else 0,
+                'plan_qty': history.plan_qty,
+                'target_price': float(history.target_price) if history.target_price else 0,
+                'stop_price': float(history.stop_price) if history.stop_price else 0,
+                'allowed_qty': focus.allowed_qty,
+                'win_ratio': float(history.win_ratio) if history.win_ratio else 0,
+                'comments': history.comments,
+                'intent': history.intent,
+                'market_display': dict(MARKET_CHOICES).get(focus.market, focus.market),
+                'cat_display': dict(CAT_CHOICES).get(focus.cat, focus.cat),
+                'intent_display': dict(INTENT_CHOICES).get(history.intent, history.intent),
+            }
+            return data
+        else:
+            stock = FocusStock.objects.filter(code=code, market=market).first()
+            if not stock:
+                return {}
+            data = {
+                'code': stock.code,
+                'market': stock.market,
+                'name': stock.name,
+                'cat': stock.cat,
+                'focus_date': stock.focus_date.strftime('%Y-%m-%d'),
+                'plan_price': float(stock.plan_price) if stock.plan_price else 0,
+                'plan_qty': stock.plan_qty,
+                'target_price': float(stock.target_price) if stock.target_price else 0,
+                'stop_price': float(stock.stop_price) if stock.stop_price else 0,
+                'allowed_qty': stock.allowed_qty,
+                'win_ratio': float(stock.win_ratio) if stock.win_ratio else 0,
+                'comments': stock.comments,
+                'intent': stock.intent,
+                'market_display': dict(MARKET_CHOICES).get(stock.market, stock.market),
+                'cat_display': dict(CAT_CHOICES).get(stock.cat, stock.cat),
+                'intent_display': dict(INTENT_CHOICES).get(stock.intent, stock.intent),
+            }
+            return data
+    # 其他站点类似处理...
+    return {}
+
 
 
 # 备用

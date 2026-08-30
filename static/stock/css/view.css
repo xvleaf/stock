@@ -435,3 +435,12 @@ body.pseudo-fullscreen-open {
     margin: 0 !important;
     padding: 0 !important;
 }
+
+/* 全屏模式下，只显示 fullScreen 按钮，其他隐藏 */
+#trendParam.fullscreen-mode .param-label:not(#fullScreen) {
+    display: none !important;
+}
+/* 确保 fullScreen 本身可见 */
+#trendParam.fullscreen-mode #fullScreen {
+    display: inline-block !important;
+}
