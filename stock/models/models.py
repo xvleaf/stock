@@ -95,6 +95,7 @@ class StockList(models.Model):
     code = models.CharField('代码', max_length=20, db_index=True, help_text='如 601398')
     name = models.CharField('名称', max_length=50)
     market = models.CharField('市场', max_length=10, default='SH')
+    cat = models.CharField('类别', max_length=10, default='stock')
     industry = models.CharField('行业', max_length=50)
 
     class Meta: 

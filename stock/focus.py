@@ -84,6 +84,7 @@ def focus_plus(request):
                 focus.updated_at = focus.focus_date
                 focus.code = code
                 focus.market = market
+                focus.cat = cat
                 focus.win_ratio = _calc_win_ratio(focus.plan_price, focus.target_price, focus.stop_price)
                 focus.allowed_qty = cash.calc_allowed_qty(focus.plan_price)
                 max_sort = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).count()

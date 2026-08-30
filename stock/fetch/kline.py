@@ -39,23 +39,25 @@ def kline_data_for_chart(session, site, cat, market, code):
     :param right: 'qfq' 或 None
     """
     tscode = f'{code}.{market}'
-    
-    deci_map = {'stock': 2}
-    asset_map = {'stock': 'E'}
+    deci_map = {'stock': 2, 'fund': 3, 'bond': 3, 'index': 2}
+    asset_map = {'stock': 'E', 'fund': 'FD', 'bond': 'CB', 'index': 'I'}
 
     kline_params = get_kline_params(session)
     freq = kline_params['freq']
     right = kline_params['right']
     k = int(kline_params['k'])
     d = int(kline_params['d'])
-    deci = deci_map[cat]
-    
+    deci = deci_map.get(cat, 2)
+
+    if cat == 'index':
+        right = None
+
     # 取近两年日线数据
     start = KLINE_START_DATE # or (datetime.datetime.now() - datetime.timedelta(days=730)).strftime('%Y%m%d')
     end = datetime.datetime.now().strftime('%Y%m%d')
 
     df = tushare.get_kline_data(
-        asset=asset_map[cat],
+        asset=asset_map.get(cat, 'E'),
         tscode=tscode,
         start=start,
         end=end,

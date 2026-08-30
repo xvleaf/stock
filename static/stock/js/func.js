@@ -424,8 +424,8 @@ function applyFullscreenState() {
 
     if (fullscreenBtn) {
         fullscreenBtn.innerHTML = shouldFullscreen
-            ? '<i class="fas fa-compress"></i>'
-            : '<i class="fas fa-expand"></i>';
+            ? '<i class="fa-solid fa-down-left-and-up-right-to-center"></i>'
+            : '<i class="fa-solid fa-expand"></i>';
     }
 
     isFullscreen = shouldFullscreen;

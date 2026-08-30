@@ -311,10 +311,9 @@
 }
 
 .chart-navi-item {
-    font-size: 14px;
+    font-size: 16px;
     align-items: center;
     padding: 0 10px;
-    color: var(--color-text-primary);
 }
 
 .chart-navi-item.is-disabled {

@@ -22,7 +22,7 @@ def stock_name_api(request):
     try:
         stock = StockList.objects.filter(code=code, market=market).first()
         if stock:
-            return JsonResponse({'code': code, 'market': market, 'name': stock.name})
+            return JsonResponse({'code': code, 'market': market, 'name': stock.name, 'cat': stock.cat})
     except Exception:
         pass
 
@@ -33,11 +33,11 @@ def stock_name_api(request):
     try:
         stock = StockList.objects.filter(code=code, market=market).first()
         if stock:
-            return JsonResponse({'code': code, 'market': market, 'name': stock.name})
+            return JsonResponse({'code': code, 'market': market, 'name': stock.name, 'cat': stock.cat})
         else:
-            return JsonResponse({'code': code, 'market': market, 'name': ''})
+            return JsonResponse({'code': code, 'market': market, 'name': '', 'cat': ''})
     except Exception:
-        return JsonResponse({'code': code, 'market': market, 'name': ''})
+        return JsonResponse({'code': code, 'market': market, 'name': '', 'cat': ''})
         
 
 def date_to_timestamp(date_obj):
@@ -114,62 +114,97 @@ def delete_cache(session, key):
 def _update_stock_list():
     """
     从 tushare 获取最新股票基础信息，更新到本地 StockList 表
-    映射规则：
-        symbol -> code
-        name   -> name
-        exchange -> market (SSE->SH, SZSE->SZ, BSE->BJ)
-        industry -> industry
+    不删除旧数据，仅更新或新增
     """
-    # 交易所映射字典
     EXCHANGE_MAP = {
-        'SSE': 'SH',    # 上海证券交易所
-        'SZSE': 'SZ',   # 深圳证券交易所
-        'BSE': 'BJ',    # 北京证券交易所
+        'SSE': 'SH',
+        'SZSE': 'SZ',
+        'BSE': 'BJ',
     }
 
     try:
-        # 获取原始数据
         df = tushare.get_stock_basic()
         if df is None or df.empty:
             return
 
-        # 重命名列以匹配模型字段
         df.rename(columns={'symbol': 'code'}, inplace=True)
-        # 映射交易所代码
         df['market'] = df['exchange'].map(EXCHANGE_MAP)
-        # 删除未匹配的行
         df = df.dropna(subset=['market'])
-
-        # 若 industry 为 NaN，填充为空字符串
         df['industry'] = df['industry'].fillna('')
-        
-        # 事务保护：清空+批量插入，中途异常自动回滚
+
         with transaction.atomic():
-            # 先清空旧数据
-            StockList.objects.all().delete()
-            # SQLite 重置自增 ID
-            with connection.cursor() as cursor:
-                cursor.execute("DELETE FROM sqlite_sequence WHERE name='models_stock_list';")
-
-            # 批量插入（每批 1000 条，避免一次性插入过多）
-            batch_size = 1000
-            instances = []
             for _, row in df.iterrows():
-                instances.append(StockList(
+                stock = StockList.objects.filter(
                     code=row['code'],
-                    name=row['name'],
-                    market=row['market'],
-                    industry=row['industry']
-                ))
-                if len(instances) >= batch_size:
-                    StockList.objects.bulk_create(instances)
-                    instances.clear()
-            if instances:
-                StockList.objects.bulk_create(instances)
-
+                    market=row['market']
+                ).first()
+                if stock:
+                    stock.name = row['name']
+                    stock.industry = row['industry']
+                    stock.cat = 'stock'   # 设置类别
+                    stock.save()
+                else:
+                    StockList.objects.create(
+                        code=row['code'],
+                        market=row['market'],
+                        name=row['name'],
+                        industry=row['industry'],
+                        cat='stock'       # 新增
+                    )
     except Exception as e:
         print(f"更新股票列表失败: {e}")
-        
+
+
+
+
+def _update_stock_list():
+    """
+    从 tushare 获取最新股票基础信息，更新到本地 StockList 表
+    不删除旧数据，仅更新或新增
+    """
+    EXCHANGE_MAP = {
+        'SSE': 'SH',
+        'SZSE': 'SZ',
+        'BSE': 'BJ',
+    }
+
+    try:
+        df = tushare.get_stock_basic()
+        if df is None or df.empty:
+            return
+
+        df.rename(columns={'symbol': 'code'}, inplace=True)
+        df['market'] = df['exchange'].map(EXCHANGE_MAP)
+        df = df.dropna(subset=['market'])
+        df['industry'] = df['industry'].fillna('')
+
+        with transaction.atomic():
+            for _, row in df.iterrows():
+                # 先尝试查询现有记录
+                stock = StockList.objects.filter(
+                    code=row['code'],
+                    market=row['market']
+                ).first()
+                if stock:
+                    # 存在则更新
+                    stock.name = row['name']
+                    stock.industry = row['industry']
+                    stock.save()
+                else:
+                    # 不存在则创建
+                    StockList.objects.create(
+                        code=row['code'],
+                        market=row['market'],
+                        name=row['name'],
+                        industry=row['industry']
+                    )
+    except Exception as e:
+        print(f"更新股票列表失败: {e}")
+
+
+
+
+
 
 # 备用
 def _market_of(code):

@@ -10,7 +10,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 from .fetch import tushare, kline, trend, quote
 from . import func
-from .models.models import FocusStock, FocusHistory, TransOrder, TransDeal, TransReview
+from .models.models import StockList, FocusStock, FocusHistory, TransOrder, TransDeal, TransReview
 from .forms.forms import FocusStockForm, TransDealForm, CashConfigForm, ReviewForm, CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES
 
 NAVI_PARAMS_INIT = {
@@ -46,9 +46,12 @@ def chart_data_api(request):
     params_func = params.get('func')
     params_code = params.get('code', None)
     params_market = params.get('market', None)
-    params_cat = params.get('cat', 'E')
+    params_cat = params.get('cat', None)
 
     if (params_code and params_market):
+        if params_cat is None:
+            params_cat = get_cat_from_code(params_code, params_market)
+        
         if params_func == 'get-kline-data':
             return kline.kline_data_for_chart(request.session, params_site, params_cat, params_market, params_code)
         elif params_func == 'get-trend-data':
@@ -81,6 +84,9 @@ def chart_view_api(request):
     
     if not all([param_func, param_code, param_market]):
         return JsonResponse({'error': '参数缺失'}, status=400)
+
+    if param_cat is None:
+        param_cat = get_cat_from_code(param_code, param_market)
 
     if param_func == 'view':
         func.set_cache(request.session, 'view', param_value)
@@ -141,7 +147,8 @@ def chart_view_api(request):
 
 def get_page_config(session, site, cat):   
     view_init = func.get_cache(session, 'view', 'kline')
-    deci = 2 if cat == 'stock' else 3
+    
+    deci = 3 if (cat == 'fund' or cat == 'bond') else 2
         
     trend_params_map = {
         '/focus/view': {'plus': False, 'exit': True, 'edit': True, 'deal': True, 'divd': False},
@@ -312,6 +319,18 @@ def get_pilot_list(site, code, market):
     else:
         pass
     return pilot_list
+
+
+def get_cat_from_code(code, market):
+    """从 StockList 获取 cat，若不存在则判断是否为指数（默认 index），否则 stock"""
+    stock = StockList.objects.filter(code=code, market=market).first()
+    if stock and stock.cat:
+        return stock.cat
+    # 若不存在或 cat 为空，根据代码判断是否为指数（简单判断）
+    # 指数通常以 000、399、688 等开头
+    if code.startswith(('000', '399', '688')):
+        return 'index'
+    return 'stock'
 
 
 def _get_stock_detail(site, code, market, history_id=None):
