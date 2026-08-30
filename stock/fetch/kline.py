@@ -25,11 +25,12 @@ KLINE_PARAMS_INIT = {
     'right': 'qfq',
     'k': KLINE_EMA_CONFIG['D']['k'],
     'd': KLINE_EMA_CONFIG['D']['d'],
-    'deci': 2
+    'deci': 2,
+    'deadline': -1
 }
 
 
-def kline_data_for_chart(session, cat, market, code):
+def kline_data_for_chart(session, site, cat, market, code):
     """
     tushare 获取 k 线，包括轨道线
     :param asset: E股票 I沪深指数 FD基金 CB可转债
@@ -71,24 +72,66 @@ def kline_data_for_chart(session, cat, market, code):
     if df.empty:
         return JsonResponse(df)
 
+    deadline_params = func.get_cache(session, 'kline-deadline')
+    if deadline_params and (site, code, market) == deadline_params.get('site_code_market', None):
+        deadline = deadline_params.get('deadline', -1)
+        # 转换为字符串用于存储（确保 JSON 可序列化）
+        if isinstance(deadline, (datetime.date, datetime.datetime)):
+            deadline_str = deadline.strftime('%Y%m%d')
+        else:
+            deadline_str = str(deadline)
+        # 存入 kline_params，以便前端或其他地方使用
+        set_kline_params(session, 'deadline', deadline_str)
+
+        # 转换 deadline 为时间戳（包含全天数据）
+        if isinstance(deadline, (datetime.date, datetime.datetime)):
+            if isinstance(deadline, datetime.date):
+                dt = datetime.datetime.combine(deadline, datetime.time(23, 59, 59))
+            else:
+                dt = deadline.replace(hour=23, minute=59, second=59)
+            deadline = func.date_to_timestamp(dt)
+        elif isinstance(deadline, str):
+            # 假设日期字符串为 'YYYYMMDD'，转为当天 23:59:59
+            dt = datetime.datetime.strptime(deadline, '%Y%m%d').replace(hour=23, minute=59, second=59)
+            deadline = func.date_to_timestamp(dt)
+        else:
+            # 其他类型（如 -1）视为无效，使用最后一天
+            deadline = -1
+    else:
+        deadline = -1
+
+    # 若 deadline 为 -1，使用最后一天（转为 23:59:59）
+    if deadline == -1:
+        last_date = df['trade_date'].iloc[-1]
+        if isinstance(last_date, (datetime.date, datetime.datetime)):
+            if isinstance(last_date, datetime.date):
+                dt = datetime.datetime.combine(last_date, datetime.time(23, 59, 59))
+            else:
+                dt = last_date.replace(hour=23, minute=59, second=59)
+            deadline = func.date_to_timestamp(dt)
+        else:
+            # 若为字符串，先解析
+            dt = datetime.datetime.strptime(str(last_date), '%Y%m%d').replace(hour=23, minute=59, second=59)
+            deadline = func.date_to_timestamp(dt)
+
     # 一次性返回完整数据
-    result = _handle_kline_full(df, freq, right, k, d, deci)
+    result = _handle_kline_full(df, freq, right, k, d, deci, deadline)
 
     return JsonResponse(result)
 
 
 def get_kline_params(session):
-    kline_params = func.get_session(session, 'kline_params', KLINE_PARAMS_INIT)
+    kline_params = func.get_cache(session, 'kline_params', KLINE_PARAMS_INIT)
     return kline_params
 
 
 def set_kline_params(session, key, value):
-    kline_params = func.get_session(session, 'kline_params', KLINE_PARAMS_INIT)
+    kline_params = func.get_cache(session, 'kline_params', KLINE_PARAMS_INIT)
     kline_params[key] = value
-    func.set_session(session, 'kline_params', kline_params)
+    func.set_cache(session, 'kline_params', kline_params)
 
 
-def _handle_kline_full(df, freq, right, k, d, deci):
+def _handle_kline_full(df, freq, right, k, d, deci, deadline):
     ohlc = []
     volume = []
 
@@ -111,8 +154,6 @@ def _handle_kline_full(df, freq, right, k, d, deci):
     # 简单均线与均量线
     ma = _calc_simple_ma_line(df, 'close', window=KLINE_MA_CONFIG[freq]['ma'], deci=deci)
     mv = _calc_simple_ma_line(df, 'vol', window=KLINE_MA_CONFIG[freq]['mv'], deci=0)
-
-    deadline = func.date_to_timestamp(df['trade_date'].iloc[-1]) if not df.empty else 0
 
     # 交易信号预留
     deal = {'long': [], 'short': [], 'dual': [], 'divd': []}

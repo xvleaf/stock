@@ -147,8 +147,8 @@ class FocusStock(models.Model):
     sort_order = models.IntegerField('排序', default=0, help_text='手动排序，越小越靠前')
 
     comments = models.TextField('备注', blank=True, default='')
-    created_at = models.DateTimeField('创建时间', auto_now_add=True)
-    updated_at = models.DateTimeField('更新时间', auto_now=True)
+    created_at = models.DateTimeField('创建时间', default=timezone.now)
+    updated_at = models.DateTimeField('更新时间', default=timezone.now)
 
     class Meta: 
         # 自定义模型在数据库中的显示名称
@@ -181,6 +181,7 @@ class FocusStock(models.Model):
         FocusHistory.objects.create(
             focus=self, 
             action=action,
+            edit_date=self.focus_date,
             plan_price=self.plan_price,
             plan_qty=self.plan_qty,
             target_price=self.target_price,

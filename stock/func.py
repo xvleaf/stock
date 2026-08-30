@@ -1,5 +1,4 @@
 import pandas as pd
-import datetime
 import decimal
 from .fetch import kline, trend
 from .fetch import tushare
@@ -7,16 +6,9 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from .models.models import StockList
 from django.db import connection, transaction
-
-
-# 类型转换映射：类型名 -> 转换函数（用于 get_session 将字符串还原为对应类型）
-TYPE_CONVERTERS = {
-    'datetime': datetime.datetime.fromisoformat,
-    'date': datetime.date.fromisoformat,
-    'decimal': decimal.Decimal,
-}
-
-
+from django.core.cache import cache
+import pytz
+from datetime import datetime, time, date as date_type
 
 @require_http_methods(["GET"])
 def stock_name_api(request):
@@ -49,66 +41,76 @@ def stock_name_api(request):
         
 
 def date_to_timestamp(date_obj):
-    """日期转13位毫秒时间戳"""
+    """
+    将日期转换为13位毫秒时间戳（强制中国时区，并设为当天00:00:00）
+    date_obj: 字符串'YYYYMMDD' 或 datetime/date 对象
+    """
+    tz = pytz.timezone('Asia/Shanghai')
+    
     if isinstance(date_obj, str):
-        date_obj = pd.to_datetime(date_obj)    
-    return int(date_obj.timestamp() * 1000)
-
-
-"""
-包括：
-view, kline_params, navi_params, trend_data_last_timestamp
-"""
-def set_session(session, key, value):
-    """
-    将值存入 session
-    自动包装非 JSON 可序列化的类型（datetime, date, Decimal）
-    其他类型（如 str, int, float, bool, list, dict, None）直接存储
-    """
-    # 判断是否为需要包装的类型
-    if isinstance(value, datetime.datetime):
-        wrapped = {'__type__': 'datetime', '__value__': value.isoformat()}
-    elif isinstance(value, datetime.date):
-        wrapped = {'__type__': 'date', '__value__': value.isoformat()}
-    elif isinstance(value, decimal.Decimal):
-        wrapped = {'__type__': 'decimal', '__value__': str(value)}
-    else:
-        # 其他类型（假定可 JSON 序列化）直接存储
-        wrapped = value
-    session[key] = wrapped
-
-
-def get_session(session, key, init=None):
-    """
-    从 session 中取值
-    如果存储时是经过包装的类型，则自动还原为原始类型
-    如果键不存在，返回 init
-    """
-    
-    # 显式检查键是否存在，避免使用默认值引发的歧义
-    if key not in session:
-        return init
-
-    wrapped = session[key]
-
-    # 检查是否为包装的类型字典
-    if isinstance(wrapped, dict) and '__type__' in wrapped and '__value__' in wrapped:
-        type_name = wrapped['__type__']
-        raw_value = wrapped['__value__']
-        converter = TYPE_CONVERTERS.get(type_name)
-        if converter:
-            try:
-                return converter(raw_value)
-            except (ValueError, TypeError):
-                # 如果转换失败（例如数据损坏），返回原始包装字典
-                return wrapped
+        # 解析 '20230104' 格式
+        dt = datetime.strptime(date_obj, '%Y%m%d')
+    elif isinstance(date_obj, date_type):
+        # date 对象转为 datetime
+        dt = datetime.combine(date_obj, time.min)
+    elif isinstance(date_obj, datetime):
+        dt = date_obj
+        if dt.tzinfo is not None:
+            # 如果已有时区，转换为中国时区
+            dt = dt.astimezone(tz)
         else:
-            # 未知类型，返回原始包装字典
-            return wrapped
-    # 普通值（未包装）直接返回
-    return wrapped
-
+            dt = tz.localize(dt)
+    else:
+        # 其他类型（如 pandas Timestamp）转换为 datetime
+        dt = pd.to_datetime(date_obj).to_pydatetime()
+        dt = tz.localize(dt)
     
+    # 如果 dt 还不是 aware，本地化
+    if dt.tzinfo is None:
+        dt = tz.localize(dt)
+    else:
+        # 确保在中国时区
+        dt = dt.astimezone(tz)
+    
+    # 保留日期部分（即当天00:00:00）
+    # 这里返回 00:00:00 的时间戳
+    return int(dt.timestamp() * 1000)
+
+
+def set_cache(session, key, value, expiry=None):
+    """
+    将值存入缓存，支持指定该 key 的过期时间（秒）
+    expiry: 整数秒，若为 None 则使用缓存默认超时
+    """
+    if not session.session_key:
+        session._get_or_create_session_key()
+    prefix = f"user_{session.session_key}_"
+    cache_key = prefix + key
+    cache.set(cache_key, value, timeout=expiry)
+
+
+def get_cache(session, key, init=None):
+    """
+    从缓存中取值，若 key 不存在则返回 init
+    """
+    if not session.session_key:
+        session._get_or_create_session_key()
+    prefix = f"user_{session.session_key}_"
+    cache_key = prefix + key
+    return cache.get(cache_key, init)
+
+
+def delete_cache(session, key):
+    """
+    删除指定 key 的缓存
+    """
+    if not session.session_key:
+        session._get_or_create_session_key()
+    prefix = f"user_{session.session_key}_"
+    cache_key = prefix + key
+    cache.delete(cache_key)
+
+
 def _update_stock_list():
     """
     从 tushare 获取最新股票基础信息，更新到本地 StockList 表

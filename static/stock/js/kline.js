@@ -55,7 +55,7 @@ export function refreshKlineDensity() {
 }
 
 async function fetchKlineData(func) {
-    const { code, market, cat } = pageConfig; // 解构赋值
+    const { site, code, market, cat } = pageConfig; // 解构赋值
     
     if (!code || !market) {
         console.warn('fetchChartData: 参数缺失 code 或 market');
@@ -64,6 +64,7 @@ async function fetchKlineData(func) {
     
     try {
         const data = await postRequest('/chart/data', {
+            site,
             func,
             code,
             market,

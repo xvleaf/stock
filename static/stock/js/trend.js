@@ -256,7 +256,7 @@ function updateTrendChart() {
 /**
  * 渲染分时操作按钮
  */
-function renderTrendParamBar() {
+export function renderTrendParamBar() {
     const paramBar = document.getElementById('trendParam');
     if (!paramBar) return;
     

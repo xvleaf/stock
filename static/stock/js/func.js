@@ -1,4 +1,4 @@
-import { trendChart, initTrendChart, destroyTrendChart, clearTrendTimer } from './trend.js';
+import { trendChart, initTrendChart, renderTrendParamBar, destroyTrendChart, clearTrendTimer } from './trend.js';
 import { klineChart, initKlineChart, destroyKlineChart, refreshKlineDensity } from './kline.js';
 
 // ========== 公共全局状态变量 ==========
@@ -116,13 +116,14 @@ export async function loadChartPage(func, value) {
             cat: pageConfig.cat
         });
 
-        if (res && res.html) {                
+        if (res && res.html) {
             destroyChart();
             clearTrendTimer();
 
             const container = document.getElementById('chartPageContainer');
             container.innerHTML = res.html;
             container.classList.remove('d-none');
+            setPageConfig(res.chart);
 
             // 根据视图初始化图表
             if (pageConfig.view === 'kline') {
@@ -132,8 +133,8 @@ export async function loadChartPage(func, value) {
                 
                 // 监听 chartLoaded 事件
                 window.addEventListener('chartLoaded', (e) => {
-                    // 仅当当前站点为 focus/view 且图表加载完成时绑定
-                    if (e.detail && e.detail.site === 'focus/view') {
+                    // 仅当当前站点为 /focus/view 且图表加载完成时绑定
+                    if (e.detail && e.detail.site === '/focus/view') {
                         const editBtn = document.getElementById('editBtn');
                         if (!editBtn || editBtn.dataset.bound) return;  
                         editBtn.dataset.bound = 'true';
@@ -384,7 +385,7 @@ function naviSwitch(type, action) {
     }).then(res => {
         if (res) {
             saveScrollPosition();
-            window.location.href = `/${res.site}/${res.market}/${res.code}`;
+            window.location.href = `${res.site}/${res.market}/${res.code}`;
         }
     });
 };
@@ -407,10 +408,10 @@ function jumpToLink() {
 
 function backToList() {
     const routeMap = {
-        'focus/view': '/focus/list',
-        'trans/view': '/trans/list',
-        'review/focus/view': '/review/focus/list',
-        'review/trans/view': '/review/trans/list'
+        '/': '/focus/list',
+        '/trans/view': '/trans/list',
+        '/review/focus/view': '/review/focus/list',
+        '/review/trans/view': '/review/trans/list'
     };
     window.location.href = routeMap[pageConfig.site] || '/focus/list';
 };
@@ -450,11 +451,11 @@ export function editAction(enable) {
 }
 
 window.exitAction = function (marketCode) {
-    const msg = pageConfig.site === 'focus/view' ? '确定要结束关注吗？' : '确定要取消添加吗？';
+    const msg = pageConfig.site === '/focus/view' ? '确定要结束关注吗？' : '确定要取消添加吗？';
     layer.confirm(msg, {
         title: '确认', btnAlign: 'c', btn: ['确定', '取消'], shade: 0.5
     }, function () {
-        if (pageConfig.site === 'focus/view') {
+        if (pageConfig.site === '/focus/view') {
             postRequest(`/focus/edit/${marketCode}`, { func: 'end' }).then(res => {
                 if (res.msg === 'done') window.location.href = '/focus/list';
             });

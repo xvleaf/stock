@@ -80,6 +80,8 @@ def focus_plus(request):
                 form.add_error(None, '该股票关注中，不能重复添加')
             else:
                 focus = form.save(commit=False)
+                focus.created_at = focus.focus_date
+                focus.updated_at = focus.focus_date
                 focus.code = code
                 focus.market = market
                 focus.win_ratio = _calc_win_ratio(focus.plan_price, focus.target_price, focus.stop_price)
@@ -113,50 +115,59 @@ def focus_plus(request):
 
 
 def focus_view(request, market, code):
-    focus = get_object_or_404(FocusStock, code=code, market=market, status=FocusStock.STATUS_WATCHING)
-
+    site = '/focus/view'
     if request.method == 'POST':
+        focus = get_object_or_404(FocusStock, code=code, market=market, status=FocusStock.STATUS_WATCHING)
         form = FocusStockForm(request.POST, instance=focus, view_mode=True)
         if form.is_valid():
             updated = form.save(commit=False)
             updated.win_ratio = _calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price)
             updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price)
+            updated.updated_at = updated.focus_date 
             updated.save()
             updated.save_history(action='edit')
-            return redirect('focus_view', market=market, code=code)
+            func.delete_cache(request.session, f'{site}-navi-data')
+        
+        return redirect('focus_view', market=market, code=code)
     else:
+        navi_data = func.get_cache(request.session, f'{site}-navi-data', {})
+        if (site, code, market) != navi_data.get('site_code_market', None):
+            navi_data = chart.set_navi_data(request.session, site, code, market, 'pilot', 'init')
+
+        focus = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).first()
+        histories = focus.histories.all().order_by('edit_date') if focus else None
+        pilot_idx = navi_data.get('navi_params', {}).get('pilotIndex', 0)
+        pilot_history = histories[pilot_idx]
+
+        focus.focus_date = pilot_history.edit_date
+        focus.intent = pilot_history.intent
+        focus.plan_price = pilot_history.plan_price
+        focus.plan_qty = pilot_history.plan_qty
+        focus.target_price = pilot_history.target_price
+        focus.stop_price = pilot_history.stop_price
+        focus.win_ratio = pilot_history.win_ratio
+        focus.comments = pilot_history.comments
+
         form = FocusStockForm(instance=focus, view_mode=True)
 
-    navi_list = chart.get_navi_list('focus/view')
-    
-    if navi_list:
-        code, market = chart.set_navi_params(
-            request.session, 
-            'focus/view', 
-            code, 
-            market, 
-            navi_list, 
-            0
-        )
+        # 图表配置
+        chart_init = {
+            'site': site,
+            'code': code,
+            'market': market,
+            'name': focus.name,
+            'cat': focus.cat
+        }
         
-    # 图表配置
-    chart_init = {
-        'site': 'focus/view',
-        'code': code,
-        'market': market,
-        'name': focus.name,
-        'cat': focus.cat
-    }
-    
-    page_config = chart.get_page_config(request.session, 'focus/view', focus.cat)
-    chart_init.update(page_config)
+        page_config = chart.get_page_config(request.session, site, focus.cat)
+        chart_init.update(page_config)
 
-    return render(request, 'focus-view.html', {
-        'form': form,
-        'chart': json.dumps(chart_init),
-        'edit_mode': False,
-        'available': CashConfig.get_config().available
-    })
+        return render(request, 'focus-view.html', {
+            'form': form,
+            'chart': json.dumps(chart_init),
+            'edit_mode': False,
+            'available': CashConfig.get_config().available
+        })
 
 
 def _calc_win_ratio(buy_price, target_price, stop_price):
