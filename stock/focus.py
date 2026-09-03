@@ -32,7 +32,7 @@ def focus_list(request):
         result = []
         focus_qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING)
         for fs in focus_qs:
-            deci = 2 if fs.cat == 'stock' else 3
+            deci = 3 if (fs.cat == 'fund' or fs.cat == 'bond') else 2
             close, change = quote.get_last_price(fs.tscode, deci)  
             result.append({
                 'code': fs.code,
@@ -48,7 +48,7 @@ def focus_list(request):
     # models 自带 sort_order 排序，因此不需要进行排序
     focus_qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING)
     for fs in focus_qs:
-        deci = 2 if fs.cat == 'stock' else 3
+        deci = 3 if (fs.cat == 'fund' or fs.cat == 'bond') else 2
         items.append({
             'code': fs.code,
             'market': fs.market,

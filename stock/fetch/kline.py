@@ -39,7 +39,6 @@ def kline_data_for_chart(session, site, cat, market, code):
     :param right: 'qfq' 或 None
     """
     tscode = f'{code}.{market}'
-    deci_map = {'stock': 2, 'fund': 3, 'bond': 3, 'index': 2}
     asset_map = {'stock': 'E', 'fund': 'FD', 'bond': 'CB', 'index': 'I'}
 
     kline_params = get_kline_params(session)
@@ -47,7 +46,7 @@ def kline_data_for_chart(session, site, cat, market, code):
     right = kline_params['right']
     k = int(kline_params['k'])
     d = int(kline_params['d'])
-    deci = deci_map.get(cat, 2)
+    deci = 3 if (cat == 'fund' or cat == 'bond') else 2
 
     if cat == 'index':
         right = None

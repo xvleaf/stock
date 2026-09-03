@@ -3,7 +3,7 @@ import { postRequest, Highcharts, pageConfig, initPageElements, priceDecimal, se
 // K 线密度参数
 const BREAKPOINT_FOR_KLINE = 1440;
 const KLINE_DENSITY = {
-    desktop: { max: 15, std: 10, min: 5 },
+    desktop: { max: 20, std: 13, min: 5 },
     mobile:  { max: 20, std: 13, min: 5  }
 };
 

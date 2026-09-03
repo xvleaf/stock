@@ -242,7 +242,7 @@ def calc_amount(price, qty):
 def get_price_decimal(code):
     """
     根据股票代码判断价格小数位
-    A股股票/基金 2位，可转债3位
+    A股股票 2位，可转债/基金3位
     """
     code = str(code).upper()
     # 沪市转债 11xxxx，深市转债 12xxxx
