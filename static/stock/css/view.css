@@ -7,7 +7,6 @@
 .chart-page {
     position: relative;
     width: 100%;
-    height: var(--chart-height);
     border-radius: 4px;
     background: var(--color-bg-white);
     box-sizing: border-box;
@@ -92,34 +91,6 @@
 .chart-nav-group {
     display: flex;
     gap: 2px;
-}
-
-/* 统一图标按钮：固定尺寸，占位稳定 */
-.chart-icon-btn {
-    width: 24px;
-    height: 24px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-nav-item);
-    padding: 0;
-    font-size: 0.85rem;
-    border-radius: 2px;
-    transition: color 0.15s;
-    flex-shrink: 0;
-}
-
-.chart-icon-btn:hover {
-    color: var(--color-text-primary);
-}
-
-.chart-icon-btn.is-disabled {
-    color: var(--color-text-disabled);
-    cursor: not-allowed;
-    pointer-events: none;
 }
 
 /* 大盘行情文字 */
@@ -219,7 +190,20 @@
     align-items: center;
     gap: 4px;
 }
-
+.chart-param > * {
+    display: inline-flex;
+    align-items: center;
+    /* 避免行高造成偏移 */
+    line-height: 1;
+    box-sizing: border-box;
+    padding: 0 2px;
+    font-size: 14px;
+}
+.chart-param .param-input {
+    outline: none;
+    text-align: center;
+    cursor: pointer;
+}
 .chart-stock-name {
     position: absolute;
     top: 35px;
@@ -231,28 +215,6 @@
     gap: 4px;
     transition: opacity 0.2s;
     font-size: 14px;
-}
-
-.param-label {
-    font-size: 14px;
-    line-height: 20px;
-    padding: 0 2px;
-}
-
-.param-input {
-    display: inline-block;
-    min-width: 10px;
-    height: 20px;
-    line-height: 20px;
-    border: 0;
-    font-size: 14px;
-    opacity: 0.7;
-    outline: none;
-    cursor: pointer;
-    text-align: center;
-    background: transparent;
-    overflow: hidden;
-    white-space: nowrap;
 }
 
 /* ========== 通用按钮 ========== */
@@ -275,12 +237,6 @@
     border-color: var(--color-border-light);
 }
 
-.chart-param .chart-btn {
-    width: 24px;
-    height: 24px;
-    flex-shrink: 0;
-}
-
 /* ========== 底部导航栏：固定底部，顶边紧贴图表底部 ========== */
 .chart-navi-bar {
     position: absolute;
@@ -289,31 +245,29 @@
     /* 核心修改：固定在底部，移除动态top计算 */
     bottom: 0;
     width: 100%;
-    height: var(--navi-bar-height, 20px); 
+    height: var(--navi-bar-height, 25px); 
     z-index: 3;
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     box-sizing: border-box;
-    opacity: 0.7;
+    line-height: 1;            /* 防止行高影响 */
 }
 
 
 .chart-navi-center,
 .chart-navi-left,
-.chart-navi-right {
-    height: 20px;
-}
-
-
+.chart-navi-right,
 .chart-navi-group {
     display: flex;
+    height: 100%;
+    align-items: center;
 }
 
 .chart-navi-item {
-    font-size: 16px;
+    font-size: 18px;
     align-items: center;
-    padding: 0 10px;
+    padding: 0 8px;
 }
 
 .chart-navi-item.is-disabled {
@@ -425,7 +379,7 @@
     bottom: 0;
     left: 0;
     right: 0;
-    height: var(--navi-bar-height, 20px);
+    height: var(--navi-bar-height, 25px);
 }
 
 /* 页面禁用滚动 */

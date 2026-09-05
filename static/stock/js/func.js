@@ -2,8 +2,8 @@ import { trendChart, initTrendChart, destroyTrendChart, clearTrendTimer } from '
 import { klineChart, initKlineChart, destroyKlineChart, refreshKlineDensity } from './kline.js';
 import { changeFreq as klineChangeFreq, toggleRight as klineToggleRight } from './kline.js';
 
-// ========== 公共全局状态变量 ==========
 let isFullscreen = false;   // 记录当前是否处于伪全屏状态
+
 export const Highcharts = window.Highcharts;
 export const chartPageContainer = document.getElementById('chartPageContainer');
 export let pageConfig = {};
@@ -146,9 +146,10 @@ export async function loadChartPage(func, value) {
             const container = document.getElementById('chartPageContainer');
             container.innerHTML = res.html;
             container.classList.remove('d-none');
-
+            
             // 更新配置（保留名称、类别等）
             const newConfig = res.chart;
+
             if (pageConfig.name && !newConfig.name) newConfig.name = pageConfig.name;
             if (pageConfig.cat && !newConfig.cat) newConfig.cat = pageConfig.cat;
             setPageConfig(newConfig);
@@ -257,9 +258,44 @@ export function initPageElements() {
             initNavItemState('pilotPrev', pilotPrevItem);
             initNavItemState('pilotNext', pilotNextItem);
         }
+        console.log(pageConfig);
+        if (pageConfig.mark.showMark) {
+            const focusMark = document.getElementById('focusMark');
+            const majorMark = document.getElementById('majorMark');
+            const minorMark = document.getElementById('minorMark');
+            const hideMark = document.getElementById('hideMark');
 
-        if (pageConfig.navi.backList) {
-            const backList = document.getElementById('backList');
+            if (pageConfig.mark.showFocus && focusMark) {
+                const focusIcon = pageConfig.mark.focus === '1' ? 'tabler:current-location-filled': 'tabler:current-location';
+                focusMark.innerHTML = `<iconify-icon icon="${focusIcon}" style="width:1em; height:1em;"></iconify-icon>`;
+                focusMark.classList.remove('d-none');
+                focusMark.onclick = focusAction;
+            }
+            if (majorMark) {
+                const majorIcon = pageConfig.mark.status === '1' ? 'tabler:hexagon-number-1-filled': 'tabler:hexagon-number-1';
+                majorMark.innerHTML = `<iconify-icon icon="${majorIcon}" style="width:1em; height:1em;"></iconify-icon>`;
+                majorMark.classList.remove('d-none');
+                majorMark.addEventListener('click', (event) => markAction('major', event));
+            }
+            if (minorMark) {
+                const minorIcon = pageConfig.mark.status === '2' ? 'tabler:hexagon-number-2-filled': 'tabler:hexagon-number-2';
+                minorMark.innerHTML = `<iconify-icon icon="${minorIcon}" style="width:1em; height:1em;"></iconify-icon>`;
+                minorMark.classList.remove('d-none');
+                minorMark.addEventListener('click', (event) => markAction('minor', event));
+            }
+
+            if (pageConfig.mark.showHide && hideMark) {
+                const hideIcon = 'tabler:hexagon-minus';
+                hideMark.innerHTML = `<iconify-icon icon="${hideIcon}" style="width:1em; height:1em;"></iconify-icon>`;
+                hideMark.classList.remove('d-none');
+                hideMark.onclick = hideAction;
+            }
+        }
+
+        const backList = document.getElementById('backList');
+        if (pageConfig.navi.backList && backList) {
+            const backIcon = 'tabler:menu-2';
+            backList.innerHTML = `<iconify-icon icon="${backIcon}" style="width:1em; height:1em;"></iconify-icon>`;
             backList.classList.remove('d-none');
             backList.onclick = backToList;
         }
@@ -424,10 +460,11 @@ function applyFullscreenState() {
 
     if (fullscreenBtn) {
         fullscreenBtn.innerHTML = shouldFullscreen
-            ? '<i class="fa-solid fa-down-left-and-up-right-to-center"></i>'
-            : '<i class="fa-solid fa-expand"></i>';
+            ? '<iconify-icon icon="tabler:maximize-off" style="width:1em; height:1em;"></iconify-icon>'
+            : '<iconify-icon icon="tabler:maximize" style="width:1em; height:1em;"></iconify-icon>';
     }
 
+                
     isFullscreen = shouldFullscreen;
 }
 
@@ -556,6 +593,7 @@ function jumpToLink() {
 
 function backToList() {
     const routeMap = {
+        '/sector/view': '/sector/list',
         '/': '/focus/list',
         '/trans/view': '/trans/list',
         '/review/focus/view': '/review/focus/list',
@@ -563,6 +601,42 @@ function backToList() {
     };
     window.location.href = routeMap[pageConfig.site] || '/focus/list';
 };
+
+function focusAction() {
+    console.log('focus');
+}
+
+function markAction(func) {
+    const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
+    postRequest(url, {
+        'func': func
+    }).then(res => {
+        if (res) {
+            if (res.msg !== 'done') {
+                console.log(res.msg);
+                return;
+            }
+
+            pageConfig.mark.status = func === 'major' ? res.major : res.minor;
+                
+            const majorMark = document.getElementById('majorMark');
+            const minorMark = document.getElementById('minorMark');
+            const majorIcon = pageConfig.mark.status === '1' ? 'tabler:hexagon-number-1-filled': 'tabler:hexagon-number-1';
+            const minorIcon = pageConfig.mark.status === '2' ? 'tabler:hexagon-number-2-filled': 'tabler:hexagon-number-2';
+            majorMark.innerHTML = `<iconify-icon icon="${majorIcon}" style="width:1em; height:1em;"></iconify-icon>`;
+            minorMark.innerHTML = `<iconify-icon icon="${minorIcon}" style="width:1em; height:1em;"></iconify-icon>`;
+        }
+    });
+
+
+
+
+
+}
+
+function hideAction() {
+    console.log('hide');
+}
 
 export function editAction(enable) {
     const form = document.getElementById('focusForm');
@@ -617,13 +691,6 @@ window.dealAction = function (marketCode) {
     window.location.href = `/trans/deal/${marketCode}`;
 };
 
-// ==================== 内部工具函数 ====================
-
-function saveScrollPosition() {
-    const scrollTop = document.querySelector('.base-root')?.scrollTop || 0;
-    localStorage.setItem('chart_scroll', scrollTop);
-}
-
 // 滚动防抖
 function debounce(fn, delay = 16) {
     let timer = null;
@@ -636,15 +703,8 @@ function debounce(fn, delay = 16) {
 // 滚动监听：上滑隐藏，下滑显示
 let lastScrollTop = 0;
 function initScrollFold() {
-    const trendCanvas = document.querySelector('.chart-trend-canvas');
-    const klineParam = document.querySelector('.chart-param');
-    
     const handleScroll = debounce(() => {
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const isFold = scrollTop > lastScrollTop && scrollTop > 60;
-        // 同步切换收起状态
-        trendCanvas?.classList.toggle('is-fold', isFold);
-        klineParam?.classList.toggle('is-fold', isFold);
         // 图表自适应重绘（可选，高度变化后让Highcharts重新适配）
         if (window.Highcharts) {
             const chart = Highcharts.charts.find(c => c);

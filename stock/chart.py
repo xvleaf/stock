@@ -10,7 +10,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 from .fetch import tushare, kline, trend, quote
 from . import func
-from .models.models import StockList, FocusStock, FocusHistory, TransOrder, TransDeal, TransReview
+from .models.models import SectorList, StockList, FocusStock, FocusHistory, TransOrder, TransDeal, TransReview
 from .forms.forms import FocusStockForm, TransDealForm, CashConfigForm, ReviewForm, CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES
 
 NAVI_PARAMS_INIT = {
@@ -35,6 +35,12 @@ TREND_PARAMS_INIT = {
     'divd': False
 }
 
+MARK_CONFIG_INIT = {
+    'showMark': False,
+    'focus': 0,
+    'status': 0,
+    'hide': 0
+}
 
 @require_http_methods(["POST"])
 def chart_data_api(request):
@@ -99,7 +105,8 @@ def chart_view_api(request):
         deadline_params = func.get_cache(request.session, 'kline-deadline')
         if deadline_params and (param_site, param_code, param_market) == deadline_params.get('site_code_market', None):
             kline.set_kline_params(request.session, 'deadline', deadline_params.get('deadline', -1))
-    elif param_func in ['navi', 'pilot']:
+    elif param_func in ['navi', 'pilot']:        
+        navi_data = func.get_cache(request.session, f'{param_site}-navi-data', {})
         navi_data = set_navi_data(
             request.session,
             param_site,
@@ -128,26 +135,25 @@ def chart_view_api(request):
     else:
         return JsonResponse({'error': f'未知功能: {param_func}'}, status=400)
 
+    view_mode = func.get_cache(request.session, 'view', 'kline')
     context = {
         'site': param_site,
         'code': param_code,
         'name': param_name,
         'market': param_market,
-        'cat': param_cat
+        'cat': param_cat,
+        'view': view_mode
     }
+    
     page_config = get_page_config(request.session, param_site, param_cat)
     context.update(page_config)
-
-    view_mode = func.get_cache(request.session, 'view', 'kline')
     html_template = 'chart-kline.html' if  view_mode == 'kline' else 'chart-trend.html'
     html_content = render(request, html_template, {}).content.decode('utf-8')
 
     return JsonResponse({'html': html_content, 'chart': context})
 
 
-def get_page_config(session, site, cat):   
-    view_init = func.get_cache(session, 'view', 'kline')
-    
+def get_page_config(session, site, cat):
     deci = 3 if (cat == 'fund' or cat == 'bond') else 2
         
     trend_params_map = {
@@ -156,8 +162,9 @@ def get_page_config(session, site, cat):
         '/review/focus/view': {'plus': True, 'exit': False, 'edit': False, 'deal': False, 'divd': False},
         '/review/trans/view': {'plus': True, 'exit': False, 'edit': False, 'deal': False, 'divd': False}
     }
-    
-    if (view_init == 'kline'):
+
+    view = func.get_cache(session, 'view', 'kline')
+    if (view == 'kline'): 
         kline.set_kline_params(session, 'deci', deci)
         kline_init = kline.get_kline_params(session)
         trend_init = {}
@@ -165,21 +172,47 @@ def get_page_config(session, site, cat):
         kline_init = {}
         trend_init = trend_params_map[site] if site in trend_params_map else TREND_PARAMS_INIT
 
-    navi_init = get_navi_params(session, site)
+    navi_data = func.get_cache(session, f'{site}-navi-data', {})
+    navi_init = get_navi_params(session, site, navi_data)
+    mark_init = get_mark_config(session, site, navi_data)
 
     return {
-        'view': view_init,
         'kline': kline_init,
         'trend': trend_init,
         'navi': navi_init,
+        'mark': mark_init,
         'deci': deci
     }
 
 
-def get_navi_params(session, site):
-    navi_params_limited = ['/focus/view', '/trans/view', '/review/focus/view', '/review/trans/view']
+def get_mark_config(session, site, navi_data):
+    if site == '/sector/view':
+        if navi_data:
+            get_site, code, market = navi_data.get('site_code_market')
+            if get_site == site:
+                instance = SectorList.objects.filter(code=code).first()
+            else:
+                return MARK_CONFIG_INIT
+        else:
+            return MARK_CONFIG_INIT
+        
+        mark_config = {
+            'showMark': True,
+            'showFocus': False,
+            'showStatus': True,
+            'showHide': False,
+            'focus': 0,
+            'status': instance.mark
+        }
+    else:
+        mark_config = MARK_CONFIG_INIT
+    
+    return mark_config
+
+
+def get_navi_params(session, site, navi_data):
+    navi_params_limited = ['/sector/view', '/focus/view', '/trans/view', '/review/focus/view', '/review/trans/view']
     if site in navi_params_limited:
-        navi_data = func.get_cache(session, f'{site}-navi-data', {})
         navi_params = navi_data.get('navi_params', NAVI_PARAMS_INIT)
     else:
         navi_params = NAVI_PARAMS_INIT
@@ -223,6 +256,7 @@ def set_navi_data(session, site, code, market, function, action):
     else:
         shift = 0
     navi_idx = navi_list.index((code, market)) + shift
+    code, market = navi_list[navi_idx]
 
     if showPilot and function == 'pilot':        
         shift = 1 if action == 'next' else -1 if action == 'prev' else 0
@@ -266,6 +300,7 @@ def set_navi_data(session, site, code, market, function, action):
 
     func.set_cache(session, f'{site}-navi-data', navi_data, 600)
 
+    navi_data = func.get_cache(session, f'{site}-navi-data', {})
     return navi_data
 
 
@@ -276,6 +311,9 @@ def get_navi_list(site):
 
     elif site == '/trans/view':
         qs = TransOrder.objects.filter(status=TransOrder.STATUS_OPEN).order_by('-created_at')
+        navi_list = list(qs.values_list('code', 'market')) 
+    elif site == '/sector/view':
+        qs = SectorList.objects.all()
         navi_list = list(qs.values_list('code', 'market')) 
     elif site == '/review/focus/view':
         # 未交易关注：左右切换不同股票
@@ -382,9 +420,22 @@ def _get_stock_detail(site, code, market, history_id=None):
                 'intent_display': dict(INTENT_CHOICES).get(stock.intent, stock.intent),
             }
             return data
-    # 其他站点类似处理...
+    elif site == '/sector/view':
+        sector = SectorList.objects.filter(code=code).first()
+        if not sector:
+            return {}
+        data = {
+            'code': sector.code,
+            'market': sector.market,
+            'name': sector.name,
+            'cat': sector.cat
+        }
+        return data
     return {}
 
+
+def _json_error(msg, status=400):
+    return JsonResponse({'error': msg}, status=status)
 
 
 # 备用
@@ -458,7 +509,3 @@ def _navi_switch(site, current_code, direction):
     else:
         target = current_code
     return JsonResponse({'code': target})
-
-
-def _json_error(msg, status=400):
-    return JsonResponse({'error': msg}, status=status)

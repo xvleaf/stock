@@ -1,7 +1,11 @@
 from django.urls import path
-from . import chart, func, focus, cash
+from . import chart, func, sector, focus, cash
 
-urlpatterns = [    
+urlpatterns = [
+    # ---- 板块 ----
+    path('sector/list', sector.sector_list, name='sector_list'),
+    path('sector/view/<str:market>/<str:code>', sector.sector_view, name='sector_view'),
+
     # ---- 关注 ----
     path('focus', focus.focus_list, name='focus'),
     path('focus/list', focus.focus_list, name='focus_list'),

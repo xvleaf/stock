@@ -10,6 +10,7 @@ from django.core.cache import cache
 import pytz
 from datetime import datetime, time, date as date_type
 
+
 @require_http_methods(["GET"])
 def stock_name_api(request):
     code = request.GET.get('code', '').strip()
@@ -134,52 +135,6 @@ def _update_stock_list():
 
         with transaction.atomic():
             for _, row in df.iterrows():
-                stock = StockList.objects.filter(
-                    code=row['code'],
-                    market=row['market']
-                ).first()
-                if stock:
-                    stock.name = row['name']
-                    stock.industry = row['industry']
-                    stock.cat = 'stock'   # 设置类别
-                    stock.save()
-                else:
-                    StockList.objects.create(
-                        code=row['code'],
-                        market=row['market'],
-                        name=row['name'],
-                        industry=row['industry'],
-                        cat='stock'       # 新增
-                    )
-    except Exception as e:
-        print(f"更新股票列表失败: {e}")
-
-
-
-
-def _update_stock_list():
-    """
-    从 tushare 获取最新股票基础信息，更新到本地 StockList 表
-    不删除旧数据，仅更新或新增
-    """
-    EXCHANGE_MAP = {
-        'SSE': 'SH',
-        'SZSE': 'SZ',
-        'BSE': 'BJ',
-    }
-
-    try:
-        df = tushare.get_stock_basic()
-        if df is None or df.empty:
-            return
-
-        df.rename(columns={'symbol': 'code'}, inplace=True)
-        df['market'] = df['exchange'].map(EXCHANGE_MAP)
-        df = df.dropna(subset=['market'])
-        df['industry'] = df['industry'].fillna('')
-
-        with transaction.atomic():
-            for _, row in df.iterrows():
                 # 先尝试查询现有记录
                 stock = StockList.objects.filter(
                     code=row['code'],
@@ -200,10 +155,6 @@ def _update_stock_list():
                     )
     except Exception as e:
         print(f"更新股票列表失败: {e}")
-
-
-
-
 
 
 # 备用

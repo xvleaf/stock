@@ -35,6 +35,18 @@ def get_trade_cal(start, end):
     return cal
 
 
+def get_all_industry():
+    """
+    获取全部行业指数下的一级行业分类信息
+    :return: DataFrame 一级行业分类数据
+    """
+    # index_code 一级行业代码
+    # industry_name 一级行业名称
+    fields = 'index_code,industry_name'
+    member = pro.index_classify(level='L1', fields=fields)
+    return member
+
+
 def get_industry_member(code):
     """
     获取指定行业指数下的一级行业分类信息
@@ -135,7 +147,7 @@ def get_kline_data(asset, tscode, start, end, freq='D', adj=None):
     base_fields = [
         'ts_code', 'trade_date', 'open', 'close', 'high', 'low', 'pre_close',
         'change', 'pct_chg', 'vol', 'amount'
-    ]    
+    ]
 
     kline = pd.DataFrame(columns=base_fields)
 

@@ -3,6 +3,7 @@ import pandas as pd
 import datetime
 from django.http import JsonResponse
 from . import tushare
+import akshare as ak
 from stock import func
 
 # 交易休息时间
@@ -51,27 +52,69 @@ def kline_data_for_chart(session, site, cat, market, code):
     if cat == 'index':
         right = None
 
-    # 取近两年日线数据
-    start = KLINE_START_DATE # or (datetime.datetime.now() - datetime.timedelta(days=730)).strftime('%Y%m%d')
-    end = datetime.datetime.now().strftime('%Y%m%d')
+    if site == '/sector/view':
+        period = {'D': 'day', 'W': 'week', 'M':'month'}
+        df = ak.index_hist_sw(symbol=code, period=period[freq])
+        df.rename(columns={
+            '代码': 'ts_code', 
+            '日期': 'trade_date', 
+            '收盘': 'close', 
+            '开盘': 'open', 
+            '最高': 'high', 
+            '最低': 'low', 
+            '成交量': 'vol', 
+            '成交额': 'amount'
+            }, 
+            inplace=True
+        )
 
-    df = tushare.get_kline_data(
-        asset=asset_map.get(cat, 'E'),
-        tscode=tscode,
-        start=start,
-        end=end,
-        freq=freq,
-        adj=right
-    )
+        start_date = pd.to_datetime(KLINE_START_DATE)
+        df['trade_date'] = pd.to_datetime(df['trade_date'])
+        df = df[df['trade_date'] >= start_date]
+        df.sort_values('trade_date', inplace=True)
 
+        df['pre_close'] = df['close'].shift(1)
+        df['change'] = df['close'] - df['pre_close']
+        df['pct_chg'] = (df['change'] / df['pre_close'] * 100).round(2)
+        df['vol'] = df['vol'] * 10000
+        df = df.tail(-1)
+        
+    else:
+        start = KLINE_START_DATE # or (datetime.datetime.now() - datetime.timedelta(days=730)).strftime('%Y%m%d')
+        end = datetime.datetime.now().strftime('%Y%m%d')
+
+        df = tushare.get_kline_data(
+            asset=asset_map.get(cat, 'E'),
+            tscode=tscode,
+            start=start,
+            end=end,
+            freq=freq,
+            adj=right
+        )
+    
     if df is None or df.empty:
-        return JsonResponse(df)
+        result = {
+            'ohlc': [],
+            'volume': [],
+            'tp': [],
+            'up': [],
+            'av': [],
+            'lw': [],
+            'fl': [],
+            'ma': [],
+            'mv': [],
+            'deal': [],
+            'deadline': -1,
+            'deci': deci,
+            'k': k,
+            'd': d,
+            'right': right,
+            'freq': freq,
+        }
+        return JsonResponse(result)
 
     df = df.dropna(subset=['open', 'high', 'low', 'close', 'vol'])
     df = df.sort_values('trade_date').reset_index(drop=True)
-
-    if df.empty:
-        return JsonResponse(df)
 
     deadline_params = func.get_cache(session, 'kline-deadline')
     if deadline_params and (site, code, market) == deadline_params.get('site_code_market', None):

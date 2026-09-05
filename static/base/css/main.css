@@ -76,6 +76,11 @@ body {
     transform: translateY(0);
     will-change: transform;
 }
+#mainNav .navbar-nav .nav-link,
+#mainNav .dropdown-item {
+    display: flex;
+    align-items: center;
+}
 #mainNav .navbar-inner {
     /* max-width: 100%; 后面统一宽度控制 */
     margin: 0 auto;

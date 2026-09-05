@@ -202,7 +202,7 @@ export function initFocusList(interval) {
     });
 
     // 首次加载 + 启动定时轮询
-    function loadQuotesAndStartRefresh() {
+    function loadQuotes() {
         // 先清除旧定时器，防止重复
         if (refreshTimer) {
             clearInterval(refreshTimer);
@@ -216,7 +216,7 @@ export function initFocusList(interval) {
     }
 
     // 执行首次加载与轮询
-    loadQuotesAndStartRefresh();
+    loadQuotes();
 
     // 页面卸载时清除定时器
     window.addEventListener('beforeunload', function cleanup() {
@@ -348,15 +348,13 @@ export function initFocusView(config) {
     const editMode = config.editMode || false;
     const capital = config.available || 0;
     const initChart = config.initChart || {};
-
     setPageConfig(initChart);
 
     if (chartPageContainer) {
         chartPageContainer.classList.remove('d-none');
         initChartPage();
     }
-
-    // ---- 绑定实时计算（使用公共函数） ----
+    
     document.getElementById('id_plan_price')?.addEventListener('input', () => {
         updateAllowedQty('id_plan_price', 'id_allowed_qty', capital);
         updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');

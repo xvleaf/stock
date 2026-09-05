@@ -5,8 +5,8 @@ from django.utils import timezone
 
 CAT_CHOICES = [
     ('stock', '股票'),
-    ('fund', '基金'),
-    ('bond', '债券'),
+    # ('fund', '基金'),
+    # ('bond', '债券'),
     ('index', '指数')
 ]
 MARKET_CHOICES = [

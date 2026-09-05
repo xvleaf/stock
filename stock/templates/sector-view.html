@@ -1,0 +1,26 @@
+{% extends "base-view.html" %}
+{% block title %}板块详情{% endblock %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'stock/css/view.css' %}">
+{% endblock %}
+
+{% block content %}
+{# K 线/分时图 #}
+<div class="d-none" id="chartPageContainer"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'base/js/jquery-3.7.0.min.js' %}"></script>
+<script src="{% static 'base/lib/Highcharts/js/highstock.js' %}"></script>
+<script type="module">
+    import { baseInit } from "{% static 'base/js/base.js' %}";
+    import { initSectorView } from "{% static 'stock/js/sector.js' %}";
+
+    document.addEventListener('DOMContentLoaded', () => {
+        baseInit();
+        initSectorView({initChart: {{ chart|safe }}});
+    });
+</script>
+{% endblock %}

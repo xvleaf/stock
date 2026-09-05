@@ -249,3 +249,21 @@ def get_price_decimal(code):
     if code.startswith('11') or code.startswith('12'):
         return 3
     return 2
+
+
+def calc_win_ratio(buy_price, target_price, stop_price):
+    """计算成功几率（0-99整数）"""
+    try:
+        buy = float(buy_price or 0)
+        target = float(target_price or 0)
+        stop = float(stop_price or 0)
+    except (TypeError, ValueError):
+        return 0
+    if buy <= 0:
+        return 0
+    if stop >= buy:
+        return 99
+    if target <= buy:
+        return 0
+    prob = round((target - buy) / (target - stop) * 99)
+    return max(0, min(99, prob))

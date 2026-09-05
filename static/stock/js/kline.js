@@ -93,7 +93,7 @@ function syncVolumeColor(chart) {
 
 function renderklineData() {
     const { ohlc, volume, tp, fl, up, av, lw, ma, mv, deal, deadline: rawDeadline, deci, freq } = klineData;
-    
+    if (ohlc.length === 0) return;
     // 前端计算显示区间，宽度与原请求参数保持一致
     const showResult = calcShowValues(
         [...ohlc], [...volume], freq, rawDeadline
@@ -238,16 +238,16 @@ function renderKlineParamBar() {
     // 更新复权按钮（使用配置对象）
     if (elements.right) {
         const isQFQ = klineData.right === 'qfq'; 
+        let icon = isQFQ?"tabler:repeat":"tabler:repeat-off"
         elements.right.onclick = toggleRight;
-        elements.right.classList.toggle('metric-grey', !isQFQ);
-        elements.right.classList.toggle('metric-dark', isQFQ);
+        elements.right.innerHTML = `<iconify-icon icon="${icon}" style="width:1em; height:1em;"></iconify-icon>`;
     }
 
     // 更新频率按钮（使用配置数组）
     const freqMap = [
-        { el: elements.freqDay, value: 'D', icon: 'fa-sun' },
-        { el: elements.freqWeek, value: 'W', icon: 'fa-star-of-life' },
-        { el: elements.freqMonth, value: 'M', icon: 'fa-moon' }
+        { el: elements.freqDay, value: 'D', icon: 'tabler:sun-filled' },
+        { el: elements.freqWeek, value: 'W', icon: 'tabler:sparkles-2-filled' },
+        { el: elements.freqMonth, value: 'M', icon: 'tabler:moon-filled' }
     ];
 
     const currentFreq = klineData.freq;
@@ -259,7 +259,7 @@ function renderKlineParamBar() {
         el.addEventListener('click', (event) => changeFreq(value, event));
         el.classList.toggle('pointer', !isActive);
         el.classList.toggle('is-disabled', isActive);
-        el.innerHTML = `<i class="${colorClass} fas ${icon}"></i>`;
+        el.innerHTML = `<iconify-icon icon="${icon}" class="${colorClass}" style="width:1em; height:1em;"></iconify-icon>`;
     });
 
     // 初始化页面元素（按钮、导航等）

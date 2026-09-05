@@ -67,6 +67,7 @@ def focus_list(request):
 
 def focus_plus(request):
     code, name, market, cat = None, None, None, 'stock'
+    site = '/focus/plus'
 
     if request.method == 'POST':
         form = FocusStockForm(request.POST)
@@ -85,7 +86,7 @@ def focus_plus(request):
                 focus.code = code
                 focus.market = market
                 focus.cat = cat
-                focus.win_ratio = _calc_win_ratio(focus.plan_price, focus.target_price, focus.stop_price)
+                focus.win_ratio = cash.calc_win_ratio(focus.plan_price, focus.target_price, focus.stop_price)
                 focus.allowed_qty = cash.calc_allowed_qty(focus.plan_price)
                 max_sort = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).count()
                 focus.sort_order = max_sort
@@ -96,16 +97,15 @@ def focus_plus(request):
         initial = {}
         form = FocusStockForm(initial=initial)
     
+    view_mode = func.get_cache(request.session, 'view', 'kline') 
     chart_init = {
-        'site': 'focus/plus',
+        'site': site,
         'code': code,
         'market': market,
         'name': name,
-        'cat': cat
+        'cat': cat,
+        'view': view_mode
     }
-
-    page_config = chart.get_page_config(request.session, 'focus/plus', cat)
-    chart_init.update(page_config)
 
     return render(request, 'focus-plus.html', {
         'form': form, 
@@ -122,7 +122,7 @@ def focus_view(request, market, code):
         form = FocusStockForm(request.POST, instance=focus, view_mode=True)
         if form.is_valid():
             updated = form.save(commit=False)
-            updated.win_ratio = _calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price)
+            updated.win_ratio = cash.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price)
             updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price)
             updated.updated_at = updated.focus_date 
             updated.save()
@@ -150,6 +150,7 @@ def focus_view(request, market, code):
         focus.comments = pilot_history.comments
 
         form = FocusStockForm(instance=focus, view_mode=True)
+        view_mode = func.get_cache(request.session, 'view', 'kline') 
 
         # 图表配置
         chart_init = {
@@ -157,34 +158,13 @@ def focus_view(request, market, code):
             'code': code,
             'market': market,
             'name': focus.name,
-            'cat': focus.cat
+            'cat': focus.cat,
+            'view': view_mode
         }
         
-        page_config = chart.get_page_config(request.session, site, focus.cat)
-        chart_init.update(page_config)
-
         return render(request, 'focus-view.html', {
             'form': form,
             'chart': json.dumps(chart_init),
             'edit_mode': False,
             'available': CashConfig.get_config().available
         })
-
-
-def _calc_win_ratio(buy_price, target_price, stop_price):
-    """计算成功几率（0-99整数）"""
-    try:
-        buy = float(buy_price or 0)
-        target = float(target_price or 0)
-        stop = float(stop_price or 0)
-    except (TypeError, ValueError):
-        return 0
-    if buy <= 0:
-        return 0
-    if stop >= buy:
-        return 99
-    if target <= buy:
-        return 0
-    prob = round((target - buy) / (target - stop) * 99)
-    return max(0, min(99, prob))
-

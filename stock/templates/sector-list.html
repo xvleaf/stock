@@ -1,0 +1,57 @@
+{% extends "base-view.html" %}
+{% block title %}板块清单{% endblock %}
+{% block content %}
+<!-- 表格悬浮固定表头 -->
+<div id="fixedHeader">
+    <div class="fixed-header-inner">
+        <div class="fixed-header-row" id="fixedHeaderRow">
+            <!-- JS动态克隆原生表头内容与样式 -->
+        </div>
+    </div>
+</div>
+
+<div class="table-responsive" id="tableWrap">
+    <table class="table table-stock table-hover" id="stockTable">
+        <!-- 表格固定表头 -->
+        <thead id="originalThead">
+            <tr>
+                <th style="width: 15%;">序号</th>
+                <th style="width: 30%;">代码</th>
+                <th style="width: 35%;">板块</th>
+                <th style="width: 20%;">标记</th>
+            </tr>
+        </thead>
+        <tbody id="stockBody">
+            {% for item in list %}
+            <tr>
+                <td style="width: 15%;">
+                    <span>{{ item.id }}</span>
+                </td>
+                <td style="width: 30%;">
+                    <a class="table-code-text" href="/sector/view/{{ item.market }}/{{ item.code }}">{{ item.code }}</a>
+                </td>
+                <td style="width: 35%;">
+                    <span>{{ item.name }}</span>
+                </td>
+                <td style="width: 20%;">
+                    <span>{{ item.mark }}</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% load static %}
+<script type="module">
+    import { baseInit} from "{% static 'base/js/base.js' %}";
+    import { tableHeaderInit } from "{% static 'stock/js/list.js' %}";
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        baseInit();
+        tableHeaderInit();
+    });
+</script>
+{% endblock %}

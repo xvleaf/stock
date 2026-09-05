@@ -1,24 +1,33 @@
 {# 底部导航栏 #}
-<div id="naviContainer" class="chart-navi-bar d-none">
-        
+<div id="naviContainer" class="chart-navi-bar metric-dark d-none">        
     <div class="chart-navi-left">
         <div class="chart-navi-group">
-            <div id="naviPrevItem" class="chart-navi-item metric-dark"><i class="fa-solid fa-circle-chevron-left"></i></div>
-            <div id="pilotPrevItem" class="chart-navi-item metric-dark d-none"><i class="fa-solid fa-circle-chevron-up"></i></i></div>
+            <div id="naviPrevItem" class="chart-navi-item">
+                <iconify-icon icon="tabler:circle-arrow-left"></iconify-icon>
+            </div>
+            <div id="pilotPrevItem" class="chart-navi-item d-none">
+                <iconify-icon icon="tabler:circle-chevron-up"></iconify-icon>
+            </div>
         </div>
     </div>
     <div class="chart-navi-center">
         <div class="chart-navi-group">
-            <div id="backList" class="chart-navi-item metric-dark d-none pointer">
-                <i class="fa-solid fa-bars"></i>
-            </div>
+            <div id="focusMark" class="chart-navi-item d-none pointer"></div>
+            <div id="majorMark" class="chart-navi-item d-none pointer"></div>
+            <div id="minorMark" class="chart-navi-item d-none pointer"></div>
+            <div id="hideMark" class="chart-navi-item d-none pointer"></div>
+            <div id="backList" class="chart-navi-item d-none pointer"></div>
         </div>
     </div>
 
     <div class="chart-navi-right">
         <div class="chart-navi-group">
-            <div id="pilotNextItem" class="chart-navi-item metric-dark d-none"><i class="fa-solid fa-circle-chevron-down"></i></div>
-            <div id="naviNextItem" class="chart-navi-item metric-dark"><i class="fa-solid fa-circle-chevron-right"></i></div>
+            <div id="pilotNextItem" class="chart-navi-item d-none">
+                <iconify-icon icon="tabler:circle-chevron-down"></iconify-icon>
+            </div>
+            <div id="naviNextItem" class="chart-navi-item">
+                <iconify-icon icon="tabler:circle-arrow-right"></iconify-icon>
+            </div>
         </div>
-    </div>
+    </div>    
 </div>

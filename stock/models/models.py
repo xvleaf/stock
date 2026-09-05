@@ -90,6 +90,21 @@ class CashConfig(models.Model):
         return f'资金配置(可用资金:{self.available})'
 
 
+# ===================== 板块列表 =====================
+class SectorList(models.Model):
+    code = models.CharField('代码', max_length=20, db_index=True, help_text='如 601398')
+    name = models.CharField('板块', max_length=50)
+    market = models.CharField('市场', max_length=10, default='L1')
+    cat = models.CharField('类别', max_length=10, default='SI')
+    mark = models.CharField('标记', max_length=50)
+
+    class Meta: 
+        # 自定义模型在数据库中的显示名称
+        db_table = 'models_secotr_list'
+        verbose_name = '板块列表'
+        verbose_name_plural = verbose_name
+
+
 # ===================== 股票列表 =====================
 class StockList(models.Model):
     code = models.CharField('代码', max_length=20, db_index=True, help_text='如 601398')
