@@ -419,3 +419,59 @@ navbar-expand-xxl	1400px
         margin-left: auto;
     }
 }
+
+/* sweetalert2 标题 */
+.sweet-title {
+    padding: 0;
+    margin-bottom: 0;
+    font-size: 1rem;
+}
+.sweet-popup {
+    border-radius: 12px; 
+    max-height: 350px;
+    padding: 0.75rem 0.5rem;
+}
+/* sweetalert2 反转顺序，两个按钮靠两边 */
+.sweet-popup .swal2-actions {
+    display: flex;
+    flex-direction: row-reverse;   /* 反转按钮顺序：确认在右，取消在左 */
+    justify-content: space-between;
+    width: 100%;
+    flex-wrap: nowrap;
+    padding: 0 20px;
+}
+/* 清除按钮默认边距，靠边 */
+.sweet-popup .swal2-actions button {
+    margin: 0;
+    flex: 0 1 auto; 
+}
+/* 取消按钮样式 */
+.sweet-popup .swal2-cancel {
+    background: none;
+    border: none;
+    color: #007bff;
+    text-decoration: underline;
+    font-weight: normal;
+    padding: 0 4px;
+    margin: 0;
+    box-shadow: none;
+    font-size: 1rem;
+    cursor: pointer;
+}
+.sweet-popup .swal2-cancel:hover {
+    color: #0056b3;
+    text-decoration: none;
+}
+/* 确认按钮保留原有按钮样式 */
+.sweet-popup .swal2-confirm {
+    margin: 0;
+    padding: 6px 12px;
+    font-size: 1rem;
+}
+.sweet-popup .swal2-html-container {
+    margin: 0;
+    padding: 0.5rem 0.75rem !important;
+}
+.sweet-popup .form-control {
+    margin-bottom: 6px;
+}

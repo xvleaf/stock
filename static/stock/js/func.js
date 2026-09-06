@@ -180,8 +180,9 @@ export async function loadChartPage(func, value) {
                             });
                         }
                     });
+
                     
-                    if (pageConfig.sit === '/focus/view') {
+                    if (pageConfig.site === '/focus/view') {
                         exitEventListen();
                     }
                 }
@@ -200,6 +201,33 @@ export function showChartError(text) {
         errText.textContent = text;
         errText.classList.remove('d-none');
     }
+}
+
+
+export function sweetMessage(title, message) {
+    Swal.fire({
+        title: title,
+        text: message,
+        icon: 'warning',
+        width: 420,
+        customClass: {
+            popup: 'sweet-popup', 
+            title: 'sweet-title'
+        },
+        showCancelButton: true,
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+        confirmButtonColor: '#0d6efd',
+        // cancelButtonColor: '#6c757d',
+        preConfirm: () => {
+            console.log(pageConfig);
+        }
+    }).then(result => {
+        if (result.isConfirmed) {
+            // 用户点击确认
+            Swal.fire('已删除', '记录已成功删除', 'success');
+        }
+    });
 }
 
 
@@ -227,15 +255,19 @@ export function hideChartPlaceholder() {
 export function initPageElements() {
     const nameItem = document.getElementById('nameItem');
     const codeItem = document.getElementById('codeItem');
-    const naviContainer = document.getElementById('naviContainer');
+    const nameAct = pageConfig.cat == 'stock' ? true : false;
+    const codeAct = pageConfig.cat == 'stock' || pageConfig.cat === 'SI' ? true : false;
 
     if (nameItem) {
         nameItem.textContent = pageConfig.name;
-        nameItem.onclick = viewModeChange;
+        if (nameAct) {
+            nameItem.onclick = viewModeChange;
+            nameItem.classList.add("pointer")
+        }
     }
     if (codeItem) {
         codeItem.textContent = pageConfig.code;
-        if (pageConfig.cat === "stock") {
+        if (codeAct) {
             codeItem.classList.add("pointer")
             codeItem.onclick = jumpToLink;
         }
@@ -247,6 +279,7 @@ export function initPageElements() {
     }
 
     if (pageConfig.navi.showNavi) {
+        const naviContainer = document.getElementById('naviContainer');
         naviContainer.classList.remove('d-none');
         const naviPrevItem = document.getElementById('naviPrevItem');
         const naviNextItem = document.getElementById('naviNextItem');
@@ -637,7 +670,23 @@ function jumpToLink() {
         : `/link/stock/list?code=${code}`;
     window.location.href = url;
     */
-   console.log(pageConfig.code);
+    // 一个漂亮的确认对话框
+    Swal.fire({
+    title: '确定要删除吗？',
+    text: '此操作不可撤销！',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#3085d6',
+    cancelButtonColor: '#d33',
+    confirmButtonText: '确认删除'
+    }).then((result) => {
+    if (result.isConfirmed) {
+        console.log(pageConfig.cat);
+        Swal.fire('已删除!', '文件已成功删除。', 'success');
+    }
+    });
+
+
 };
 
 function backToList() {
@@ -679,6 +728,9 @@ function markAction(func) {
 }
 
 function hideAction() {
+    sweetMessage('title', 'msg')
+
+    /**
     const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
     postRequest(url, {
         'func': 'hide'
@@ -688,7 +740,7 @@ function hideAction() {
                 naviSwitch('navi', 'next');
             }
         }
-    });
+    }); */
 }
 
 export function editAction(enable) {
@@ -727,34 +779,50 @@ export function editAction(enable) {
 
 
 function exitEventListen() {
-    const closeModal = document.getElementById('closeConfirmModal');
-    const modal = new bootstrap.Modal(closeModal);
-
     document.getElementById('exitBtn').addEventListener('click', function(e) {
         e.preventDefault();
 
-        // 获取今天的日期，格式 YYYY-MM-DD
-        const today = new Date();
-        const pad = (n) => String(n).padStart(2, '0');
-        const formatted = 
-            today.getFullYear() + '-' +
-            pad(today.getMonth() + 1) + '-' +
-            pad(today.getDate());
+        // 获取当前日期作为默认值（格式 YYYY-MM-DD）
+        const today = new Date().toISOString().slice(0, 10);
         
-        document.getElementById('closeDateInput').value = formatted;
-        modal.show();
-    });
+        Swal.fire({
+            title: '关闭股票',
+            width: 420,
+            customClass: {
+                popup: 'sweet-popup', 
+                title: 'sweet-title'
+            },
+            html: `
+                <div style="text-align: left;">
+                    <label for="swal-close-date" class="form-label fs-6" style="font-weight:200;">时间：</label>
+                    <input type="date" id="swal-close-date" class="form-control fs-6" value="${today}">
 
-    document.getElementById('confirmCloseBtn').addEventListener('click', function() {
-        const comments = document.getElementById('closeCommentInput').value.trim();
-        const closeDate = document.getElementById('closeDateInput').value; // "YYYY-MM-DD"
-        console.log(closeDate);
-        const data = {
-            reason: 'manual',
-            comments: comments,
-            close_date: closeDate 
-        };
-        exitAction(data);
+                    <label for="swal-close-comment" class="form-label fs-6" style="font-weight:200; margin-top:2px;">备注：</label>
+                    <textarea id="swal-close-comment" class="form-control fs-6" style="resize: none;" rows="2"></textarea>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '确认',
+            cancelButtonText: '取消',
+            confirmButtonColor: '#0d6efd',
+            // cancelButtonColor: '#6c757d',
+            preConfirm: () => {
+                const closeDate = document.getElementById('swal-close-date').value;
+                const comment = document.getElementById('swal-close-comment').value.trim();
+                
+                // 返回一个对象，在 then 中可接收
+                return { closeDate, comment };
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                const { closeDate, comment } = result.value;
+                exitAction({
+                    reason: 'manual',
+                    comments: comment,
+                    close_date: closeDate
+                });
+            }
+        });
     });
 }
 
