@@ -180,35 +180,10 @@ export async function loadChartPage(func, value) {
                             });
                         }
                     });
-
-                    document.getElementById('exitBtn').addEventListener('click', function(e) {
-                        e.preventDefault();
-
-                        // 获取今天的日期，格式 YYYY-MM-DD
-                        const today = new Date();
-                        const pad = (n) => String(n).padStart(2, '0');
-                        const formatted = 
-                            today.getFullYear() + '-' +
-                            pad(today.getMonth() + 1) + '-' +
-                            pad(today.getDate());
-                        
-                        document.getElementById('closeDateInput').value = formatted;
-
-                        const modal = new bootstrap.Modal(document.getElementById('closeConfirmModal'));
-                        modal.show();
-                    });
-
-                    document.getElementById('confirmCloseBtn').addEventListener('click', function() {
-                        const comments = document.getElementById('closeCommentInput').value.trim();
-                        const closeDate = document.getElementById('closeDateInput').value; // "YYYY-MM-DD"
-                        console.log(closeDate);
-                        const data = {
-                            reason: 'manual',
-                            comments: comments,
-                            close_date: closeDate 
-                        };
-                        exitAction(data);
-                    });
+                    
+                    if (pageConfig.sit === '/focus/view') {
+                        exitEventListen();
+                    }
                 }
             });
         }
@@ -704,7 +679,16 @@ function markAction(func) {
 }
 
 function hideAction() {
-    console.log('hide');
+    const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
+    postRequest(url, {
+        'func': 'hide'
+    }).then(res => {
+        if (res) {
+            if (res.status === 'success') {
+                naviSwitch('navi', 'next');
+            }
+        }
+    });
 }
 
 export function editAction(enable) {
@@ -741,11 +725,48 @@ export function editAction(enable) {
     cancelBtn?.addEventListener('click', () => window.location.reload());
 }
 
+
+function exitEventListen() {
+    const closeModal = document.getElementById('closeConfirmModal');
+    const modal = new bootstrap.Modal(closeModal);
+
+    document.getElementById('exitBtn').addEventListener('click', function(e) {
+        e.preventDefault();
+
+        // 获取今天的日期，格式 YYYY-MM-DD
+        const today = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const formatted = 
+            today.getFullYear() + '-' +
+            pad(today.getMonth() + 1) + '-' +
+            pad(today.getDate());
+        
+        document.getElementById('closeDateInput').value = formatted;
+        modal.show();
+    });
+
+    document.getElementById('confirmCloseBtn').addEventListener('click', function() {
+        const comments = document.getElementById('closeCommentInput').value.trim();
+        const closeDate = document.getElementById('closeDateInput').value; // "YYYY-MM-DD"
+        console.log(closeDate);
+        const data = {
+            reason: 'manual',
+            comments: comments,
+            close_date: closeDate 
+        };
+        exitAction(data);
+    });
+}
+
+
 function exitAction(data) {
-    const url = `/focus/close/${pageConfig.market}/${pageConfig.code}`
+    const url = `/focus/close/${pageConfig.market}/${pageConfig.code}`;
+    const modal = bootstrap.Modal.getInstance(document.getElementById('closeConfirmModal'));
     postRequest(url, data)
     .then(data => {
         if (data.status === 'success') {
+            document.getElementById('exitBtn').focus();
+            if (modal) modal.hide();
             window.location.href = '/focus/list';
         } else {
             showChartError('关闭失败：' + (data.message || '未知错误'));
@@ -754,10 +775,6 @@ function exitAction(data) {
     .catch(error => {
         showChartError('请求失败：' + error);
     });
-    
-    const modal = bootstrap.Modal.getInstance(document.getElementById('closeConfirmModal'));
-    // 自动关闭模态框
-    if (modal) modal.hide();
 };
 
 window.dealAction = function (marketCode) {

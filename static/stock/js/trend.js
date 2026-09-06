@@ -182,19 +182,29 @@ function renderTrendChart() {
             split: true,
             animation: false,
             useHTML: true,
+            backgroundColor: '#fff', // 设置整个 tooltip 背景色
+            borderRadius: 8,          // Highcharts 自带的圆角
+            style: {
+                fontSize: '13px'       // 全局字体大小
+            },
             formatter: function () {
                 const point = this.points[0];
-                const time = new Date(point.x);
+                const time = new Date(point.x);                
+                const day = String(time.getDate()).padStart(2, '0');      // 日，1-31，补零
+                const month = String(time.getMonth() + 1).padStart(2, '0'); // 月，1-12（因为 getMonth() 从 0 开始）
                 const hour = String(time.getHours()).padStart(2, '0');
                 const minute = String(time.getMinutes()).padStart(2, '0');
+                
                 return `
-                    <b>${hour}:${minute}</b>
-                    <table>
-                        <tr><td>成交价 ${point.y.toFixed(priceDecimal)}</td></tr>
-                        <tr><td>涨跌额 ${point.point.delta.toFixed(priceDecimal)}</td></tr>
-                        <tr><td>涨跌幅 ${point.point.percent.toFixed(2)}%</td></tr>
-                        <tr><td>成交量 ${this.points[1].y}</td></tr>
-                    </table>
+                    <div>
+                        <table>
+                            <tr><td colspan="2" style="padding:2px 5px"><span class="metric-dark" style="font-weight: bold;">${month}-${day} ${hour}:${minute}</span></td></tr>
+                            <tr><td style="padding:2px 5px">成交价</td><td style="padding:2px 5px">${point.y.toFixed(priceDecimal)}</td></tr>
+                            <tr><td style="padding:2px 5px">涨跌额</td><td style="padding:2px 5px">${point.point.delta.toFixed(priceDecimal)}</td></tr>
+                            <tr><td style="padding:2px 5px">涨跌幅</td><td style="padding:2px 5px">${point.point.percent.toFixed(2)}%</td></tr>
+                            <tr><td style="padding:2px 5px">成交量</td><td style="padding:2px 5px">${this.points[1].y}</td></tr>
+                        </table>
+                    </div>
                 `;
             }
         },

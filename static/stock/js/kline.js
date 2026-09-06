@@ -166,18 +166,21 @@ function renderklineData() {
                 const dateStr = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
                 return `
                     <div>
-                    <b>${dateStr}</b>
-                    <table>
-                        <tr><td>收盘 ${point.close.toFixed(priceDecimal)}</td>
-                            <td style="padding-left:10px">开盘 ${point.open.toFixed(priceDecimal)}</td>
-                        </tr>
-                        <tr><td>最高 ${point.high.toFixed(priceDecimal)}</td>
-                            <td style="padding-left:10px">最低 ${point.low.toFixed(priceDecimal)}</td>
-                        </tr>
-                        <tr><td>涨幅 ${klineData.ohlc[point.index][5]}%</td>
-                            <td style="padding-left:10px">成交 ${(klineData.volume[point.index][1] / 10000).toFixed(0)}万</td>
-                        </tr>
-                    </table>
+                        <b>${dateStr}</b>
+                        <table>
+                            <tr>
+                                <td>收盘 ${point.close.toFixed(priceDecimal)}</td>
+                                <td style="padding-left:10px">开盘 ${point.open.toFixed(priceDecimal)}</td>
+                            </tr>
+                            <tr>
+                                <td>最高 ${point.high.toFixed(priceDecimal)}</td>
+                                <td style="padding-left:10px">最低 ${point.low.toFixed(priceDecimal)}</td>
+                            </tr>
+                            <tr>
+                                <td>涨幅 ${klineData.ohlc[point.index][5]}%</td>
+                                <td style="padding-left:10px">成交 ${(klineData.volume[point.index][1] / 10000).toFixed(0)}万</td>
+                            </tr>
+                        </table>
                     </div>
                 `;
             }

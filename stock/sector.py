@@ -16,11 +16,11 @@ from . import func, chart
 @require_http_methods(["GET"])
 def sector_list(request):
     items = []
-    sector_qs = SectorList.objects.all()
+    sector_qs = SectorList.objects.exclude(hide='1')
     
     if not sector_qs:
         _update_sector_list()
-        sector_qs = SectorList.objects.all()
+        sector_qs = SectorList.objects.all().exclude(hide='1')
 
     for fs in sector_qs:
         items.append({
@@ -52,12 +52,21 @@ def sector_view(request, market, code):
                 mark = {'status': 'success', 'major': sector.mark}
             except SectorList.DoesNotExist:
                 mark = {'status': 'error', 'message': '代码不存在'}
-        else:
+        elif data.get('func') == 'minor':
             try:
                 sector = SectorList.objects.get(code=code)
                 sector.mark = '2' if sector.mark != '2' else ''
                 sector.save()
                 mark = {'status': 'success', 'minor': sector.mark}
+            except SectorList.DoesNotExist:
+                mark = {'status': 'error', 'message': '代码不存在'}
+        # elif data.get('func') == 'hide':
+        else:
+            try:
+                sector = SectorList.objects.get(code=code)
+                sector.hide = '1'
+                sector.save()
+                mark = {'status': 'success'}
             except SectorList.DoesNotExist:
                 mark = {'status': 'error', 'message': '代码不存在'}
             
@@ -67,7 +76,7 @@ def sector_view(request, market, code):
         if (site, code, market) != navi_data.get('site_code_market', None):
             navi_data = chart.set_navi_data(request.session, site, code, market, None, 'init')
         
-        view_mode = func.get_cache(request.session, 'view', 'kline') 
+        func.set_cache(request.session, 'view', 'kline') 
 
         sector = SectorList.objects.filter(code=code).first()
         # 图表配置
@@ -77,7 +86,7 @@ def sector_view(request, market, code):
             'market': market,
             'name': sector.name,
             'cat': sector.cat,
-            'view': view_mode
+            'view': 'kline'
         }
 
         return render(request, 'sector-view.html', {'chart': json.dumps(chart_init)})

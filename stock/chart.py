@@ -219,7 +219,7 @@ def get_mark_config(session, site, navi_data):
             'showMark': True,
             'showFocus': False,
             'showStatus': True,
-            'showHide': False,
+            'showHide': True,
             'focus': 0,
             'status': instance.mark
         }

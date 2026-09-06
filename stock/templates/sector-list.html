@@ -25,7 +25,7 @@
             {% for item in list %}
             <tr>
                 <td style="width: 15%;">
-                    <span>{{ item.id }}</span>
+                    <span>{{ forloop.counter }}</span>
                 </td>
                 <td style="width: 30%;">
                     <a class="table-code-text" href="/sector/view/{{ item.market }}/{{ item.code }}">{{ item.code }}</a>

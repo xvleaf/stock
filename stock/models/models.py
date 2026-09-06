@@ -96,14 +96,14 @@ class SectorList(models.Model):
     name = models.CharField('板块', max_length=50)
     market = models.CharField('市场', max_length=10, default='L1')
     cat = models.CharField('类别', max_length=10, default='SI')
-    mark = models.CharField('标记', max_length=50)
+    mark = models.CharField('标记', max_length=50, default='')
+    hide = models.CharField('隐藏', max_length=50, default='')
 
     class Meta: 
         # 自定义模型在数据库中的显示名称
         db_table = 'models_secotr_list'
         verbose_name = '板块列表'
         verbose_name_plural = verbose_name
-
 
 # ===================== 股票列表 =====================
 class StockList(models.Model):
@@ -160,7 +160,7 @@ class FocusStock(models.Model):
     close_reason = models.CharField('关闭原因', max_length=20, choices=CLOSE_REASON_CHOICES,
                                     blank=True, default='')
 
-    sort_order = models.IntegerField('排序', default=0, help_text='手动排序，越小越靠前')
+    sort_order = models.IntegerField('排序', default=1)
 
     comments = models.TextField('备注', blank=True, default='')
     created_at = models.DateField('创建日期', auto_now_add=True)
