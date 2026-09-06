@@ -180,6 +180,35 @@ export async function loadChartPage(func, value) {
                             });
                         }
                     });
+
+                    document.getElementById('exitBtn').addEventListener('click', function(e) {
+                        e.preventDefault();
+
+                        // 获取今天的日期，格式 YYYY-MM-DD
+                        const today = new Date();
+                        const pad = (n) => String(n).padStart(2, '0');
+                        const formatted = 
+                            today.getFullYear() + '-' +
+                            pad(today.getMonth() + 1) + '-' +
+                            pad(today.getDate());
+                        
+                        document.getElementById('closeDateInput').value = formatted;
+
+                        const modal = new bootstrap.Modal(document.getElementById('closeConfirmModal'));
+                        modal.show();
+                    });
+
+                    document.getElementById('confirmCloseBtn').addEventListener('click', function() {
+                        const comments = document.getElementById('closeCommentInput').value.trim();
+                        const closeDate = document.getElementById('closeDateInput').value; // "YYYY-MM-DD"
+                        console.log(closeDate);
+                        const data = {
+                            reason: 'manual',
+                            comments: comments,
+                            close_date: closeDate 
+                        };
+                        exitAction(data);
+                    });
                 }
             });
         }
@@ -657,8 +686,8 @@ function markAction(func) {
         'func': func
     }).then(res => {
         if (res) {
-            if (res.msg !== 'done') {
-                console.log(res.msg);
+            if (res.status !== 'success') {
+                console.log(res.message);
                 return;
             }
 
@@ -672,11 +701,6 @@ function markAction(func) {
             minorMark.innerHTML = `<iconify-icon icon="${minorIcon}" style="width:1em; height:1em;"></iconify-icon>`;
         }
     });
-
-
-
-
-
 }
 
 function hideAction() {
@@ -717,19 +741,23 @@ export function editAction(enable) {
     cancelBtn?.addEventListener('click', () => window.location.reload());
 }
 
-window.exitAction = function (marketCode) {
-    const msg = pageConfig.site === '/focus/view' ? '确定要结束关注吗？' : '确定要取消添加吗？';
-    layer.confirm(msg, {
-        title: '确认', btnAlign: 'c', btn: ['确定', '取消'], shade: 0.5
-    }, function () {
-        if (pageConfig.site === '/focus/view') {
-            postRequest(`/focus/edit/${marketCode}`, { func: 'end' }).then(res => {
-                if (res.msg === 'done') window.location.href = '/focus/list';
-            });
-        } else {
+function exitAction(data) {
+    const url = `/focus/close/${pageConfig.market}/${pageConfig.code}`
+    postRequest(url, data)
+    .then(data => {
+        if (data.status === 'success') {
             window.location.href = '/focus/list';
+        } else {
+            showChartError('关闭失败：' + (data.message || '未知错误'));
         }
+    })
+    .catch(error => {
+        showChartError('请求失败：' + error);
     });
+    
+    const modal = bootstrap.Modal.getInstance(document.getElementById('closeConfirmModal'));
+    // 自动关闭模态框
+    if (modal) modal.hide();
 };
 
 window.dealAction = function (marketCode) {

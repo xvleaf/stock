@@ -31,7 +31,7 @@ class CashHistory(models.Model):
     remark = models.CharField('备注', max_length=200, blank=True, default='')
     order = models.ForeignKey('TransOrder', on_delete=models.SET_NULL, null=True, blank=True,
                               related_name='cash_histories', verbose_name='关联交易')
-    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    created_at = models.DateField('创建日期', auto_now_add=True)
 
     class Meta:
         db_table = 'models_cash_history'
@@ -73,7 +73,7 @@ class CashConfig(models.Model):
     commission_min = models.DecimalField('最低佣金', max_digits=8, decimal_places=2, default=Decimal('5'))
     stamp_buy_ratio = models.DecimalField('印花税率(买入)', max_digits=8, decimal_places=5, default=Decimal('0.0005'))
     stamp_sell_ratio = models.DecimalField('印花税率(卖出)', max_digits=8, decimal_places=5, default=Decimal('0.0005'))
-    updated_at = models.DateTimeField('更新时间', auto_now=True)
+    updated_at = models.DateField('更新日期', auto_now=True)
 
     class Meta:        
         # 自定义模型在数据库中的显示名称
@@ -156,15 +156,15 @@ class FocusStock(models.Model):
 
     status = models.CharField('状态', max_length=10, choices=STATUS_CHOICES,
                               default=STATUS_WATCHING, db_index=True)
-    close_date = models.DateTimeField('关闭时间', null=True, blank=True)
+    close_date = models.DateField('关闭日期', null=True, blank=True)
     close_reason = models.CharField('关闭原因', max_length=20, choices=CLOSE_REASON_CHOICES,
                                     blank=True, default='')
 
     sort_order = models.IntegerField('排序', default=0, help_text='手动排序，越小越靠前')
 
     comments = models.TextField('备注', blank=True, default='')
-    created_at = models.DateTimeField('创建时间', default=timezone.now)
-    updated_at = models.DateTimeField('更新时间', default=timezone.now)
+    created_at = models.DateField('创建日期', auto_now_add=True)
+    updated_at = models.DateField('更新日期', auto_now=True)
 
     class Meta: 
         # 自定义模型在数据库中的显示名称
@@ -197,7 +197,7 @@ class FocusStock(models.Model):
         FocusHistory.objects.create(
             focus=self, 
             action=action,
-            edit_date=self.focus_date,
+            edit_date=self.updated_at,
             plan_price=self.plan_price,
             plan_qty=self.plan_qty,
             target_price=self.target_price,
@@ -229,7 +229,7 @@ class FocusHistory(models.Model):
     focus = models.ForeignKey(FocusStock, on_delete=models.CASCADE,
                               related_name='histories', verbose_name='关联关注')
     action = models.CharField('操作', max_length=10, choices=ACTION_CHOICES, default=ACTION_EDIT)
-    edit_date = models.DateTimeField('操作时间', default=timezone.now)
+    edit_date = models.DateField('操作日期', default=timezone.now)
 
     intent = models.CharField('交易方向', max_length=1, choices=INTENT_CHOICES, default=INTENT_BUY)
     plan_price = models.DecimalField('计划填报', max_digits=10, decimal_places=3, default=0)
@@ -270,8 +270,8 @@ class TransOrder(models.Model):
                                        null=True, blank=True, default=0)
     stop_price = models.DecimalField('止损价格', max_digits=10, decimal_places=3,
                                      null=True, blank=True, default=0)
-    open_date = models.DateTimeField('建仓时间', null=True, blank=True)
-    close_date = models.DateTimeField('平仓时间', null=True, blank=True)
+    open_date = models.DateField('建仓日期', null=True, blank=True)
+    close_date = models.DateField('平仓日期', null=True, blank=True)
 
     buy_qty = models.IntegerField('累计买入数量', default=0)
     sell_qty = models.IntegerField('累计卖出数量', default=0)
@@ -282,8 +282,8 @@ class TransOrder(models.Model):
     total_fee = models.DecimalField('费用总计', max_digits=10, decimal_places=2, default=0)
     profit = models.DecimalField('盈利金额', max_digits=14, decimal_places=2, default=0)
     comments = models.TextField('备注', blank=True, default='')
-    created_at = models.DateTimeField('创建时间', auto_now_add=True)
-    updated_at = models.DateTimeField('更新时间', auto_now=True)
+    created_at = models.DateField('创建日期', auto_now_add=True)
+    updated_at = models.DateField('更新日期', auto_now=True)
 
     _sold_cost = Decimal('0')
 
@@ -410,7 +410,7 @@ class TransDeal(models.Model):
     amount = models.DecimalField('成交金额', max_digits=14, decimal_places=2, default=0)
     fee = models.DecimalField('成交费用', max_digits=10, decimal_places=2, default=0)
     comments = models.TextField('备注', blank=True, default='')
-    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    created_at = models.DateField('创建日期', auto_now_add=True)
 
     class Meta:
         # 自定义模型在数据库中的显示名称
@@ -489,8 +489,8 @@ class TransReview(models.Model):
                               related_name='reviews', verbose_name='关联关注')
     rating = models.IntegerField('评分', null=True, blank=True)
     comments = models.TextField('备注', blank=True, default='')
-    created_at = models.DateTimeField('创建时间', auto_now_add=True)
-    updated_at = models.DateTimeField('更新时间', auto_now=True)
+    created_at = models.DateField('创建日期', auto_now_add=True)
+    updated_at = models.DateField('更新日期', auto_now=True)
 
     class Meta:
         # 自定义模型在数据库中的显示名称

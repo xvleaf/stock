@@ -119,6 +119,38 @@
         </div>
     </form>
 </div>
+
+<!-- 关闭确认模态框 -->
+<div class="modal fade" id="closeConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header position-relative">
+                <h5 class="modal-title flex-grow-1 text-center fs-6">关闭股票</h5>
+                <button type="button" class="btn-close position-absolute top-0 end-0 m-3" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="closeDateInput" class="form-label">时间：</label>
+                    <input type="date" class="form-control" id="closeDateInput">
+                </div>
+                <form id="closeForm">
+                    <div class="mb-3">
+                        <label for="closeCommentInput" class="form-label">备注：</label>
+                        <textarea class="form-control" style="resize: none;" rows="3" id="closeCommentInput" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+
+            <div class="modal-footer d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-secondary me-2" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmCloseBtn">确认关闭</button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}

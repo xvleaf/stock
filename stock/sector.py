@@ -49,17 +49,17 @@ def sector_view(request, market, code):
                 sector = SectorList.objects.get(code=code)
                 sector.mark = '1' if sector.mark != '1' else ''
                 sector.save()
-                mark = {'msg': 'done', 'major': sector.mark}
+                mark = {'status': 'success', 'major': sector.mark}
             except SectorList.DoesNotExist:
-                mark = {'msg': '代码不存在'}
+                mark = {'status': 'error', 'message': '代码不存在'}
         else:
             try:
                 sector = SectorList.objects.get(code=code)
                 sector.mark = '2' if sector.mark != '2' else ''
                 sector.save()
-                mark = {'msg': 'done', 'minor': sector.mark}
+                mark = {'status': 'success', 'minor': sector.mark}
             except SectorList.DoesNotExist:
-                mark = {'msg': '代码不存在'}
+                mark = {'status': 'error', 'message': '代码不存在'}
             
         return JsonResponse(mark)
     else:

@@ -20,14 +20,14 @@ def focus_list(request):
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError:
-            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+            return JsonResponse({'error': '无效的JSON'}, status=400)
 
         if data.get('action') == 'sort':
             ordered_codes = data.get('codes', [])
             for i, c in enumerate(ordered_codes):
                 # 排序从 1 开始
                 FocusStock.objects.filter(code=c[0], market=c[1]).update(sort_order=i+1)
-            return JsonResponse({'msg': 'done'})
+            return JsonResponse({'status': 'success'})
 
         result = []
         focus_qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING)
@@ -162,6 +162,36 @@ def focus_view(request, market, code):
             'edit_mode': False,
             'available': CashConfig.get_config().available,
         })
+
+
+@require_http_methods(["POST"])
+def focus_close(request, market, code):
+    """
+    关闭关注股票（标记为已关闭）
+    """
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': '无效的JSON'}, status=400)
+    try:
+        focus = get_object_or_404(FocusStock, code=code, market=market, status=FocusStock.STATUS_WATCHING)
+        
+        close_date_str = data.get('close_date')
+        if close_date_str:
+            focus.close_date = datetime.datetime.strptime(close_date_str, "%Y-%m-%d").date()
+        else:
+            focus.close_date = timezone.now().date()
+
+        focus.status = FocusStock.STATUS_CLOSED
+        focus.close_reason = data.get('reason', FocusStock.CLOSE_REASON_MANUAL)
+        focus.comments = data.get('comments', None)
+        focus.save()
+        focus.save_history(action='close')
+        func.delete_cache(request.session, '/focus/view-navi-data')
+        print(focus.close_date)
+        return JsonResponse({'status': 'success', 'message': '已关闭'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message':  str(e)})
 
 
 def get_focus_data_dict(focus, history=None):
