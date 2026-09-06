@@ -1,10 +1,9 @@
 import { postRequest, Highcharts, pageConfig, initPageElements, priceDecimal, setPriceDecimal, hideChartPlaceholder, showChartError } from './func.js';
 
-// ========== 分时图全局状态变量 ==========
+
 export let trendChart = null;
 let trendTimer = null;
-let trendInterval = 20000;
-let trendIndex = 0;
+let trendInterval = 30000;
 let ohlcData = [];
 let volumeData = [];
 let ohlcNewData = [];
@@ -14,7 +13,7 @@ let tickItv = 0;
 let tickMax = 0;
 let tickMin = 0;
 
-// ==================== 初始化入口 ====================
+
 export async function initTrendChart() {
     const hasData = await loadTrendData('0');
     if (hasData) {
@@ -46,7 +45,7 @@ export async function initTrendChart() {
     window.dispatchEvent(event);
 }
 
-// ---- 销毁 trendChart 实例 ----
+
 export function destroyTrendChart() {
     if (trendChart) {
         trendChart.destroy();
@@ -272,7 +271,7 @@ export function renderTrendParamBar() {
     dealBtn.classList.toggle('d-none', !pageConfig.trend.deal);
     divdBtn.classList.toggle('d-none', !pageConfig.trend.divd);
 
-    initPageElements();   
+    initPageElements();
     
     // 显示参数栏
     paramBar.classList.remove('d-none');

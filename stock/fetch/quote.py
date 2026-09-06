@@ -1,8 +1,10 @@
+import os
 from . import ashare
 
 
-def get_last_price(tscode, deci=2):
-    
+QUOTE_REQUEST_INTERVAL = int(os.environ.get('QUOTE_REQUEST_INTERVAL', 20000))
+
+def get_last_price(tscode, deci=2):    
     """
     获取指定股票当前最新价格及基于前一交易日收盘价的涨跌幅（百分比）
     :param tscode: tscode: str 000333.SZ

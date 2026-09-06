@@ -9,7 +9,7 @@ from django.views.decorators.http import require_http_methods
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 from .fetch import tushare, kline, trend, quote
-from . import func
+from . import func, focus
 from .models.models import SectorList, StockList, FocusStock, FocusHistory, TransOrder, TransDeal, TransReview
 from .forms.forms import FocusStockForm, TransDealForm, CashConfigForm, ReviewForm, CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES
 
@@ -127,6 +127,25 @@ def chart_view_api(request):
                     history_id = pilot_list[pilot_idx][0] 
             detail = _get_stock_detail(param_site, code, market, history_id)
             if detail:
+                view_mode = func.get_cache(request.session, 'view', 'kline')
+                context = {
+                    'site': param_site,
+                    'code': code,
+                    'name': detail.get('name', ''),
+                    'market': market,
+                    'cat': detail.get('cat', 'stock'),
+                    'view': view_mode
+                }
+                # 获取页面配置（导航、标记等）
+                page_config = get_page_config(request.session, param_site, context['cat'])
+                context.update(page_config)
+                # 渲染对应的模板
+                html_template = 'chart-kline.html' if view_mode == 'kline' else 'chart-trend.html'
+                html_content = render(request, html_template, {}).content.decode('utf-8')
+                # 将 html 和 chart 配置附加到 detail
+                detail['html'] = html_content
+                detail['chart'] = context
+                # -----------------------------------------------------
                 return JsonResponse(detail)
             else:
                 return JsonResponse({'error': '股票不存在'}, status=404)
@@ -154,7 +173,7 @@ def chart_view_api(request):
 
 
 def get_page_config(session, site, cat):
-    deci = 3 if (cat == 'fund' or cat == 'bond') else 2
+    deci = 3 if cat in ('fund', 'bond') else 2
         
     trend_params_map = {
         '/focus/view': {'plus': False, 'exit': True, 'edit': True, 'deal': True, 'divd': False},
@@ -373,53 +392,14 @@ def get_cat_from_code(code, market):
 
 def _get_stock_detail(site, code, market, history_id=None):
     if site in ['/focus/view', '/review/focus/view']:
+        focus_inst = FocusStock.objects.filter(code=code, market=market).first()
+        if not focus_inst:
+            return {}
+        history = None
         if history_id:
-            history = FocusHistory.objects.filter(id=history_id).first()
-            if not history:
-                return {}
-            focus = history.focus
-            data = {
-                'code': focus.code,
-                'market': focus.market,
-                'name': focus.name,
-                'cat': focus.cat,
-                'focus_date': history.edit_date.strftime('%Y-%m-%d'),
-                'plan_price': float(history.plan_price) if history.plan_price else 0,
-                'plan_qty': history.plan_qty,
-                'target_price': float(history.target_price) if history.target_price else 0,
-                'stop_price': float(history.stop_price) if history.stop_price else 0,
-                'allowed_qty': focus.allowed_qty,
-                'win_ratio': float(history.win_ratio) if history.win_ratio else 0,
-                'comments': history.comments,
-                'intent': history.intent,
-                'market_display': dict(MARKET_CHOICES).get(focus.market, focus.market),
-                'cat_display': dict(CAT_CHOICES).get(focus.cat, focus.cat),
-                'intent_display': dict(INTENT_CHOICES).get(history.intent, history.intent),
-            }
-            return data
-        else:
-            stock = FocusStock.objects.filter(code=code, market=market).first()
-            if not stock:
-                return {}
-            data = {
-                'code': stock.code,
-                'market': stock.market,
-                'name': stock.name,
-                'cat': stock.cat,
-                'focus_date': stock.focus_date.strftime('%Y-%m-%d'),
-                'plan_price': float(stock.plan_price) if stock.plan_price else 0,
-                'plan_qty': stock.plan_qty,
-                'target_price': float(stock.target_price) if stock.target_price else 0,
-                'stop_price': float(stock.stop_price) if stock.stop_price else 0,
-                'allowed_qty': stock.allowed_qty,
-                'win_ratio': float(stock.win_ratio) if stock.win_ratio else 0,
-                'comments': stock.comments,
-                'intent': stock.intent,
-                'market_display': dict(MARKET_CHOICES).get(stock.market, stock.market),
-                'cat_display': dict(CAT_CHOICES).get(stock.cat, stock.cat),
-                'intent_display': dict(INTENT_CHOICES).get(stock.intent, stock.intent),
-            }
-            return data
+            history = focus_inst.histories.filter(id=history_id).first()
+        return focus.get_focus_data_dict(focus_inst, history)   # 直接调用统一函数
+
     elif site == '/sector/view':
         sector = SectorList.objects.filter(code=code).first()
         if not sector:

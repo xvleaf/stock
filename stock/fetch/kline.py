@@ -47,7 +47,7 @@ def kline_data_for_chart(session, site, cat, market, code):
     right = kline_params['right']
     k = int(kline_params['k'])
     d = int(kline_params['d'])
-    deci = 3 if (cat == 'fund' or cat == 'bond') else 2
+    deci = 3 if cat in ('fund', 'bond') else 2
 
     if cat == 'index':
         right = None

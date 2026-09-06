@@ -5,7 +5,6 @@ import pandas as pd
 from . import ashare
 from stock import func
 
-QUOTE_REQUEST_INTERVAL = int(os.environ.get('QUOTE_REQUEST_INTERVAL', 20000))   # 09:30
 AM_START = int(os.environ.get('STOCK_TRADE_AM_START', 34200))   # 09:30
 AM_END   = int(os.environ.get('STOCK_TRADE_AM_END', 41400))     # 11:30
 PM_START = int(os.environ.get('STOCK_TRADE_PM_START', 46800))   # 13:00

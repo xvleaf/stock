@@ -2,12 +2,11 @@ import { trendChart, initTrendChart, destroyTrendChart, clearTrendTimer } from '
 import { klineChart, initKlineChart, destroyKlineChart, refreshKlineDensity } from './kline.js';
 import { changeFreq as klineChangeFreq, toggleRight as klineToggleRight } from './kline.js';
 
-let isFullscreen = false;   // 记录当前是否处于伪全屏状态
-
 export const Highcharts = window.Highcharts;
 export const chartPageContainer = document.getElementById('chartPageContainer');
 export let pageConfig = {};
 export let priceDecimal = 2;
+let isFullscreen = false;   // 记录当前是否处于伪全屏状态
 
 
 export function getCsrfToken() {
@@ -258,7 +257,7 @@ export function initPageElements() {
             initNavItemState('pilotPrev', pilotPrevItem);
             initNavItemState('pilotNext', pilotNextItem);
         }
-        console.log(pageConfig);
+
         if (pageConfig.mark.showMark) {
             const focusMark = document.getElementById('focusMark');
             const majorMark = document.getElementById('majorMark');
@@ -408,6 +407,19 @@ function bindGlobalKeyboard() {
                 toggleFullScreen();
                 e.preventDefault();
                 break;
+            case '1':
+                if (pageConfig.mark && pageConfig.mark.showMark) {
+                    markAction('major');
+                    e.preventDefault();
+                }
+                break;
+            case '2':
+                if (pageConfig.mark && pageConfig.mark.showMark) {
+                    markAction('minor');
+                    e.preventDefault();
+                }
+                break;
+
             default:
                 break;
         }
@@ -493,8 +505,41 @@ function naviSwitch(type, action) {
             // 更新表单和标题（传入完整数据）
             updateFormData(res);
 
-            // 重新加载图表（只更新图表容器）
-            loadChartPage('view', pageConfig.view);
+            // 如果响应包含 html，直接渲染
+            if (res.html) {
+                // 销毁旧图表和定时器
+                destroyChart();
+                clearTrendTimer();
+
+                // 替换图表内容
+                const container = document.getElementById('chartPageContainer');
+                container.innerHTML = res.html;
+                container.classList.remove('d-none');
+
+                // 更新配置（合并新的 chart 配置）
+                const newConfig = res.chart;
+                if (pageConfig.name && !newConfig.name) newConfig.name = pageConfig.name;
+                if (pageConfig.cat && !newConfig.cat) newConfig.cat = pageConfig.cat;
+                setPageConfig(newConfig);
+
+                // 应用全屏状态
+                applyFullscreenState();
+
+                // 等待下一帧初始化图表
+                requestAnimationFrame(() => {
+                    const chartPage = document.getElementById('chartPage');
+                    if (chartPage) void chartPage.offsetHeight;
+
+                    if (pageConfig.view === 'kline') {
+                        initKlineChart();
+                    } else {
+                        initTrendChart();
+                    }
+                    // 重新初始化页面元素（导航按钮等）
+                    initPageElements();
+                });
+                return;
+            }
         }
     });
 }

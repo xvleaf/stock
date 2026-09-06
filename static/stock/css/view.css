@@ -197,12 +197,12 @@
     line-height: 1;
     box-sizing: border-box;
     padding: 0 2px;
-    font-size: 14px;
+    font-size: 15px;
 }
 .chart-param .param-input {
     outline: none;
-    text-align: center;
     cursor: pointer;
+    font-size: 14px;
 }
 .chart-stock-name {
     position: absolute;

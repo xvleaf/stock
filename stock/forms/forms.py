@@ -100,51 +100,66 @@ class FocusStockForm(forms.ModelForm):
         instance = kwargs.get('instance')
         super().__init__(*args, **kwargs)
 
+        if instance:
+            # 根据股票类型设置价格字段精度
+            step = '0.001' if instance.cat in ('fund', 'bond') else '0.01'
+            for field_name in ('plan_price', 'target_price', 'stop_price'):
+                if field_name in self.fields:
+                    self.fields[field_name].widget.attrs['step'] = step
 
-        # 设置小数位数
-        cat = instance.cat if instance else 'stock'  # 默认股票
-        deci = 2 if cat == 'stock' else 3
-        step = '0.01' if cat == 'stock' else '0.001'
-        for field_name in ['plan_price', 'target_price', 'stop_price']:
-            if instance and field_name in self.fields:
-                value = getattr(instance, field_name)
-                if value is not None:
-                    # 四舍五入到指定位数，并格式化为字符串（保留指定位数的小数）
-                    quantized = value.quantize(Decimal('0.' + '0' * deci), rounding=ROUND_HALF_UP)
-                    self.initial[field_name] = quantized
+        # 处理编辑（非只读）时的初始值
+        if instance and not view_mode:
+            self.fields['cat_choice'].initial = instance.cat
+            self.fields['market_choice'].initial = instance.market
+            self.fields['intent_choice'].initial = instance.intent
 
+        # 处理只读模式（详情页）
         if view_mode:
-            # 获取显示名称
-            cat_display = dict(CAT_CHOICES).get(instance.cat, instance.cat) if instance else ''
-            market_display = dict(MARKET_CHOICES).get(instance.market, instance.market) if instance else ''
-            intent_display = dict(INTENT_CHOICES).get(instance.intent, instance.intent) if instance else ''
+            self._make_readonly()
 
-            # 只读模式（详情页）：将 cat_choice 和 market_choice 改为只读文本输入框
-            self.fields['cat_choice'] = forms.CharField(
-                label='股票类型',
-                widget=forms.TextInput(attrs={'class': 'form-control', 'readonly': 'readonly'}),
-                required=False,
-                initial=cat_display
-            )
-            self.fields['market_choice'] = forms.CharField(
-                label='股票市场',
-                widget=forms.TextInput(attrs={'class': 'form-control', 'readonly': 'readonly'}),
-                required=False,
-                initial=market_display
-            )
-            self.fields['intent_choice'] = forms.CharField(
-                label='交易方向',
-                widget=forms.TextInput(attrs={'class': 'form-control', 'readonly': 'readonly'}),
-                required=False,
-                initial=intent_display
-            )
-        else:
-            # 添加页：保持下拉菜单
-            # 如果有 instance（编辑时），设置初始值
+    def _make_readonly(self):
+        """将表单中所有字段设为只读（适用于详情页）"""
+        # 处理原生 Model 字段（来自 Meta.fields）
+        for field_name in self.Meta.fields:
+            widget = self.fields[field_name].widget
+            # 若 widget 是 TextInput/NumberInput/Textarea 等，直接加 readonly
+            if hasattr(widget, 'attrs'):
+                widget.attrs['readonly'] = 'readonly'
+            # 若 widget 是 Select 等，替换为只读文本框（显示显示值）
+            elif isinstance(widget, (forms.Select, forms.SelectMultiple)):
+                # 获取当前字段的显示值（需实例存在）
+                instance = getattr(self, 'instance', None)
+                if instance:
+                    display_val = getattr(instance, 'get_{}_display'.format(field_name), lambda: None)()
+                    if display_val is None:  # fallback
+                        display_val = getattr(instance, field_name, '')
+                else:
+                    display_val = ''
+                self.fields[field_name] = forms.CharField(
+                    label=self.fields[field_name].label,
+                    widget=forms.TextInput(attrs={'class': 'form-control', 'readonly': 'readonly'}),
+                    required=False,
+                    initial=display_val,
+                )
+
+        # 处理额外的三个 ChoiceField（cat_choice, market_choice, intent_choice）
+        choice_field_names = ['cat_choice', 'market_choice', 'intent_choice']
+        for name in choice_field_names:
+            # 获取当前实例的显示值
+            instance = getattr(self, 'instance', None)
             if instance:
-                self.fields['cat_choice'].initial = instance.cat
-                self.fields['market_choice'].initial = instance.market
-                self.fields['intent_choice'].initial = instance.intent
+                # 假设字段名与模型字段对应（cat→cat_choice）
+                model_field = name.replace('_choice', '')
+                choices = getattr(self.fields[name], 'choices', [])
+                display_val = dict(choices).get(getattr(instance, model_field, ''), '')
+            else:
+                display_val = ''
+            self.fields[name] = forms.CharField(
+                label=self.fields[name].label,
+                widget=forms.TextInput(attrs={'class': 'form-control', 'readonly': 'readonly'}),
+                required=False,
+                initial=display_val,
+            )
 
 
 class TransDealForm(forms.ModelForm):

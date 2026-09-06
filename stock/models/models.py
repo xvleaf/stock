@@ -92,7 +92,7 @@ class CashConfig(models.Model):
 
 # ===================== 板块列表 =====================
 class SectorList(models.Model):
-    code = models.CharField('代码', max_length=20, db_index=True, help_text='如 601398')
+    code = models.CharField('代码', max_length=20, db_index=True)
     name = models.CharField('板块', max_length=50)
     market = models.CharField('市场', max_length=10, default='L1')
     cat = models.CharField('类别', max_length=10, default='SI')
@@ -107,7 +107,7 @@ class SectorList(models.Model):
 
 # ===================== 股票列表 =====================
 class StockList(models.Model):
-    code = models.CharField('代码', max_length=20, db_index=True, help_text='如 601398')
+    code = models.CharField('代码', max_length=20, db_index=True)
     name = models.CharField('名称', max_length=50)
     market = models.CharField('市场', max_length=10, default='SH')
     cat = models.CharField('类别', max_length=10, default='stock')
@@ -140,7 +140,7 @@ class FocusStock(models.Model):
         (INTENT_BUY, '买入'),
         (INTENT_SELL, '卖出'),
     ]
-    code = models.CharField('股票代码', max_length=20, db_index=True, help_text='如 601398')
+    code = models.CharField('股票代码', max_length=20, db_index=True)
     name = models.CharField('股票名称', max_length=50)
     market = models.CharField('股票市场', max_length=10, default='SH')
     cat = models.CharField('股票类型', max_length=10, default='stock')

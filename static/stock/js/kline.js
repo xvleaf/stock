@@ -255,11 +255,11 @@ function renderKlineParamBar() {
         if (!el) return;
         
         const isActive = currentFreq === value;
-        const colorClass = isActive ? 'metric-dark' : 'metric-grey';
+        const colorClass = isActive ? '' : 'class="metric-grey"';
         el.addEventListener('click', (event) => changeFreq(value, event));
         el.classList.toggle('pointer', !isActive);
         el.classList.toggle('is-disabled', isActive);
-        el.innerHTML = `<iconify-icon icon="${icon}" class="${colorClass}" style="width:1em; height:1em;"></iconify-icon>`;
+        el.innerHTML = `<iconify-icon icon="${icon}" ${colorClass} style="width:1em; height:1em;"></iconify-icon>`;
     });
 
     // 初始化页面元素（按钮、导航等）

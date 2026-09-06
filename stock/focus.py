@@ -8,7 +8,7 @@ from django.views.decorators.http import require_http_methods
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 from .fetch import quote, tushare, kline, trend
-from .forms.forms import FocusStockForm
+from .forms.forms import CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES, FocusStockForm
 from . import cash, func, chart
 from .models.models import CashConfig, StockList, FocusStock
 from django.db import connection, transaction
@@ -32,7 +32,7 @@ def focus_list(request):
         result = []
         focus_qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING)
         for fs in focus_qs:
-            deci = 3 if (fs.cat == 'fund' or fs.cat == 'bond') else 2
+            deci = 3 if fs.cat in ('fund', 'bond') else 2
             close, change = quote.get_last_price(fs.tscode, deci)  
             result.append({
                 'code': fs.code,
@@ -48,7 +48,7 @@ def focus_list(request):
     # models 自带 sort_order 排序，因此不需要进行排序
     focus_qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING)
     for fs in focus_qs:
-        deci = 3 if (fs.cat == 'fund' or fs.cat == 'bond') else 2
+        deci = 3 if fs.cat in ('fund', 'bond') else 2
         items.append({
             'code': fs.code,
             'market': fs.market,
@@ -61,7 +61,7 @@ def focus_list(request):
         })
     return render(request, 'focus-list.html', {
         'list': items,
-        'interval': trend.QUOTE_REQUEST_INTERVAL
+        'interval': quote.QUOTE_REQUEST_INTERVAL
     })
 
 
@@ -117,9 +117,11 @@ def focus_plus(request):
 
 def focus_view(request, market, code):
     site = '/focus/view'
+    focus = get_object_or_404(FocusStock, code=code, market=market, status=FocusStock.STATUS_WATCHING)
+
     if request.method == 'POST':
-        focus = get_object_or_404(FocusStock, code=code, market=market, status=FocusStock.STATUS_WATCHING)
         form = FocusStockForm(request.POST, instance=focus, view_mode=True)
+        
         if form.is_valid():
             updated = form.save(commit=False)
             updated.win_ratio = cash.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price)
@@ -135,24 +137,16 @@ def focus_view(request, market, code):
         if (site, code, market) != navi_data.get('site_code_market', None):
             navi_data = chart.set_navi_data(request.session, site, code, market, 'pilot', 'init')
 
-        focus = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).first()
         histories = focus.histories.all().order_by('edit_date') if focus else None
         pilot_idx = navi_data.get('navi_params', {}).get('pilotIndex', 0)
-        pilot_history = histories[pilot_idx]
+        pilot_history = histories[pilot_idx] if histories and pilot_idx < len(histories) else None
 
-        focus.focus_date = pilot_history.edit_date
-        focus.intent = pilot_history.intent
-        focus.plan_price = pilot_history.plan_price
-        focus.plan_qty = pilot_history.plan_qty
-        focus.target_price = pilot_history.target_price
-        focus.stop_price = pilot_history.stop_price
-        focus.win_ratio = pilot_history.win_ratio
-        focus.comments = pilot_history.comments
+        initial_data = get_focus_data_dict(focus, pilot_history)
 
-        form = FocusStockForm(instance=focus, view_mode=True)
-        view_mode = func.get_cache(request.session, 'view', 'kline') 
+        # 因为表单是 ModelForm，同时传入 instance 和 initial，initial 会覆盖显示值
+        form = FocusStockForm(instance=focus, initial=initial_data, view_mode=True)
+        view_mode = func.get_cache(request.session, 'view', 'kline')
 
-        # 图表配置
         chart_init = {
             'site': site,
             'code': code,
@@ -166,5 +160,45 @@ def focus_view(request, market, code):
             'form': form,
             'chart': json.dumps(chart_init),
             'edit_mode': False,
-            'available': CashConfig.get_config().available
+            'available': CashConfig.get_config().available,
         })
+
+
+def get_focus_data_dict(focus, history=None):
+    """
+    将 FocusStock 实例（及可选的历史记录）转换为字典，
+    所有价格字段按类别格式化为指定位数的字符串。
+    """
+    if not focus:
+        return {}
+
+    deci = 3 if focus.cat in ('fund', 'bond') else 2
+    # 优先使用 history，否则使用 focus
+    target = history if history else focus
+
+    def fmt_price(value):
+        """将 Decimal 或数字格式化为指定位数的字符串，若为空则返回空字符串"""
+        if value is None:
+            return ''
+        return format(Decimal(str(value)), f'.{deci}f')
+
+    return {
+        'code': focus.code,
+        'market': focus.market,
+        'name': focus.name,
+        'cat': focus.cat,
+        'focus_date': target.edit_date.strftime('%Y-%m-%d') if history else focus.focus_date.strftime('%Y-%m-%d'),
+        'plan_price': fmt_price(target.plan_price),
+        'plan_qty': target.plan_qty,
+        'target_price': fmt_price(target.target_price),
+        'stop_price': fmt_price(target.stop_price),
+        'allowed_qty': focus.allowed_qty,
+        'win_ratio': target.win_ratio,
+        'comments': target.comments,
+        'intent': target.intent if history else focus.intent,
+        'market_display': dict(MARKET_CHOICES).get(focus.market, focus.market),
+        'cat_display': dict(CAT_CHOICES).get(focus.cat, focus.cat),
+        'intent_display': dict(INTENT_CHOICES).get(target.intent if history else focus.intent, '')
+    }
+
+
