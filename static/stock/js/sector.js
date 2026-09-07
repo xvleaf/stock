@@ -1,4 +1,5 @@
-import { refreshQuotes, chartPageContainer, setPageConfig, initChartPage } from './func.js';
+import { chartPageContainer, initChartPage, setPageConfig } from './chart.js';
+import { refreshQuotes } from './func.js';
 
 export function initSectorList() {
     const tbody = document.getElementById('stockBody');

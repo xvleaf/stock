@@ -1,5 +1,5 @@
-'use strict';
-import { postRequest, refreshQuotes, chartPageContainer, setPageConfig, initChartPage, destroyChart, editAction } from './func.js';
+import { chartPageContainer, initChartPage, destroyChart, editAction, setPageConfig } from './chart.js';
+import { postRequest, refreshQuotes } from './func.js';
 
 // ===================== focus-list 页面 =====================
 export function initFocusList(interval) {

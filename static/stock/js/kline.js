@@ -1,4 +1,5 @@
-import { postRequest, Highcharts, pageConfig, initPageElements, priceDecimal, setPriceDecimal, hideChartPlaceholder, loadChartPage, showChartError, setPageConfig } from './func.js';
+import { Highcharts, initPageElements, hideChartPlaceholder, loadChartPage, pageConfig, setPageConfig } from './chart.js';
+import { postRequest, priceDecimal, setPriceDecimal,showChartError } from './func.js';
 
 // K 线密度参数
 const BREAKPOINT_FOR_KLINE = 1440;
@@ -40,6 +41,9 @@ export function destroyKlineChart() {
         klineChart.destroy();
         klineChart = null;
     }
+    
+    // 清空数据，防止后续 refreshKlineDensity 误判
+    klineData = {};
 }
 
 export function refreshKlineDensity() {

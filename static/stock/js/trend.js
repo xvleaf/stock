@@ -1,5 +1,5 @@
-import { postRequest, Highcharts, pageConfig, initPageElements, priceDecimal, setPriceDecimal, hideChartPlaceholder, showChartError } from './func.js';
-
+import { Highcharts, initPageElements, hideChartPlaceholder, pageConfig } from './chart.js';
+import { postRequest, priceDecimal, setPriceDecimal, showChartError } from './func.js';
 
 export let trendChart = null;
 let trendTimer = null;

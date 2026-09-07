@@ -1,14 +1,9 @@
-// 表格专属DOM
+import {RESIZE_DELAY_LAYOUT, isMainNavHidden, getMainNavHeight} from '../../base/js/base.js';
+
 let originalThead = null;
 let fixedHeaderWrap = null;
 let fixedHeaderRow = null;
 let tableScrollWrap = null;
-// 导入base导出方法
-import {
-    RESIZE_DELAY_LAYOUT,
-    isMainNavHidden,
-    getMainNavHeight
-} from '../../base/js/base.js';
 let tableScrollTicking = false;          // 表格横向滚动事件节流标记
 let windowScrollTicking = false;         // 窗口纵向滚动事件节流标记
 let tableResizeTimer = null;             // 表格独立 resize 防抖定时器
