@@ -40,8 +40,7 @@ export function destroyKlineChart() {
     if (klineChart) {
         klineChart.destroy();
         klineChart = null;
-    }
-    
+    }    
     // 清空数据，防止后续 refreshKlineDensity 误判
     klineData = {};
 }
@@ -108,7 +107,8 @@ function renderklineData() {
     setPriceDecimal(deci);
     Highcharts.setOptions({
         lang: { rangeSelectorZoom: '' },
-        global: { useUTC: false, timezone: 'Asia/Shanghai' }
+        global: { useUTC: false, timezone: 'Asia/Shanghai' },
+        accessibility: { enabled: false } // 禁用无障碍模块
     });
     
     klineChart = Highcharts.stockChart('chartContainer', {

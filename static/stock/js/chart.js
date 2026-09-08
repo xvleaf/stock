@@ -68,9 +68,6 @@ export async function loadChartPage(func, value) {
             
             // 更新配置（保留名称、类别等）
             const newConfig = res.chart;
-
-            if (pageConfig.name && !newConfig.name) newConfig.name = pageConfig.name;
-            if (pageConfig.cat && !newConfig.cat) newConfig.cat = pageConfig.cat;
             setPageConfig(newConfig);
 
             // 立即应用全屏样式（从 localStorage 恢复）
@@ -87,20 +84,22 @@ export async function loadChartPage(func, value) {
                 } else {
                     initTrendChart();
                     // 仅当当前站点为 /focus/view 且图表加载完成时绑定
-                    window.addEventListener('chartLoaded', (e) => {
-                        if (e.detail && e.detail.site === '/focus/view') {
-                            const editBtn = document.getElementById('editBtn');
-                            if (!editBtn || editBtn.dataset.bound) return;
-                            editBtn.dataset.bound = 'true';
-                            editBtn.addEventListener('click', (e) => {
-                                e.stopPropagation();
-                                const saveBtn = document.getElementById('saveBtn');
-                                const isEditing = !saveBtn?.classList.contains('d-none');
-                                editAction(!isEditing);
-                            });
-                        }
-                    });
-
+                    if (!window._chartLoadedBound) {
+                        window._chartLoadedBound = true;
+                        window.addEventListener('chartLoaded', (e) => {
+                            if (e.detail && e.detail.site === '/focus/view') {
+                                const editBtn = document.getElementById('editBtn');
+                                if (!editBtn || editBtn.dataset.bound) return;
+                                editBtn.dataset.bound = 'true';
+                                editBtn.addEventListener('click', (e) => {
+                                    e.stopPropagation();
+                                    const saveBtn = document.getElementById('saveBtn');
+                                    const isEditing = !saveBtn?.classList.contains('d-none');
+                                    editAction(!isEditing);
+                                });
+                            }
+                        });
+                    }
                     
                     if (pageConfig.site === '/focus/view') {
                         exitEventListen();
@@ -445,8 +444,6 @@ function naviSwitch(type, action) {
 
                 // 更新配置（合并新的 chart 配置）
                 const newConfig = res.chart;
-                if (pageConfig.name && !newConfig.name) newConfig.name = pageConfig.name;
-                if (pageConfig.cat && !newConfig.cat) newConfig.cat = pageConfig.cat;
                 setPageConfig(newConfig);
 
                 // 应用全屏状态

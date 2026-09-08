@@ -125,7 +125,8 @@ function renderTrendChart() {
     const priceLen = preClosePrice.toFixed(priceDecimal).length;
     const paddingLeft = priceLen >= 5 ? 45 : 30;
     Highcharts.setOptions({
-        global: { useUTC: false, timezone: 'Asia/Shanghai' }
+        global: { useUTC: false, timezone: 'Asia/Shanghai' },
+        accessibility: { enabled: false } // 禁用无障碍模块
     });
     trendChart = Highcharts.stockChart(container, {
         chart: { spacing: [0, 0, 0, 0], borderWidth: 0 },

@@ -233,7 +233,7 @@ body {
 .table-stock th,
 .table-stock td {
     /* 修改此处左右边距，需同时修改 nav 的边距 */
-    padding: 14px 10px;
+    padding: 10px 10px;
     font-family: inherit;
     font-size: var(--font-size-base);
     color: var(--color-text);
