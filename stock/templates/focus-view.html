@@ -124,7 +124,29 @@
 
 {% block extra_js %}
 <script src="{% static 'base/js/jquery-3.7.0.min.js' %}"></script>
-<script src="{% static 'base/lib/Highcharts/js/highstock.js' %}"></script>
+<!-- 先引入 Highcharts 核心 -->
+<script src="https://cdn.jsdelivr.net/npm/highcharts@10.3.3/highcharts.min.js"></script>
+<!-- 再引入 Stock 模块 -->
+<script src="https://cdn.jsdelivr.net/npm/highcharts@10.3.3/modules/stock.min.js"></script>
+<!-- 紧接着全局配置，必须在创建任何图表之前执行 -->
+<script>
+    // 捕获阶段拦截，最早处理，控制台完全不显示
+window.addEventListener('error', function(e) {
+    if (e.message?.includes('startTime') && e.error?.stack?.includes('reportAllChanges')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return true;
+    }
+}, true);
+Highcharts.setOptions({
+    accessibility: {
+        enabled: false,
+        announceNewData: { enabled: false },
+        screenReaderSection: { enabled: false },
+        keyboardNavigation: { enabled: false }
+    }
+});
+</script>
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
     import { initFocusView } from "{% static 'stock/js/focus.js' %}";

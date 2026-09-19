@@ -10,7 +10,8 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 from .fetch import tushare, kline, trend, quote
 from . import func, focus
-from .models.models import SectorList, StockList, FocusStock, FocusHistory, TransOrder, TransDeal, TransReview
+from .models.models import (SectorList, StockList, FocusStock, FocusHistory, TransOrder,
+                            TransDeal, TransReview, FilterTask, FilterResult)
 from .forms.forms import FocusStockForm, TransDealForm, CashConfigForm, ReviewForm, CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES
 
 NAVI_PARAMS_INIT = {
@@ -214,7 +215,7 @@ def get_mark_config(session, site, navi_data):
                 return MARK_CONFIG_INIT
         else:
             return MARK_CONFIG_INIT
-        
+
         mark_config = {
             'showMark': True,
             'showFocus': False,
@@ -223,14 +224,37 @@ def get_mark_config(session, site, navi_data):
             'focus': 0,
             'status': instance.mark
         }
+    elif site == '/filter/view':
+        # 筛选结果页：显示 关注/1(优先股)/2(潜力股)/隐藏 按钮
+        if navi_data:
+            get_site, code, market = navi_data.get('site_code_market')
+            if get_site == site:
+                task_id = func.get_cache(session, 'filter-current-task')
+                instance = FilterResult.objects.filter(task_id=task_id, code=code, market=market).first()
+                focused = FocusStock.objects.filter(
+                    code=code, market=market, status=FocusStock.STATUS_WATCHING).exists()
+            else:
+                return MARK_CONFIG_INIT
+        else:
+            return MARK_CONFIG_INIT
+
+        mark_config = {
+            'showMark': True,
+            'showFocus': True,
+            'showStatus': True,
+            'showHide': True,
+            'focus': 1 if focused else 0,
+            'status': instance.mark if instance else ''
+        }
     else:
         mark_config = MARK_CONFIG_INIT
-    
+
     return mark_config
 
 
 def get_navi_params(session, site, navi_data):
-    navi_params_limited = ['/sector/view', '/focus/view', '/trans/view', '/review/focus/view', '/review/trans/view']
+    navi_params_limited = ['/sector/view', '/focus/view', '/trans/view',
+                           '/review/focus/view', '/review/trans/view', '/filter/view']
     if site in navi_params_limited:
         navi_params = navi_data.get('navi_params', NAVI_PARAMS_INIT)
     else:
@@ -254,7 +278,7 @@ def set_navi_data(session, site, code, market, function, action):
         pilot_idx = navi_params['pilotIndex']
         pilot_total = navi_params['pilotCount']
     else:
-        navi_list = get_navi_list(site)
+        navi_list = get_navi_list(site, session)
         if not navi_list:
             return {}
         navi_total = len(navi_list)
@@ -323,7 +347,7 @@ def set_navi_data(session, site, code, market, function, action):
     return navi_data
 
 
-def get_navi_list(site):
+def get_navi_list(site, session=None):
     if site == '/focus/view':
         qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).order_by('sort_order')
         navi_list = list(qs.values_list('code', 'market')) 
@@ -333,7 +357,12 @@ def get_navi_list(site):
         navi_list = list(qs.values_list('code', 'market')) 
     elif site == '/sector/view':
         qs = SectorList.objects.all()
-        navi_list = list(qs.values_list('code', 'market')) 
+        navi_list = list(qs.values_list('code', 'market'))
+    elif site == '/filter/view':
+        # 当前筛选任务结果作为左右导航列表；已隐藏的股票不参与导航
+        task_id = func.get_cache(session, 'filter-current-task') if session else None
+        qs = FilterResult.objects.filter(task_id=task_id).exclude(hide='1').order_by('sort_order', 'id')
+        navi_list = list(qs.values_list('code', 'market'))
     elif site == '/review/focus/view':
         # 未交易关注：左右切换不同股票
         qs = FocusStock.objects.filter(
@@ -411,6 +440,17 @@ def _get_stock_detail(site, code, market, history_id=None):
             'cat': sector.cat
         }
         return data
+    elif site == '/filter/view':
+        # 筛选结果股：返回最新所属任务中的基本信息
+        res = FilterResult.objects.filter(code=code, market=market).order_by('-task_id').first()
+        if not res:
+            return {}
+        return {
+            'code': code,
+            'market': market,
+            'name': res.name,
+            'cat': res.cat,
+        }
     return {}
 
 

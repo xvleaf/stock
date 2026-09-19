@@ -45,6 +45,19 @@ export function destroyKlineChart() {
     klineData = {};
 }
 
+// 返回当前视图最后一根K线对应的 EMA 中轨值（av），无数据返回 null
+export function getCurrentEma() {
+    const av = klineData && klineData.av;
+    if (!av || !av.length) return null;
+    for (let i = av.length - 1; i >= 0; i--) {
+        const p = av[i];
+        if (p == null) continue;
+        // Highstock 点为 [时间戳, 值] 二元数组，取数值位
+        return Array.isArray(p) ? p[1] : p;
+    }
+    return null;
+}
+
 export function refreshKlineDensity() {
     if (!klineData || Object.keys(klineData).length === 0) {
         return;

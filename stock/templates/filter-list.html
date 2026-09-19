@@ -1,0 +1,114 @@
+{% extends "base-view.html" %}
+{% block title %}筛选清单{% endblock %}
+{% block content %}
+{# 顶部工具条：任务切换 + 标记筛选 + 每页条数（均走 session，URL 保持 /filter/list） #}
+<div class="filter-toolbar">
+    <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+        <label class="form-label mb-0 me-1 small">任务</label>
+        <select id="taskSelect" class="form-select form-select-sm" style="width:auto;">
+            {% for t in tasks %}
+            <option value="{{ t.id }}" {% if task and task.id == t.id %}selected{% endif %}>
+                #{{ t.id }} {{ t.name }}（{{ t.stock_count }}）
+            </option>
+            {% endfor %}
+        </select>
+        <div class="btn-group btn-group-sm ms-2" role="group" id="markFilter">
+            <button type="button" class="btn btn-outline-secondary active" data-mark="">全部</button>
+            <button type="button" class="btn btn-outline-primary" data-mark="1">优先股1</button>
+            <button type="button" class="btn btn-outline-danger" data-mark="2">潜力股2</button>
+        </div>
+        <label class="form-label mb-0 ms-2 small">每页</label>
+        <select id="perPageSelect" class="form-select form-select-sm" style="width:auto;">
+            <option value="10" {% if per_page == '10' %}selected{% endif %}>10</option>
+            <option value="20" {% if per_page == '20' %}selected{% endif %}>20</option>
+            <option value="50" {% if per_page == '50' %}selected{% endif %}>50</option>
+            <option value="100" {% if per_page == '100' %}selected{% endif %}>100</option>
+            <option value="all" {% if per_page == 'all' %}selected{% endif %}>全部</option>
+        </select>
+        <a class="btn btn-sm btn-outline-primary ms-auto" href="/filter/run{% if task %}?parent_id={{ task.id }}{% endif %}">
+            二次筛选
+        </a>
+    </div>
+    {% if task %}
+    <div class="small text-muted mb-2">
+        样本：{{ task.source_display_label }} ｜ 结果 {{ result_total }} 只 ｜ 条件：
+        {% for line in conditions_desc %}{{ line }}{% if not forloop.last %}；{% endif %}{% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- 表格悬浮固定表头 -->
+<div id="fixedHeader">
+    <div class="fixed-header-inner">
+        <div class="fixed-header-row" id="fixedHeaderRow"></div>
+    </div>
+</div>
+
+<div class="table-responsive" id="tableWrap">
+    <table class="table table-stock table-hover" id="stockTable">
+        <thead id="originalThead">
+            <tr>
+                <th style="width:12%;">序号</th>
+                <th style="width:28%;">代码</th>
+                <th style="width:30%;">名称</th>
+                <th style="width:15%;">关注</th>
+                <th style="width:15%;">标记</th>
+            </tr>
+        </thead>
+        <tbody id="stockBody">
+            {% for item in items %}
+            <tr data-code="{{ item.code }}.{{ item.market }}" data-mark="{{ item.mark }}">
+                <td style="width:12%;"><span>{{ item.no }}</span></td>
+                <td style="width:28%;">
+                    <a class="table-code-text" href="/filter/view/{{ item.market }}/{{ item.code }}">{{ item.code }}</a>
+                </td>
+                <td style="width:30%;"><span>{{ item.name }}</span></td>
+                <td style="width:15%;">
+                    {% if item.focused %}<span class="check-mark check-focus">✔</span>{% endif %}
+                </td>
+                <td style="width:15%;">
+                    {% if item.mark == '1' %}<span class="check-mark check-mark1">✔</span>
+                    {% elif item.mark == '2' %}<span class="check-mark check-mark2">✔</span>
+                    {% else %}-{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# 分页控件（按钮，走 session）：边界页按钮保留但置灰 #}
+<div class="d-flex justify-content-center align-items-center gap-2 py-2">
+    <button class="btn btn-sm btn-outline-secondary" id="prevPage"
+            data-page="{{ current_page|add:'-1' }}"
+            {% if current_page <= 1 %}disabled{% endif %}>上一页</button>
+    <span class="small">第 {{ current_page }} / {{ total_pages }} 页</span>
+    <button class="btn btn-sm btn-outline-secondary" id="nextPage"
+            data-page="{{ current_page|add:'1' }}"
+            {% if current_page >= total_pages %}disabled{% endif %}>下一页</button>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.check-mark { font-weight: bold; }
+.check-focus  { color: #dc2626; }  /* 关注：红 */
+.check-mark1   { color: #16a34a; }  /* mark=1 优先股：绿 */
+.check-mark2   { color: #2563eb; }  /* mark=2 潜力股：蓝 */
+</style>
+{% endblock %}
+
+{% block extra_js %}
+{% load static %}
+<script type="module">
+    import { baseInit } from "{% static 'base/js/base.js' %}";
+    import { tableHeaderInit } from "{% static 'stock/js/list.js' %}";
+    import { initFilterList } from "{% static 'stock/js/filter.js' %}";
+
+    document.addEventListener('DOMContentLoaded', () => {
+        baseInit();
+        tableHeaderInit();
+        initFilterList();
+    });
+</script>
+{% endblock %}

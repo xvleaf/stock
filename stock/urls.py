@@ -1,10 +1,17 @@
 from django.urls import path
-from . import chart, func, sector, focus, cash
+from . import chart, func, sector, focus, cash, filter
 
 urlpatterns = [
     # ---- 板块 ----
     path('sector/list', sector.sector_list, name='sector_list'),
     path('sector/view/<str:market>/<str:code>', sector.sector_view, name='sector_view'),
+
+    # ---- 股票筛选 ----
+    path('filter/list', filter.filter_list, name='filter_list'),
+    path('filter/run', filter.filter_run, name='filter_run'),
+    path('filter/refer', filter.filter_refer, name='filter_refer'),
+    path('filter/config', filter.filter_config, name='filter_config'),
+    path('filter/view/<str:market>/<str:code>', filter.filter_view, name='filter_view'),
 
     # ---- 关注 ----
     path('focus', focus.focus_list, name='focus'),

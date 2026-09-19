@@ -1,0 +1,71 @@
+{% extends "base-view.html" %}
+{% block title %}筛选历史{% endblock %}
+{% block content %}
+<div class="form-wrap">
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">股票样本</h6>
+                <button class="btn btn-primary btn-sm" id="saveBoards">保存</button>
+            </div>
+            <div class="d-flex flex-wrap gap-3">
+                {% for b in boards %}
+                <div class="form-check">
+                    <input class="form-check-input board-check" type="checkbox"
+                           value="{{ b.key }}" id="board_{{ b.key }}"
+                           {% if b.checked %}checked{% endif %}>
+                    <label class="form-check-label" for="board_{{ b.key }}">
+                        {{ b.label }} <span class="badge bg-light text-dark">{{ b.count }}</span>
+                    </label>
+                </div>
+                {% endfor %}
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="excludeStCheck"
+                           {% if exclude_st %}checked{% endif %}>
+                    <label class="form-check-label" for="excludeStCheck">排除 ST 股</label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0">筛选任务历史</h6>
+    </div>
+
+    {% if not tasks %}
+    <div class="alert alert-secondary">暂无筛选任务，去「筛选」页新建一次吧。</div>
+    {% endif %}
+
+    {% for t in tasks %}
+    <div class="card mb-2">
+        <div class="card-body py-2">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <a class="fw-bold text-decoration-none" href="/filter/list?task_id={{ t.id }}">#{{ t.id }} {{ t.name }}</a>
+                    <span class="badge bg-secondary ms-1">{{ t.count }}只</span>
+                    <span class="badge bg-light text-dark ms-1">{{ t.source }}</span>
+                    <span class="text-muted small ms-2">{{ t.created }}</span>
+                </div>
+                <button class="btn btn-sm btn-outline-danger del-task" data-id="{{ t.id }}">删除</button>
+            </div>
+            <div class="small text-muted mt-1">
+                {% for line in t.lines %}<div>· {{ line }}</div>{% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% load static %}
+<script type="module">
+    import { baseInit } from "{% static 'base/js/base.js' %}";
+    import { initFilterConfig } from "{% static 'stock/js/filter.js' %}";
+
+    document.addEventListener('DOMContentLoaded', () => {
+        baseInit();
+        initFilterConfig();
+    });
+</script>
+{% endblock %}

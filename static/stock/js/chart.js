@@ -1,6 +1,6 @@
 import { postRequest, updateFormData, initScrollFold, showChartError } from './func.js';
 import { trendChart, initTrendChart, destroyTrendChart, clearTrendTimer } from './trend.js';
-import { klineChart, initKlineChart, destroyKlineChart, refreshKlineDensity } from './kline.js';
+import { klineChart, initKlineChart, destroyKlineChart, refreshKlineDensity, getCurrentEma } from './kline.js';
 import { changeFreq as klineChangeFreq, toggleRight as klineToggleRight } from './kline.js';
 
 export const Highcharts = window.Highcharts;
@@ -183,42 +183,12 @@ export function initPageElements() {
         }
 
         if (pageConfig.mark.showMark) {
-            const focusMark = document.getElementById('focusMark');
-            const majorMark = document.getElementById('majorMark');
-            const minorMark = document.getElementById('minorMark');
-            const hideMark = document.getElementById('hideMark');
-
-            if (pageConfig.mark.showFocus && focusMark) {
-                const focusIcon = pageConfig.mark.focus === '1' ? 'tabler:current-location-filled': 'tabler:current-location';
-                focusMark.innerHTML = `<iconify-icon icon="${focusIcon}" style="width:1em; height:1em;"></iconify-icon>`;
-                focusMark.classList.remove('d-none');
-                focusMark.onclick = focusAction;
-            }
-            if (majorMark) {
-                const majorIcon = pageConfig.mark.status === '1' ? 'tabler:hexagon-number-1-filled': 'tabler:hexagon-number-1';
-                majorMark.innerHTML = `<iconify-icon icon="${majorIcon}" style="width:1em; height:1em;"></iconify-icon>`;
-                majorMark.classList.remove('d-none');
-                majorMark.addEventListener('click', (event) => markAction('major', event));
-            }
-            if (minorMark) {
-                const minorIcon = pageConfig.mark.status === '2' ? 'tabler:hexagon-number-2-filled': 'tabler:hexagon-number-2';
-                minorMark.innerHTML = `<iconify-icon icon="${minorIcon}" style="width:1em; height:1em;"></iconify-icon>`;
-                minorMark.classList.remove('d-none');
-                minorMark.addEventListener('click', (event) => markAction('minor', event));
-            }
-
-            if (pageConfig.mark.showHide && hideMark) {
-                const hideIcon = 'tabler:hexagon-minus';
-                hideMark.innerHTML = `<iconify-icon icon="${hideIcon}" style="width:1em; height:1em;"></iconify-icon>`;
-                hideMark.classList.remove('d-none');
-                hideMark.onclick = hideAction;
-            }
+            renderMarkButtons();
         }
 
         const backList = document.getElementById('backList');
         if (pageConfig.navi.backList && backList) {
-            const backIcon = 'tabler:menu-2';
-            backList.innerHTML = `<iconify-icon icon="${backIcon}" style="width:1em; height:1em;"></iconify-icon>`;
+            backList.innerHTML = '<iconify-icon icon="tabler:menu-2" style="width:1em;height:1em;"></iconify-icon>';
             backList.classList.remove('d-none');
             backList.onclick = backToList;
         }
@@ -229,6 +199,42 @@ export function initPageElements() {
             const total = parseInt(pageConfig.navi.naviCount);
             indicator.textContent = total > 1 ? `(${idx}/${total})` : '';
         }
+    }
+}
+
+// 本地重绘标记按钮（不发请求）
+function renderMarkButtons() {
+    const mk = pageConfig.mark || {};
+    const focusMark = document.getElementById('focusMark');
+    const majorMark = document.getElementById('majorMark');
+    const minorMark = document.getElementById('minorMark');
+    const hideMark = document.getElementById('hideMark');
+
+    if (mk.showFocus && focusMark) {
+        const on = mk.focus === 1 || mk.focus === '1';
+        const icon = on ? 'tabler:current-location-filled' : 'tabler:current-location';
+        focusMark.innerHTML = `<iconify-icon icon="${icon}" style="width:1em;height:1em;"></iconify-icon>`;
+        focusMark.classList.remove('d-none');
+        focusMark.onclick = focusAction;
+    }
+    if (majorMark) {
+        const on = mk.status === '1';
+        const icon = on ? 'tabler:hexagon-number-1-filled' : 'tabler:hexagon-number-1';
+        majorMark.innerHTML = `<iconify-icon icon="${icon}" style="width:1em;height:1em;"></iconify-icon>`;
+        majorMark.classList.remove('d-none');
+        majorMark.onclick = () => markAction('major');
+    }
+    if (minorMark) {
+        const on = mk.status === '2';
+        const icon = on ? 'tabler:hexagon-number-2-filled' : 'tabler:hexagon-number-2';
+        minorMark.innerHTML = `<iconify-icon icon="${icon}" style="width:1em;height:1em;"></iconify-icon>`;
+        minorMark.classList.remove('d-none');
+        minorMark.onclick = () => markAction('minor');
+    }
+    if (mk.showHide && hideMark) {
+        hideMark.innerHTML = '<iconify-icon icon="tabler:hexagon-minus" style="width:1em;height:1em;"></iconify-icon>';
+        hideMark.classList.remove('d-none');
+        hideMark.onclick = hideAction;
     }
 }
 
@@ -506,51 +512,86 @@ function backToList() {
         '/': '/focus/list',
         '/trans/view': '/trans/list',
         '/review/focus/view': '/review/focus/list',
-        '/review/trans/view': '/review/trans/list'
+        '/review/trans/view': '/review/trans/list',
+        '/filter/view': '/filter/list'
     };
     window.location.href = routeMap[pageConfig.site] || '/focus/list';
 };
 
 function focusAction() {
-    console.log('focus');
+    const currentlyFocused = pageConfig.mark && (pageConfig.mark.focus === 1 || pageConfig.mark.focus === '1');
+    const confirmText = currentlyFocused ? '确定要取消关注该股票吗？' : '确定要关注该股票吗？';
+    const confirmIcon = currentlyFocused ? 'warning' : 'question';
+    const swalOpts = {
+        title: currentlyFocused ? '取消关注' : '关注',
+        text: confirmText,
+        icon: confirmIcon,
+        showCancelButton: true,
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+    };
+    const fsEl = document.fullscreenElement;
+    if (fsEl) swalOpts.container = fsEl;
+    Swal.fire(swalOpts).then((result) => {
+        if (!result.isConfirmed) return;
+        const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
+        const payload = { 'func': 'focus' };
+        if (!currentlyFocused) {
+            const ema = getCurrentEma();
+            if (ema == null) {
+                Swal.fire('错误', '未取到当前EMA值', 'error');
+                return;
+            }
+            payload.ema_price = ema;
+        }
+        postRequest(url, payload).then(res => {
+            if (res && res.status === 'success') {
+                pageConfig.mark.focus = res.focus;
+                renderMarkButtons();
+                if (!currentlyFocused && res.plan) {
+                    Swal.fire('已关注', `计划价 ${res.plan}，目标 ${res.target}，止损 ${res.stop}，数量 ${res.qty}`, 'success');
+                }
+            }
+        });
+    });
 }
 
 function markAction(func) {
     const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
-    postRequest(url, {
-        'func': func
-    }).then(res => {
-        if (res) {
-            if (res.status !== 'success') {
-                console.log(res.message);
-                return;
-            }
-
-            pageConfig.mark.status = func === 'major' ? res.major : res.minor;
-                
-            const majorMark = document.getElementById('majorMark');
-            const minorMark = document.getElementById('minorMark');
-            const majorIcon = pageConfig.mark.status === '1' ? 'tabler:hexagon-number-1-filled': 'tabler:hexagon-number-1';
-            const minorIcon = pageConfig.mark.status === '2' ? 'tabler:hexagon-number-2-filled': 'tabler:hexagon-number-2';
-            majorMark.innerHTML = `<iconify-icon icon="${majorIcon}" style="width:1em; height:1em;"></iconify-icon>`;
-            minorMark.innerHTML = `<iconify-icon icon="${minorIcon}" style="width:1em; height:1em;"></iconify-icon>`;
+    postRequest(url, { 'func': func }).then(res => {
+        if (!res || res.status !== 'success') {
+            return;
         }
+        // 本地更新标记态，直接重绘按钮，不再发第二次请求
+        pageConfig.mark.status = (func === 'major') ? res.major : res.minor;
+        renderMarkButtons();
     });
 }
 
 function hideAction() {
-
-    /**
-    const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
-    postRequest(url, {
-        'func': 'hide'
-    }).then(res => {
-        if (res) {
-            if (res.status === 'success') {
-                naviSwitch('navi', 'next');
+    const swalOpts = {
+        title: '隐藏',
+        text: '确定要隐藏该股票吗？隐藏后将从样本中剔除。',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+    };
+    const fsEl = document.fullscreenElement;
+    if (fsEl) swalOpts.container = fsEl;
+    Swal.fire(swalOpts).then((result) => {
+        if (!result.isConfirmed) return;
+        const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
+        postRequest(url, { 'func': 'hide' }).then(res => {
+            if (!res || res.status !== 'success') return;
+            // 后端返回下一只（已剔除被隐藏股票），直接跳转；无则回列表
+            if (res.next && res.next.code) {
+                location.href = `${pageConfig.site}/${res.next.market}/${res.next.code}`;
+            } else {
+                backToList();
             }
-        }
-    }); */
+        });
+    });
 }
 
 export function editAction(enable) {

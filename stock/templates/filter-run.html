@@ -1,0 +1,62 @@
+{% extends "base-view.html" %}
+{% load static %}
+{% block title %}新建筛选{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'stock/css/view.css' %}">
+<style>
+    .cond-card { border:1px solid #dee2e6; border-radius:.5rem; padding:.75rem; margin-bottom:.75rem; background:#fff; }
+    .cond-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; }
+    .cond-row { display:flex; flex-wrap:wrap; gap:.5rem; align-items:flex-end; }
+    .cond-row .field { display:flex; flex-direction:column; }
+    .cond-row label { font-size:.72rem; color:#6c757d; margin-bottom:.1rem; }
+    .cond-row select, .cond-row input { min-width:80px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="form-wrap">
+    <div id="errorText" class="d-none alert alert-danger"></div>
+
+    <div class="mb-3">
+        <label class="form-label">任务名称</label>
+        <input type="text" id="taskName" class="form-control" placeholder="可留空，自动命名">
+    </div>
+
+    <div class="alert alert-info py-2 small">
+        样本：
+        {% if parent %}
+            <b>基于筛选 #{{ parent.id }} {{ parent.name }}</b> 的 {{ parent.stock_count }} 只结果
+            <a href="/filter/run" class="ms-2 text-decoration-none">改为全量样本</a>
+        {% else %}
+            <b>全量样本</b>（StockList 中未隐藏的股票，约 {{ sample_total }} 只）
+        {% endif %}
+    </div>
+
+    <h6 class="mb-2">筛选条件（多条件为 AND 关系）</h6>
+    <div id="condList"></div>
+
+    <div class="mb-3">
+        <button type="button" class="btn btn-outline-secondary btn-sm me-2" id="addCompare">＋ 比较条件</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="addTrend">＋ 趋势条件</button>
+    </div>
+
+    <div class="d-flex">
+        <a href="/filter/list" class="btn btn-outline-secondary me-2">返回清单</a>
+        <button type="button" class="btn btn-primary ms-auto" id="runBtn">开始筛选</button>
+    </div>
+    <div id="runStatus" class="mt-2 small text-muted d-none"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% load static %}
+<script type="module">
+    import { baseInit } from "{% static 'base/js/base.js' %}";
+    import { initFilterRun } from "{% static 'stock/js/filter.js' %}";
+
+    document.addEventListener('DOMContentLoaded', () => {
+        baseInit();
+        initFilterRun({ parentId: {{ parent_id|default:'null' }} });
+    });
+</script>
+{% endblock %}
