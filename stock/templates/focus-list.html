@@ -17,10 +17,10 @@
             <tr>
                 <th style="width: 17.5%;">代码</th>
                 <th style="width: 22.5%;">名称</th>
-                <th style="width: 15%;">价格</th>
-                <th style="width: 15%;">计划</th>
-                <th style="width: 15%;">胜率</th>
-                <th style="width: 15%;">涨幅</th>
+                <th style="width: 17.5%;">价格</th>
+                <th style="width: 17.5%;">计划</th>
+                <th style="width: 12.5%;">胜率</th>
+                <th style="width: 12.5%;">涨幅</th>
             </tr>
         </thead>
         <tbody id="stockBody">
@@ -32,16 +32,16 @@
                 <td style="width: 22.5%;">
                     <span>{{ item.name }}</span>
                 </td>
-                <td style="width: 15%;">
+                <td style="width: 17.5%;">
                     <span id="close-{{ item.code }}.{{ item.market }}">--</span>
                 </td>
-                <td style="width: 15%;">
+                <td style="width: 17.5%;">
                     <span>{{ item.plan_price }}</span>
                 </td>
-                <td style="width: 15%;">
+                <td style="width: 12.5%;">
                     <span>{{ item.win_ratio }}</span>
                 </td>
-                <td style="width: 15%;">
+                <td style="width: 12.5%;">
                     <span id="change-{{ item.code }}.{{ item.market }}">--</span>
                 </td>
             </tr>
