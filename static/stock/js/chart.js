@@ -78,6 +78,13 @@ export async function loadChartPage(func, value) {
             const newConfig = res.chart;
             setPageConfig(newConfig);
 
+            // 若加载的股票不在导航列表中（已被 hide 或不存在），自动返回来源列表
+            // 覆盖场景：hide 后浏览器返回按钮(popstate)回退到已 hide 股票、直接 URL 访问已 hide 股票等
+            if (pageConfig.navi && pageConfig.navi.showNavi === false && pageConfig.backUrl) {
+                backToList();
+                return;
+            }
+
             // 若浏览器地址栏与当前股票不一致，同步历史记录（hide 后 loadChartPage 切换股票时需要）
             const expectedPath = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
             if (window.location.pathname !== expectedPath) {

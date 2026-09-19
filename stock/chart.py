@@ -161,6 +161,9 @@ def chart_view_api(request):
         return JsonResponse({'error': f'未知功能: {param_func}'}, status=400)
 
     view_mode = func.get_cache(request.session, 'view', 'kline')
+    # 更新当前股票 code，供返回列表时页码定位（loadChartPage 是 AJAX，不经过 filter_view）
+    # 与 navi/pilot 路径保持一致，否则 hide 后加载下一只时当前 code 仍为已 hide 股票，页码定位失败
+    func.set_view_current_code(request.session, param_code)
     context = {
         'site': param_site,
         'code': param_code,
@@ -314,7 +317,10 @@ def set_navi_data(session, site, code, market, function, action):
     try:
         navi_idx = navi_list.index((code, market)) + shift
     except ValueError:
-        return {}  # 股票不在导航列表中（已被 hide 或不存在）
+        # 股票不在导航列表中（已被 hide 或不存在）：删除旧缓存，确保 get_page_config 读到空
+        # 否则旧缓存（如下一只股票的导航数据）会导致 showNavi=true 但导航列表不含当前股票，页面状态异常
+        func.delete_cache(session, f'{site}-navi-data')
+        return {}
     code, market = navi_list[navi_idx]
 
     if showPilot and function == 'pilot':        
