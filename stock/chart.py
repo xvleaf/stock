@@ -377,8 +377,13 @@ def get_navi_list(site, session=None):
         qs = TransOrder.objects.filter(status=TransOrder.STATUS_OPEN).order_by('-created_at')
         navi_list = list(qs.values_list('code', 'market')) 
     elif site == '/sector/view':
-        qs = SectorList.objects.all()
-        navi_list = list(qs.values_list('code', 'market'))
+        # 优先使用板块清单传入的自定义 navi 列表（标记筛选后）；否则用全部板块
+        custom = func.get_cache(session, 'sector-view-custom-navi') if session else None
+        if custom:
+            navi_list = [tuple(x) for x in custom]
+        else:
+            qs = SectorList.objects.all()
+            navi_list = list(qs.values_list('code', 'market'))
     elif site == '/filter/view':
         # 优先使用对比页传入的自定义 navi 列表；否则用当前 task 全部结果
         custom = func.get_cache(session, 'filter-view-custom-navi') if session else None

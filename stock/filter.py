@@ -456,6 +456,8 @@ def filter_list(request):
     # 标记筛选后的全量列表作为 view 的自定义 navi（跨页切换）
     custom_navi = [(r.code, r.market) for r in results_qs]
     func.set_cache(request.session, 'filter-view-custom-navi', custom_navi)
+    # 失效旧导航缓存，确保 view 页面用新的 custom_navi 重新生成 navi（标记筛选后 next 正确）
+    func.delete_cache(request.session, '/filter/view-navi-data')
 
     items = []
     base_no = (pg['current_page'] - 1) * pg['per_page']

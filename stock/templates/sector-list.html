@@ -18,14 +18,14 @@
                 <th style="width: 15%;">序号</th>
                 <th style="width: 30%;">代码</th>
                 <th style="width: 35%;">板块</th>
-                <th style="width: 20%;">标记</th>
+                <th style="width: 20%;"><button type="button" class="btn btn-link btn-sm p-0 text-decoration-none header-filter-btn mark-filter-btn">标记</button></th>
             </tr>
         </thead>
         <tbody id="stockBody">
             {% for item in list %}
-            <tr>
+            <tr data-mark="{{ item.mark }}">
                 <td style="width: 15%;">
-                    <span>{{ forloop.counter }}</span>
+                    <span>{{ item.no }}</span>
                 </td>
                 <td style="width: 30%;">
                     <a class="table-code-text" href="/sector/view/{{ item.market }}/{{ item.code }}">{{ item.code }}</a>
@@ -34,7 +34,9 @@
                     <span>{{ item.name }}</span>
                 </td>
                 <td style="width: 20%;">
-                    <span>{{ item.mark }}</span>
+                    {% if item.mark == '1' %}<iconify-icon icon="tabler:check" style="color:#16a34a;font-size:1rem;"></iconify-icon>
+                    {% elif item.mark == '2' %}<iconify-icon icon="tabler:check" style="color:#2563eb;font-size:1rem;"></iconify-icon>
+                    {% else %}-{% endif %}
                 </td>
             </tr>
             {% endfor %}
@@ -45,15 +47,24 @@
 {% include 'page-navi.html' %}
 {% endblock %}
 
+{% block extra_css %}
+<style>
+.header-filter-btn { color: inherit; font-size: inherit; font-weight: inherit; }
+.header-filter-btn:hover { color: #0d6efd; }
+</style>
+{% endblock %}
+
 {% block extra_js %}
 {% load static %}
 <script type="module">
     import { baseInit} from "{% static 'base/js/base.js' %}";
     import { tableHeaderInit, initPagination } from "{% static 'stock/js/list.js' %}";
-    
+    import { initSectorList } from "{% static 'stock/js/sector.js' %}";
+
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         tableHeaderInit();
+        initSectorList({ currentMarkFilter: '{{ current_mark_filter }}' });
         initPagination('/sector/list');
     });
 </script>

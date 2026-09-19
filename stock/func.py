@@ -86,6 +86,7 @@ def set_cache(session, key, value, expiry=None):
     """
     if not session.session_key:
         session._get_or_create_session_key()
+    session.modified = True  # 触发 session 保存，确保 session cookie 发送到客户端（否则匿名用户每次请求 session_key 不同，cache 读不到）
     prefix = f"user_{session.session_key}_"
     cache_key = prefix + key
     cache.set(cache_key, value, timeout=expiry)
