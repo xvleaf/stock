@@ -13,16 +13,32 @@ import pytz
 from . import func, chart
 
 
-@require_http_methods(["GET"])
 def sector_list(request):
+    if request.method == 'POST':
+        try:
+            import json
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            from django.http import JsonResponse
+            return JsonResponse({'status': 'error', 'message': '无效JSON'}, status=400)
+        if 'page' in data:
+            func.set_cache(request.session, 'sector-list-page', int(data['page']))
+        if 'per_page' in data:
+            func.set_page_size(request.session, data['per_page'])
+        from django.http import JsonResponse
+        return JsonResponse({'status': 'success'})
+
     items = []
-    sector_qs = SectorList.objects.exclude(hide='1')
-    
+    sector_qs = SectorList.objects.exclude(hide='1').order_by('code')
+
     if not sector_qs:
         _update_sector_list()
-        sector_qs = SectorList.objects.all().exclude(hide='1')
+        sector_qs = SectorList.objects.all().exclude(hide='1').order_by('code')
 
-    for fs in sector_qs:
+    # 统一分页
+    pg = func.paginate_queryset(request, sector_qs, 'sector-list-page')
+
+    for fs in pg['items']:
         items.append({
             'id': fs.id,
             'code': fs.code,
@@ -32,7 +48,15 @@ def sector_list(request):
             'mark': fs.mark
         })
 
-    return render(request, 'sector-list.html', {'list': items})
+    func.set_view_back(request.session, '/sector/list')
+    return render(request, 'sector-list.html', {
+        'list': items,
+        'current_page': pg['current_page'],
+        'total_pages': pg['total_pages'],
+        'per_page': pg['per_page'],
+        'result_total': pg['total_count'],
+        'page_size_choices': func.PAGE_SIZE_CHOICES,
+    })
 
 
 def sector_view(request, market, code):
@@ -86,7 +110,8 @@ def sector_view(request, market, code):
             'market': market,
             'name': sector.name,
             'cat': sector.cat,
-            'view': 'kline'
+            'view': 'kline',
+            'backUrl': func.get_view_back(request.session) or '/sector/list',
         }
 
         return render(request, 'sector-view.html', {'chart': json.dumps(chart_init)})

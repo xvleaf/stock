@@ -2,13 +2,10 @@
 {% block title %}筛选历史{% endblock %}
 {% block content %}
 <div class="form-wrap">
+    <h6 class="mb-2">全量样本</h6>
     <div class="card mb-3">
         <div class="card-body py-2">
-            <div class="d-flex justify-content-between align-items-center">
-                <h6 class="mb-0">股票样本</h6>
-                <button class="btn btn-primary btn-sm" id="saveBoards">保存</button>
-            </div>
-            <div class="d-flex flex-wrap gap-3">
+            <div class="d-flex flex-wrap gap-3 board-checks">
                 {% for b in boards %}
                 <div class="form-check">
                     <input class="form-check-input board-check" type="checkbox"
@@ -28,9 +25,7 @@
         </div>
     </div>
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h6 class="mb-0">筛选任务历史</h6>
-    </div>
+    <h6 class="mb-3">筛选历史</h6>
 
     {% if not tasks %}
     <div class="alert alert-secondary">暂无筛选任务，去「筛选」页新建一次吧。</div>
@@ -39,14 +34,22 @@
     {% for t in tasks %}
     <div class="card mb-2">
         <div class="card-body py-2">
-            <div class="d-flex justify-content-between">
+            <div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <a class="fw-bold text-decoration-none" href="/filter/list?task_id={{ t.id }}">#{{ t.id }} {{ t.name }}</a>
+                    <span class="fw-bold">#{{ t.id }} {{ t.name }}</span>
                     <span class="badge bg-secondary ms-1">{{ t.count }}只</span>
                     <span class="badge bg-light text-dark ms-1">{{ t.source }}</span>
                     <span class="text-muted small ms-2">{{ t.created }}</span>
                 </div>
-                <button class="btn btn-sm btn-outline-danger del-task" data-id="{{ t.id }}">删除</button>
+                <div class="d-flex gap-2">
+                    {% if t.id == default_task_id %}
+                    <span class="btn btn-sm btn-success disabled">默认</span>
+                    {% else %}
+                    <button class="btn btn-sm btn-outline-primary set-default-task" data-id="{{ t.id }}">默认</button>
+                    {% endif %}
+                    <button class="btn btn-sm btn-outline-primary second-filter-task" data-id="{{ t.id }}">筛选</button>
+                    <button class="btn btn-sm btn-outline-danger del-task" data-id="{{ t.id }}">删除</button>
+                </div>
             </div>
             <div class="small text-muted mt-1">
                 {% for line in t.lines %}<div>· {{ line }}</div>{% endfor %}
@@ -57,6 +60,13 @@
 </div>
 {% endblock %}
 
+{% block extra_css %}
+<style>
+@media (max-width: 768px) {
+    .board-checks { display: grid !important; grid-template-columns: 1fr 1fr; gap: .5rem 1rem; }
+}
+</style>
+{% endblock %}
 {% block extra_js %}
 {% load static %}
 <script type="module">

@@ -31,8 +31,8 @@
         <div class="adjust-group">
             <input type="number" id="adjustAmount" class="form-control" placeholder="金额" step="0.01" min="0">
             <input type="text" id="adjustRemark" class="form-control" placeholder="备注（可选）" maxlength="100">
-            <button class="btn btn-success" onclick="adjustCapital('deposit')">存入</button>
-            <button class="btn btn-warning" onclick="adjustCapital('withdraw')">取出</button>
+            <button class="btn btn-success capital-action" data-action="deposit">存入</button>
+            <button class="btn btn-warning capital-action" data-action="withdraw">取出</button>
         </div>
         <div id="adjustMsg" class="adjust-msg"></div>
     </div>
@@ -93,8 +93,10 @@
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         initCapitalChart();
-        // 暴露到全局供模板 onclick 调用
-        window.adjustCapital = adjustCapital;
+        // 资金调整按钮事件绑定
+        document.querySelectorAll('.capital-action').forEach(btn => {
+            btn.addEventListener('click', () => adjustCapital(btn.dataset.action));
+        });
     });
 </script>
 {% endblock %}

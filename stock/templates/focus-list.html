@@ -49,19 +49,22 @@
         </tbody>
     </table>
 </div>
+
+{% include 'page-navi.html' %}
 {% endblock %}
 
 {% block extra_js %}
 {% load static %}
 <script type="module">
     import { baseInit} from "{% static 'base/js/base.js' %}";
-    import { tableHeaderInit } from "{% static 'stock/js/list.js' %}";
+    import { tableHeaderInit, initPagination } from "{% static 'stock/js/list.js' %}";
     import { initFocusList } from "{% static 'stock/js/focus.js' %}";
     
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         tableHeaderInit();
         initFocusList({{ interval|default:20000 }});
+        initPagination('/focus/list');
     });
 </script>
 {% endblock %}

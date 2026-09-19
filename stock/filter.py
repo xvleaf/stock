@@ -1,11 +1,13 @@
 import os
 import json
+import time
+import threading
 import datetime
 from decimal import Decimal
 import pandas as pd
 from django.http import JsonResponse, HttpResponseRedirect, Http404
 from django.views.decorators.http import require_http_methods
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 from .fetch import quote, tushare
 from . import func, chart, cash
@@ -15,7 +17,10 @@ from django.core.cache import cache
 
 # 筛选进行中的全局锁（防止并发重复筛选）
 FILTER_RUNNING_KEY = 'filter-running'
-FILTER_RUNNING_TIMEOUT = 1800   # 30 分钟兜底，防止异常崩溃后死锁
+FILTER_RUNNING_TIMEOUT = 7200   # 2 小时
+FILTER_PROGRESS_KEY = 'filter-progress'
+FILTER_STOP_KEY = 'filter-stop'
+FILTER_TIMEOUT_KEY = 'filter-timeout'
 
 
 # =====================================================================
@@ -116,6 +121,51 @@ def _load_kline_map(cache, code, market, cat, conditions):
 # =====================================================================
 # 单条件判定
 # =====================================================================
+def _cmp_bool_series(df_map, cond):
+    """对 EMA/MA 比较条件，返回逐根满足的 bool Series；PRC 返回 None。"""
+    freq = cond.get('freq', 'D')
+    df = df_map.get(freq)
+    if df is None:
+        return None
+    left_kind = cond.get('left_kind', 'close')
+    if left_kind == 'volume':
+        src = df.get('vol') if 'vol' in df.columns else df.get('volume')
+    else:
+        src = df['close']
+    if src is None or len(src) == 0:
+        return None
+    right_kind = cond.get('right_kind', 'ema')
+    if right_kind == 'prc':
+        return None
+    period = int(cond.get('right_period', 30))
+    if right_kind == 'ma':
+        ma = src.rolling(window=period).mean()
+    else:
+        ma = src.ewm(span=period, adjust=False).mean()
+    right = ma * float(cond.get('right_mult', 1.0))
+    left = src * float(cond.get('left_mult', 1.0))
+    op = cond.get('op', '>')
+    return (left > right) if op == '>' else (left < right)
+
+
+def _prc_match(df_map, cond):
+    """PRC 比较条件：只看最新一根。"""
+    freq = cond.get('freq', 'D')
+    df = df_map.get(freq)
+    if df is None:
+        return False
+    left_kind = cond.get('left_kind', 'close')
+    if left_kind == 'volume':
+        src = df.get('vol') if 'vol' in df.columns else df.get('volume')
+    else:
+        src = df['close']
+    if src is None or len(src) == 0:
+        return False
+    left_last = float(src.iloc[-1]) * float(cond.get('left_mult', 1.0))
+    price = float(cond.get('right_price', 0))
+    return bool((left_last > price) if cond.get('op', '>') == '>' else (left_last < price))
+
+
 def _eval_compare(df_map, cond):
     """
     比较条件，左右同周期、无跨周期比较。
@@ -203,15 +253,59 @@ def _eval_trend(df_map, cond):
 
 
 def _match_all(conditions, df_map):
+    """
+    多条件 AND 判定：
+    - PRC 比较条件：只看最新一根，单独判定。
+    - EMA/MA 比较条件：按周期(freq)分组，同组内逐根同时满足，再窗口统计根数≥阈值。
+    - 趋势条件：单独判定。
+    全部通过才返回 True。
+    """
+    # 按周期收集 EMA/MA 比较条件
+    ema_groups = {}  # freq -> [cond, ...]
     for cond in conditions:
         if not isinstance(cond, dict):
             continue
-        if cond.get('type') == 'compare':
-            if not _eval_compare(df_map, cond):
+        if cond.get('type') != 'compare':
+            continue
+        if cond.get('right_kind') == 'prc':
+            # PRC 只看最新一根，单独判定
+            if not _prc_match(df_map, cond):
                 return False
-        elif cond.get('type') == 'trend':
+        else:
+            freq = cond.get('freq', 'D')
+            ema_groups.setdefault(freq, []).append(cond)
+
+    # 每个周期的 EMA/MA 组：逐根同时满足，窗口统计
+    for freq, group in ema_groups.items():
+        series_list = []
+        max_window = 1
+        max_min_count = 1
+        for cond in group:
+            s = _cmp_bool_series(df_map, cond)
+            if s is None:
+                return False
+            series_list.append(s)
+            max_window = max(max_window, int(cond.get('window', 1)))
+            max_min_count = max(max_min_count, int(cond.get('min_count', 1)))
+        # 逐根同时满足（AND）
+        combined = series_list[0]
+        for s in series_list[1:]:
+            combined = combined & s
+        # 窗口统计
+        tail = combined.tail(max_window).dropna()
+        if len(tail) < max_window:
+            return False
+        if int(tail.sum()) < max_min_count:
+            return False
+
+    # 趋势条件单独判定
+    for cond in conditions:
+        if not isinstance(cond, dict):
+            continue
+        if cond.get('type') == 'trend':
             if not _eval_trend(df_map, cond):
                 return False
+
     return True
 
 
@@ -314,64 +408,59 @@ def _build_default_task():
 
 
 def filter_list(request):
-    """筛选结果清单。URL 恒为 /filter/list，task/page/per_page 存 session。"""
-    from django.core.paginator import Paginator
-
+    """筛选结果清单。默认任务从全局配置读取，page/per_page 存 session，分页用统一工具。"""
     # 从未筛选过：自动建一条默认 task（收盘价>0，全量非隐藏股）
     if FilterTask.objects.count() == 0:
         _build_default_task()
 
-    # POST：切换 task / 每页条数 / 翻页（存 session，保持 URL 干净）
+    # POST：每页条数 / 翻页 / 二次筛选parent_id / 标记筛选（存 session，保持 URL 干净）
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError:
             return JsonResponse({'status': 'error', 'message': '无效JSON'}, status=400)
-        if 'task_id' in data:
-            func.set_cache(request.session, 'filter-list-task', data['task_id'])
         if 'page' in data:
             func.set_cache(request.session, 'filter-list-page', int(data['page']))
         if 'per_page' in data:
-            func.set_cache(request.session, 'filter-list-per-page', str(data['per_page']))
+            func.set_page_size(request.session, data['per_page'])
+        if 'parent_id' in data:
+            func.set_cache(request.session, 'filter-run-parent-id', data['parent_id'])
+        if 'mark_filter' in data:
+            func.set_cache(request.session, 'filter-list-mark-filter', data['mark_filter'])
+            func.set_cache(request.session, 'filter-list-page', 1)  # 切换标记筛选时重置到第1页
         return JsonResponse({'status': 'success'})
 
-    # GET：从 session 读状态，默认最新 task / 第1页 / 每页20
-    sid = func.get_cache(request.session, 'filter-list-task')
-    task = FilterTask.objects.filter(id=sid).first() if sid else None
+    # GET：从全局配置读默认任务，0 或不存在则回退最新任务
+    gcfg = FilterGlobalConfig.objects.first()
+    default_id = gcfg.default_task_id if gcfg else 0
+    task = FilterTask.objects.filter(id=default_id).first() if default_id else None
     if task is None:
         task = FilterTask.objects.first()
-    # 记录当前展示的 task，供点进 view 页时定位（URL 不带 task_id）
     if task:
-        func.set_cache(request.session, 'filter-list-task', task.id)
         func.set_cache(request.session, 'filter-current-task', task.id)
-    page_raw = str(func.get_cache(request.session, 'filter-list-page', 1))
-    per_page_raw = str(func.get_cache(request.session, 'filter-list-per-page', '20'))
 
-    results_qs = task.results.exclude(hide='1') if task else FilterResult.objects.none()
+    results_qs = task.results.exclude(hide='1').order_by('sort_order', 'id') if task else FilterResult.objects.none()
 
-    if per_page_raw == 'all':
-        items_qs = results_qs
-        total_pages = 1
-        current_page = 1
-        per_page = 20
-    else:
-        try:
-            per_page = int(per_page_raw)
-        except (TypeError, ValueError):
-            per_page = 20
-        paginator = Paginator(results_qs, per_page)
-        try:
-            current_page = int(page_raw)
-        except (TypeError, ValueError):
-            current_page = 1
-        page = paginator.get_page(current_page)
-        items_qs = page.object_list
-        total_pages = paginator.num_pages
+    # 标记筛选（后端过滤，与对比清单一致）
+    mark_filter = func.get_cache(request.session, 'filter-list-mark-filter', 'all')
+    if mark_filter not in ('all', '1', '2'):
+        mark_filter = 'all'
+    if mark_filter in ('1', '2'):
+        results_qs = results_qs.filter(mark=mark_filter)
+
+    # 统一分页（含 view-current-code 页码定位）
+    pg = func.paginate_queryset(request, results_qs, 'filter-list-page')
+
+    # 记录来源，供 view 返回列表时定位
+    func.set_view_back(request.session, '/filter/list')
+    func.set_cache(request.session, 'filter-view-back-url', '/filter/list')
+    # 标记筛选后的全量列表作为 view 的自定义 navi（跨页切换）
+    custom_navi = [(r.code, r.market) for r in results_qs]
+    func.set_cache(request.session, 'filter-view-custom-navi', custom_navi)
 
     items = []
-    base_no = 0 if per_page_raw == 'all' else (current_page - 1) * per_page
-    # 本页结果中正在关注的 (code, market)
-    codes = [(r.code, r.market) for r in items_qs]
+    base_no = (pg['current_page'] - 1) * pg['per_page']
+    codes = [(r.code, r.market) for r in pg['items']]
     focused_set = set()
     if codes:
         watched = FocusStock.objects.filter(
@@ -379,7 +468,7 @@ def filter_list(request):
             code__in=[c for c, _ in codes],
         ).values_list('code', 'market')
         focused_set = set(watched)
-    for idx, r in enumerate(items_qs):
+    for idx, r in enumerate(pg['items']):
         items.append({
             'no': base_no + idx + 1,
             'code': r.code, 'market': r.market, 'name': r.name,
@@ -392,19 +481,87 @@ def filter_list(request):
         'tasks': FilterTask.objects.all()[:50],
         'items': items,
         'conditions_desc': describe_conditions(task.condition_list) if task else [],
-        'per_page': per_page_raw,
-        'current_page': current_page,
-        'total_pages': total_pages,
-        'result_total': results_qs.count(),
+        'per_page': pg['per_page'],
+        'current_page': pg['current_page'],
+        'total_pages': pg['total_pages'],
+        'result_total': pg['total_count'],
+        'page_size_choices': func.PAGE_SIZE_CHOICES,
+        'current_mark_filter': mark_filter,
     })
 
 
+def _run_filter_background(task_id, conditions, parent_id):
+    """后台线程：逐股匹配，实时写 FilterResult，支持终止/超时回滚。"""
+    from django.db import connection
+    connection.close()  # 后台线程用新连接
+    try:
+        task = FilterTask.objects.get(id=task_id)
+    except FilterTask.DoesNotExist:
+        return
+    parent = FilterTask.objects.filter(id=parent_id).first() if parent_id else None
+    sample = _stock_sample(parent)
+    total = len(sample)
+    start_time = time.time()
+    cache.set(FILTER_PROGRESS_KEY,
+              {'task_id': task_id, 'done': 0, 'total': total, 'start_time': start_time},
+              FILTER_RUNNING_TIMEOUT)
+
+    cache_disk = {}
+    passed_count = 0
+    aborted = False
+    for idx, (code, market, sname, cat) in enumerate(sample):
+        # 强制终止
+        if cache.get(FILTER_STOP_KEY):
+            aborted = True
+            break
+        # 超时
+        if time.time() - start_time > FILTER_RUNNING_TIMEOUT:
+            cache.set(FILTER_TIMEOUT_KEY, '1', 120)
+            aborted = True
+            break
+        df_map = _load_kline_map(cache_disk, code, market, cat, conditions)
+        if df_map is None:
+            continue
+        if _match_all(conditions, df_map):
+            FilterResult.objects.get_or_create(
+                task=task, code=code, market=market,
+                defaults={'name': sname, 'cat': cat, 'sort_order': passed_count + 1}
+            )
+            passed_count += 1
+        # 每 10 只更新一次进度
+        if (idx + 1) % 10 == 0 or idx + 1 == total:
+            cache.set(FILTER_PROGRESS_KEY,
+                      {'task_id': task_id, 'done': idx + 1, 'total': total, 'start_time': start_time},
+                      FILTER_RUNNING_TIMEOUT)
+
+    if aborted:
+        # 回滚：删除本次 task 及其所有结果
+        task.delete()
+        # 保留终止/超时标志 60 秒，供前端轮询识别最终状态
+        if cache.get(FILTER_TIMEOUT_KEY):
+            cache.set(FILTER_TIMEOUT_KEY, '1', 60)
+        else:
+            cache.set(FILTER_STOP_KEY, '1', 60)
+    else:
+        task.status = FilterTask.STATUS_DONE
+        task.stock_count = passed_count
+        task.save()
+        # 筛选完成后，默认任务自动改为最新筛选任务
+        gcfg = FilterGlobalConfig.load()
+        gcfg.default_task_id = task.id
+        gcfg.save(update_fields=['default_task_id'])
+
+    cache.delete(FILTER_PROGRESS_KEY)
+    cache.delete(FILTER_RUNNING_KEY)
+
+
 def filter_run(request):
-    """条件配置页 / 执行筛选。?parent_id=xx 在某结果上二次筛选。"""
+    """条件配置页 / 执行筛选。二次筛选的 parent_id 存 session，URL 恒为 /filter/run。"""
     parent = None
-    parent_id = request.GET.get('parent_id') or request.POST.get('parent_id')
+    parent_id = func.get_cache(request.session, 'filter-run-parent-id')
     if parent_id:
         parent = FilterTask.objects.filter(id=parent_id).first()
+        func.delete_cache(request.session, 'filter-run-parent-id')  # 消费掉，避免残留
 
     if request.method == 'POST':
         try:
@@ -425,51 +582,81 @@ def filter_run(request):
             return JsonResponse({'status': 'error', 'message': '正在筛选中，请等待本次完成后再试'},
                                 status=409)
         cache.set(FILTER_RUNNING_KEY, '1', FILTER_RUNNING_TIMEOUT)
+        cache.delete(FILTER_STOP_KEY)
+        cache.delete(FILTER_TIMEOUT_KEY)
+        cache.delete(FILTER_PROGRESS_KEY)
 
-        try:
-            sample = _stock_sample(parent)
-            cache_disk = {}
-            passed = []
-            for code, market, sname, cat in sample:
-                df_map = _load_kline_map(cache_disk, code, market, cat, conditions)
-                if df_map is None:
-                    continue
-                if _match_all(conditions, df_map):
-                    passed.append((code, market, sname, cat))
-
-            # 写库
-            task = FilterTask.objects.create(
-                name=name or f'筛选#{FilterTask.objects.count()+1}',
-                parent=parent,
-                source=FilterTask.SOURCE_TASK if parent else FilterTask.SOURCE_STOCK,
-                conditions=json.dumps(conditions, ensure_ascii=False),
-                stock_count=len(passed),
-            )
-            for idx, (code, market, sname, cat) in enumerate(passed, 1):
-                FilterResult.objects.get_or_create(
-                    task=task, code=code, market=market,
-                    defaults={'name': sname, 'cat': cat, 'sort_order': idx}
-                )
-        finally:
-            cache.delete(FILTER_RUNNING_KEY)
-
-        # 记住本次结果任务，回到干净的 /filter/list
-        func.set_cache(request.session, 'filter-list-task', task.id)
-        func.set_cache(request.session, 'filter-list-page', 1)
-        return JsonResponse({
-            'status': 'success',
-            'task_id': task.id,
-            'count': task.stock_count,
-            'redirect': '/filter/list',
-        })
+        # 先建 running task，后台线程实时写库
+        task = FilterTask.objects.create(
+            name=name or f'筛选#{FilterTask.objects.count() + 1}',
+            parent=parent,
+            source=FilterTask.SOURCE_TASK if parent else FilterTask.SOURCE_STOCK,
+            conditions=json.dumps(conditions, ensure_ascii=False),
+            stock_count=0,
+            status=FilterTask.STATUS_RUNNING,
+        )
+        t = threading.Thread(target=_run_filter_background,
+                             args=(task.id, conditions, parent.id if parent else None))
+        t.daemon = True
+        t.start()
+        return JsonResponse({'status': 'running', 'task_id': task.id})
 
     # GET
     sample_total = len(_stock_sample(parent))
+    # 检测是否有正在运行的筛选
+    running_task = FilterTask.objects.filter(status=FilterTask.STATUS_RUNNING).first()
+    running_state = None
+    if running_task:
+        prog = cache.get(FILTER_PROGRESS_KEY) or {}
+        running_state = json.dumps({
+            'task_id': running_task.id,
+            'name': running_task.name,
+            'done': int(prog.get('done', 0)),
+            'total': int(prog.get('total', 0)),
+        }, ensure_ascii=False)
+    # 最近一次已完成筛选的条件（回填表单）
+    last_task = FilterTask.objects.exclude(status=FilterTask.STATUS_RUNNING).order_by('-id').first()
+    last_conditions = json.dumps(last_task.condition_list, ensure_ascii=False) if last_task else '[]'
     return render(request, 'filter-run.html', {
         'parent': parent,
         'parent_id': parent.id if parent else None,
         'sample_total': sample_total,
+        'last_conditions': last_conditions,
+        'running_state': running_state,
     })
+
+
+def filter_run_status(request):
+    """查询当前筛选进度。"""
+    prog = cache.get(FILTER_PROGRESS_KEY)
+    running = cache.get(FILTER_RUNNING_KEY) is not None
+    timeout = cache.get(FILTER_TIMEOUT_KEY)
+    stopped = cache.get(FILTER_STOP_KEY)
+
+    if timeout:
+        status = 'timeout'
+    elif stopped:
+        status = 'stopped'
+    elif running:
+        status = 'running'
+    else:
+        status = 'idle'
+
+    return JsonResponse({
+        'running': running,
+        'status': status,
+        'done': int(prog.get('done', 0)) if prog else 0,
+        'total': int(prog.get('total', 0)) if prog else 0,
+        'task_id': prog.get('task_id') if prog else None,
+    })
+
+
+def filter_run_stop(request):
+    """强制终止当前筛选。"""
+    if not cache.get(FILTER_RUNNING_KEY):
+        return JsonResponse({'status': 'error', 'message': '当前没有筛选在运行'}, status=400)
+    cache.set(FILTER_STOP_KEY, '1', 120)
+    return JsonResponse({'status': 'stopping'})
 
 
 def _do_focus(result, ema_price=None):
@@ -525,10 +712,9 @@ def _do_focus(result, ema_price=None):
 
 
 def filter_view(request, market, code):
-    """单只结果股详情（K线），支持打标记1/2。URL 不带 task_id，从 session 定位任务。"""
-    # 候选 task_id 依次尝试：URL参数 -> current -> list；任一不存在则跳过，避免 session 残留旧 task 导致 404
+    """单只结果股详情（K线），支持打标记1/2。task 从 session 定位，URL 不带参数。"""
+    # 候选 task_id 依次尝试：current -> list；任一不存在则跳过，避免 session 残留旧 task 导致 404
     candidates = [
-        request.GET.get('task_id'),
         func.get_cache(request.session, 'filter-current-task'),
         func.get_cache(request.session, 'filter-list-task'),
     ]
@@ -577,18 +763,46 @@ def filter_view(request, market, code):
                 'minor': result.mark if result.mark == FilterResult.MARK_POT else '',
             })
         elif func_name == 'hide':
+            # 在剔除当前股票之前，计算下一只（最后一只则取前一只），供前端不刷新切换
+            resp = {'status': 'success', 'hide': '1'}
+            custom = func.get_cache(request.session, 'filter-view-custom-navi')
+            if custom:
+                custom_list = [tuple(x) for x in custom]
+                try:
+                    idx = custom_list.index((code, market))
+                except ValueError:
+                    idx = -1
+                remaining = [x for x in custom_list if x != (code, market)]
+                if 0 <= idx < len(remaining):
+                    nc, nm = remaining[idx]
+                    nres = FilterResult.objects.filter(code=nc, market=nm).order_by('-task_id').first()
+                    resp['next'] = {'code': nc, 'market': nm, 'name': nres.name if nres else ''}
+                elif remaining:
+                    pc, pm = remaining[-1]
+                    pres = FilterResult.objects.filter(code=pc, market=pm).order_by('-task_id').first()
+                    resp['prev'] = {'code': pc, 'market': pm, 'name': pres.name if pres else ''}
+            else:
+                qs = FilterResult.objects.filter(task=task).exclude(hide='1').order_by('sort_order', 'id')
+                nxt = qs.filter(sort_order__gt=result.sort_order).first()
+                if nxt:
+                    resp['next'] = {'code': nxt.code, 'market': nxt.market, 'name': nxt.name}
+                else:
+                    prv = qs.filter(sort_order__lt=result.sort_order).last()
+                    if prv:
+                        resp['prev'] = {'code': prv.code, 'market': prv.market, 'name': prv.name}
             # 隐藏该股票：同步 StockList，以及所有历史结果中的同代码记录
             StockList.objects.filter(code=code, market=market).update(hide='1')
             FilterResult.objects.filter(code=code, market=market).update(hide='1')
-            # 失效导航缓存，并计算下一只（已排除 hide）
+            # 更新所有包含该股票的 FilterTask 的 stock_count
+            for t in FilterTask.objects.filter(results__code=code, results__market=market).distinct():
+                t.stock_count = t.results.exclude(hide='1').count()
+                t.save(update_fields=['stock_count'])
+            # 失效导航缓存
             func.delete_cache(request.session, '/filter/view-navi-data')
-            qs = FilterResult.objects.filter(task=task).exclude(hide='1').order_by('sort_order', 'id')
-            nxt = qs.filter(sort_order__gt=result.sort_order).first()
-            if nxt is None:
-                nxt = qs.first()
-            resp = {'status': 'success', 'hide': '1'}
-            if nxt:
-                resp['next'] = {'code': nxt.code, 'market': nxt.market}
+            # 更新自定义 navi 列表（对比页进入）：移除被 hide 的股票
+            if custom:
+                custom_list = [tuple(x) for x in custom if tuple(x) != (code, market)]
+                func.set_cache(request.session, 'filter-view-custom-navi', custom_list)
             return JsonResponse(resp)
         elif func_name == 'focus':
             return _do_focus(result, data.get('ema_price'))
@@ -597,11 +811,19 @@ def filter_view(request, market, code):
 
     # GET
     func.set_cache(request.session, 'filter-current-task', task.id)
+    func.set_view_current_code(request.session, code)
     navi_data = func.get_cache(request.session, '/filter/view-navi-data', {})
     if ('/filter/view', code, market) != navi_data.get('site_code_market', None):
         navi_data = chart.set_navi_data(request.session, '/filter/view', code, market, None, 'init')
 
+    # 股票不在导航列表中（已被 hide 或不存在），返回来源列表
+    if not navi_data:
+        back_url = func.get_cache(request.session, 'filter-view-back-url', '/filter/list')
+        return redirect(back_url)
+
     func.set_cache(request.session, 'view', 'kline')
+    # backUrl 从独立标记读取（筛选列表/对比列表各自设置）
+    back_url = func.get_cache(request.session, 'filter-view-back-url', '/filter/list')
     chart_init = {
         'site': '/filter/view',
         'code': code,
@@ -610,6 +832,7 @@ def filter_view(request, market, code):
         'cat': result.cat,
         'view': 'kline',
         'taskId': task.id,
+        'backUrl': back_url,
     }
     return render(request, 'filter-view.html', {
         'chart': json.dumps(chart_init),
@@ -619,24 +842,99 @@ def filter_view(request, market, code):
 
 
 def filter_refer(request):
-    """两次筛选结果对比，差异股票高亮。"""
-    tasks = FilterTask.objects.all()[:50]
-
+    """两次筛选结果对比，后端分页。所有状态（task_a/task_b/scope/page/per_page）均存 session，URL 恒为 /filter/refer。"""
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError:
-            return JsonResponse({'error': '无效JSON'}, status=400)
-        a_id, b_id = data.get('task_a'), data.get('task_b')
-        ta = FilterTask.objects.filter(id=a_id).first()
-        tb = FilterTask.objects.filter(id=b_id).first()
-        if not ta or not tb:
-            return JsonResponse({'error': '请选择两个筛选任务'}, status=400)
+            return JsonResponse({'status': 'error', 'message': '无效JSON'}, status=400)
+        if 'task_a' in data:
+            func.set_cache(request.session, 'filter-refer-task-a', data['task_a'])
+        if 'task_b' in data:
+            func.set_cache(request.session, 'filter-refer-task-b', data['task_b'])
+        if 'scope' in data:
+            scope_val = data['scope'] if data['scope'] in ('all', 'both', 'only_a', 'only_b') else 'all'
+            func.set_cache(request.session, 'filter-refer-scope', scope_val)
+        if 'page' in data:
+            func.set_cache(request.session, 'filter-refer-page', int(data['page']))
+        if 'per_page' in data:
+            func.set_page_size(request.session, data['per_page'])
+        if 'from_view' in data:
+            func.set_cache(request.session, 'filter-refer-from-view', data['from_view'])
+            func.set_cache(request.session, 'filter-view-back-url', '/filter/refer')
+        # 所有对比页内部 POST 操作后刷新，均保留任务选择（避免重新弹窗）
+        func.set_cache(request.session, 'filter-refer-from-view', '1')
+        return JsonResponse({'status': 'success'})
 
-        map_a = {(r.code, r.market): r for r in ta.results.all()}
-        map_b = {(r.code, r.market): r for r in tb.results.all()}
+    tasks = [
+        {'id': t.id, 'name': t.name, 'stock_count': t.results.exclude(hide='1').count(), 'parent_id': t.parent_id}
+        for t in FilterTask.objects.all()[:50]
+    ]
+
+    # 判断是否从 view 返回：使用独立标记，避免 view-back-url 残留误判
+    from_view = bool(func.get_cache(request.session, 'filter-refer-from-view'))
+    func.delete_cache(request.session, 'filter-refer-from-view')  # 消费掉，只生效一次
+
+    if from_view:
+        # 从 view 返回：尝试保留 session 中的选择
+        a_id = func.get_cache(request.session, 'filter-refer-task-a')
+        b_id = func.get_cache(request.session, 'filter-refer-task-b')
+    else:
+        a_id = b_id = None
+
+    # 只要没有有效选择（首次进入、取消后再进、或session无值），就统一计算默认任务A/B
+    if not a_id or not b_id:
+        func.delete_cache(request.session, 'filter-refer-task-a')
+        func.delete_cache(request.session, 'filter-refer-task-b')
+        func.delete_cache(request.session, 'filter-refer-scope')
+        a_id = b_id = None
+        # 任务A：当前默认任务（设定页面设置的 default_task_id），未设置则兜底最近任务
+        gcfg = FilterGlobalConfig.objects.first()
+        default_a = gcfg.default_task_id if gcfg and gcfg.default_task_id else None
+        if not default_a:
+            latest_task = FilterTask.objects.order_by('-id').first()
+            default_a = latest_task.id if latest_task else None
+        # 任务B：按优先级查找——子任务→父任务→最近任务（排除A）
+        default_b = None
+        if default_a:
+            # 1. 任务A是否有子任务（其他任务的parent_id=任务A），取最新子任务
+            child = FilterTask.objects.filter(parent_id=default_a).order_by('-id').first()
+            if child:
+                default_b = child.id
+            else:
+                # 2. 任务A是否有父任务
+                task_a_obj = FilterTask.objects.filter(id=default_a).first()
+                if task_a_obj and task_a_obj.parent_id:
+                    default_b = task_a_obj.parent_id
+                else:
+                    # 3. 无关联任务：取最近任务，若A是最近则取第二近；只有一个任务时取自身
+                    latest_two = list(FilterTask.objects.order_by('-id')[:2])
+                    if latest_two:
+                        if latest_two[0].id != default_a:
+                            default_b = latest_two[0].id
+                        elif len(latest_two) > 1:
+                            default_b = latest_two[1].id
+                        else:
+                            default_b = latest_two[0].id
+    else:
+        default_a = default_b = None
+
+    scope = func.get_cache(request.session, 'filter-refer-scope', 'all')
+    if scope not in ('all', 'both', 'only_a', 'only_b'):
+        scope = 'all'
+
+    ta = FilterTask.objects.filter(id=a_id).first() if a_id else None
+    tb = FilterTask.objects.filter(id=b_id).first() if b_id else None
+
+    rows = []
+    count_a = count_b = count_both = 0
+    if ta and tb:
+        map_a = {(r.code, r.market): r for r in ta.results.exclude(hide='1')}
+        map_b = {(r.code, r.market): r for r in tb.results.exclude(hide='1')}
+        count_a = len(map_a)
+        count_b = len(map_b)
+        count_both = len(set(map_a) & set(map_b))
         keys = set(map_a) | set(map_b)
-        rows = []
         for key in sorted(keys):
             in_a = key in map_a
             in_b = key in map_b
@@ -647,20 +945,54 @@ def filter_refer(request):
                 region = 'only_a'
             else:
                 region = 'only_b'
+            if scope != 'all' and region != scope:
+                continue
             rows.append({
                 'code': key[0], 'market': key[1], 'name': r.name,
                 'region': region,
             })
-        return JsonResponse({
-            'rows': rows,
-            'label_a': f'#{ta.id} {ta.name}',
-            'label_b': f'#{tb.id} {tb.name}',
-            'count_a': len(map_a),
-            'count_b': len(map_b),
-            'count_both': len(set(map_a) & set(map_b)),
-        }, safe=False, json_dumps_params={'ensure_ascii': False})
 
-    return render(request, 'filter-refer.html', {'tasks': tasks})
+    # 用统一分页工具（rows 是 list，包装成支持 .iterator() / 切片的对象）
+    class _RowIter:
+        def __init__(self, rows): self._rows = rows
+        def iterator(self): return iter(self._rows)
+        def __iter__(self): return iter(self._rows)
+        def __getitem__(self, key): return self._rows[key]
+        def count(self): return len(self._rows)
+        def __len__(self): return len(self._rows)
+
+    # 统一分页（page/per_page 均从 session 读取）
+
+    pg = func.paginate_queryset(
+        request, _RowIter(rows), 'filter-refer-page',
+        code_getter=lambda obj: obj['code']
+    )
+
+    # 全量过滤后的列表作为 view 自定义 navi（可跨页）
+    custom_navi = [(r['code'], r['market']) for r in rows]
+    func.set_cache(request.session, 'filter-view-custom-navi', custom_navi)
+    func.set_cache(request.session, 'filter-view-back-url', '/filter/refer')
+
+    return render(request, 'filter-refer.html', {
+        'tasks': tasks,
+        'tasks_json': json.dumps(tasks, ensure_ascii=False),
+        'task_a': ta,
+        'task_b': tb,
+        'scope': scope,
+        'has_selection': bool(from_view and ta and tb),
+        'default_a': default_a,
+        'default_b': default_b,
+        'items': pg['items'],
+        'base_no': (pg['current_page'] - 1) * pg['per_page'] + 1,
+        'current_page': pg['current_page'],
+        'total_pages': pg['total_pages'],
+        'per_page': pg['per_page'],
+        'result_total': pg['total_count'],
+        'count_a': count_a,
+        'count_b': count_b,
+        'count_both': count_both,
+        'page_size_choices': func.PAGE_SIZE_CHOICES,
+    })
 
 
 def filter_config(request):
@@ -690,6 +1022,14 @@ def filter_config(request):
             cfg.set_exclude_st(bool(data.get('exclude_st')))
             return JsonResponse({'status': 'success',
                                  'exclude_st': cfg.is_exclude_st()})
+        if data.get('action') == 'set_default':
+            tid = data.get('task_id')
+            if FilterTask.objects.filter(id=tid).exists():
+                cfg = FilterGlobalConfig.load()
+                cfg.default_task_id = tid
+                cfg.save(update_fields=['default_task_id'])
+                return JsonResponse({'status': 'success'})
+            return JsonResponse({'status': 'error', 'message': '任务不存在'}, status=404)
         return JsonResponse({'status': 'error', 'message': '未知操作'}, status=400)
 
     # 统计各板块股票数量（未隐藏）
@@ -713,11 +1053,12 @@ def filter_config(request):
             'id': t.id,
             'name': t.name,
             'source': t.source_display_label,
-            'count': t.stock_count,
+            'count': t.results.exclude(hide='1').count(),
             'created': t.created_at.strftime('%Y-%m-%d'),
             'lines': describe_conditions(t.condition_list),
         })
     return render(request, 'filter-config.html', {
         'tasks': tasks, 'boards': boards,
         'exclude_st': cfg.is_exclude_st(),
+        'default_task_id': cfg.default_task_id,
     })

@@ -9,7 +9,13 @@
     .cond-row { display:flex; flex-wrap:wrap; gap:.5rem; align-items:flex-end; }
     .cond-row .field { display:flex; flex-direction:column; }
     .cond-row label { font-size:.72rem; color:#6c757d; margin-bottom:.1rem; }
-    .cond-row select, .cond-row input { min-width:80px; }
+    .cond-row select, .cond-row input { width:105px; min-width:105px; }
+    .cond-break { display:none; }
+    @media (max-width: 768px) {
+        .cond-break { display:block; flex:0 0 100%; height:0; }
+    }
+    .progress-bar-wrap { background:#e9ecef; border-radius:.25rem; height:8px; overflow:hidden; margin:.5rem 0; }
+    .progress-bar-fill { background:#0d6efd; height:100%; transition:width .3s; }
 </style>
 {% endblock %}
 
@@ -18,8 +24,8 @@
     <div id="errorText" class="d-none alert alert-danger"></div>
 
     <div class="mb-3">
-        <label class="form-label">任务名称</label>
-        <input type="text" id="taskName" class="form-control" placeholder="可留空，自动命名">
+        <label class="form-label fw-bold" style="font-size:1rem;">任务名称</label>
+        <input type="text" id="taskName" class="form-control form-control-sm" placeholder="可留空，自动命名">
     </div>
 
     <div class="alert alert-info py-2 small">
@@ -28,16 +34,32 @@
             <b>基于筛选 #{{ parent.id }} {{ parent.name }}</b> 的 {{ parent.stock_count }} 只结果
             <a href="/filter/run" class="ms-2 text-decoration-none">改为全量样本</a>
         {% else %}
-            <b>全量样本</b>（StockList 中未隐藏的股票，约 {{ sample_total }} 只）
+            <b>全量样本</b>（{{ sample_total }} 只）
         {% endif %}
     </div>
 
-    <h6 class="mb-2">筛选条件（多条件为 AND 关系）</h6>
+    {# 筛选条件标题行：标题 + 右侧按钮 #}
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0">筛选条件</h6>
+        <div>
+            <button type="button" class="btn btn-outline-secondary btn-sm me-2" id="addCompare">＋ 比较条件</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="addTrend">＋ 趋势条件</button>
+        </div>
+    </div>
     <div id="condList"></div>
 
-    <div class="mb-3">
-        <button type="button" class="btn btn-outline-secondary btn-sm me-2" id="addCompare">＋ 比较条件</button>
-        <button type="button" class="btn btn-outline-secondary btn-sm" id="addTrend">＋ 趋势条件</button>
+    {# 运行中状态区 #}
+    <div id="runningPanel" class="d-none card mb-3">
+        <div class="card-body py-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <span id="runningLabel" class="small fw-bold">筛选运行中…</span>
+                <span id="runningPct" class="small text-muted">0%</span>
+            </div>
+            <div class="progress-bar-wrap">
+                <div class="progress-bar-fill" id="runningBar" style="width:0%"></div>
+            </div>
+            <div class="small text-muted" id="runningDetail"></div>
+        </div>
     </div>
 
     <div class="d-flex">
@@ -56,7 +78,11 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
-        initFilterRun({ parentId: {{ parent_id|default:'null' }} });
+        initFilterRun({
+            parentId: {{ parent_id|default:'null' }},
+            lastConditions: {{ last_conditions|safe }},
+            runningState: {{ running_state|default:'null'|safe }},
+        });
     });
 </script>
 {% endblock %}

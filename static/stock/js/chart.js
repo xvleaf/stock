@@ -1,4 +1,4 @@
-import { postRequest, updateFormData, initScrollFold, showChartError } from './func.js';
+import { postRequest, updateFormData, initScrollFold, showChartError, showConfirm, showAlert, showFormModal } from './func.js';
 import { trendChart, initTrendChart, destroyTrendChart, clearTrendTimer } from './trend.js';
 import { klineChart, initKlineChart, destroyKlineChart, refreshKlineDensity, getCurrentEma } from './kline.js';
 import { changeFreq as klineChangeFreq, toggleRight as klineToggleRight } from './kline.js';
@@ -13,6 +13,14 @@ export function initChartPage() {
     loadChartPage('view', pageConfig.view);
     bindGlobalKeyboard();
     initScrollFold();
+
+    // 点击图表区域时，若 k,d 等 contenteditable 输入框有焦点，主动失焦以触发参数更新
+    document.addEventListener('click', (e) => {
+        const active = document.activeElement;
+        if (active && active.classList.contains('param-input') && !e.target.closest('.param-input')) {
+            active.blur();
+        }
+    });
 
     // 监听浏览器后退/前进
     window.addEventListener('popstate', (event) => {
@@ -70,6 +78,18 @@ export async function loadChartPage(func, value) {
             const newConfig = res.chart;
             setPageConfig(newConfig);
 
+            // 若浏览器地址栏与当前股票不一致，同步历史记录（hide 后 loadChartPage 切换股票时需要）
+            const expectedPath = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
+            if (window.location.pathname !== expectedPath) {
+                history.pushState({
+                    site: pageConfig.site,
+                    code: pageConfig.code,
+                    market: pageConfig.market,
+                    name: pageConfig.name,
+                    cat: pageConfig.cat
+                }, '', expectedPath);
+            }
+
             // 立即应用全屏样式（从 localStorage 恢复）
             applyFullscreenState();
 
@@ -105,6 +125,9 @@ export async function loadChartPage(func, value) {
                         exitEventListen();
                     }
                 }
+
+                // 重新初始化页面元素（导航按钮事件绑定等），与 naviSwitch 一致
+                initPageElements();
             });
         }
     } catch (error) {
@@ -408,7 +431,7 @@ function applyFullscreenState() {
 }
 
 function naviSwitch(type, action) {
-    postRequest('/chart/view', {
+    return postRequest('/chart/view', {
         func: type,
         value: action,
         site: pageConfig.site,
@@ -468,9 +491,10 @@ function naviSwitch(type, action) {
                     // 重新初始化页面元素（导航按钮等）
                     initPageElements();
                 });
-                return;
+                return true;
             }
         }
+        return false;
     });
 }
 
@@ -487,26 +511,28 @@ function jumpToLink() {
         : `/link/stock/list?code=${code}`;
     window.location.href = url;
     */
-    // 一个漂亮的确认对话框
-    Swal.fire({
-    title: '确定要删除吗？',
-    text: '此操作不可撤销！',
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonColor: '#3085d6',
-    cancelButtonColor: '#d33',
-    confirmButtonText: '确认删除'
-    }).then((result) => {
-    if (result.isConfirmed) {
-        console.log(pageConfig.cat);
-        Swal.fire('已删除!', '文件已成功删除。', 'success');
-    }
+    // 确认删除对话框
+    showConfirm({
+        title: '确定要删除吗？',
+        text: '此操作不可撤销！',
+        confirmText: '确认删除',
+        confirmClass: 'btn-danger',
+    }).then((confirmed) => {
+        if (confirmed) {
+            console.log(pageConfig.cat);
+            showAlert({ title: '已删除!', text: '文件已成功删除。', type: 'success' });
+        }
     });
 
 
 };
 
 function backToList() {
+    // 优先用后端传入的来源列表页（记住进入 view 前的列表）
+    if (pageConfig.backUrl) {
+        window.location.href = pageConfig.backUrl;
+        return;
+    }
     const routeMap = {
         '/sector/view': '/sector/list',
         '/': '/focus/list',
@@ -521,25 +547,19 @@ function backToList() {
 function focusAction() {
     const currentlyFocused = pageConfig.mark && (pageConfig.mark.focus === 1 || pageConfig.mark.focus === '1');
     const confirmText = currentlyFocused ? '确定要取消关注该股票吗？' : '确定要关注该股票吗？';
-    const confirmIcon = currentlyFocused ? 'warning' : 'question';
-    const swalOpts = {
+    showConfirm({
         title: currentlyFocused ? '取消关注' : '关注',
         text: confirmText,
-        icon: confirmIcon,
-        showCancelButton: true,
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-    };
-    const fsEl = document.fullscreenElement;
-    if (fsEl) swalOpts.container = fsEl;
-    Swal.fire(swalOpts).then((result) => {
-        if (!result.isConfirmed) return;
+        confirmText: '确定',
+        cancelText: '取消',
+    }).then((confirmed) => {
+        if (!confirmed) return;
         const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
         const payload = { 'func': 'focus' };
         if (!currentlyFocused) {
             const ema = getCurrentEma();
             if (ema == null) {
-                Swal.fire('错误', '未取到当前EMA值', 'error');
+                showAlert({ title: '错误', text: '未取到当前EMA值', type: 'error' });
                 return;
             }
             payload.ema_price = ema;
@@ -549,7 +569,7 @@ function focusAction() {
                 pageConfig.mark.focus = res.focus;
                 renderMarkButtons();
                 if (!currentlyFocused && res.plan) {
-                    Swal.fire('已关注', `计划价 ${res.plan}，目标 ${res.target}，止损 ${res.stop}，数量 ${res.qty}`, 'success');
+                    showAlert({ title: '已关注', text: `计划价 ${res.plan}，目标 ${res.target}，止损 ${res.stop}，数量 ${res.qty}`, type: 'success' });
                 }
             }
         });
@@ -569,26 +589,26 @@ function markAction(func) {
 }
 
 function hideAction() {
-    const swalOpts = {
+    showConfirm({
         title: '隐藏',
-        text: '确定要隐藏该股票吗？隐藏后将从样本中剔除。',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-    };
-    const fsEl = document.fullscreenElement;
-    if (fsEl) swalOpts.container = fsEl;
-    Swal.fire(swalOpts).then((result) => {
-        if (!result.isConfirmed) return;
+        text: '确定要隐藏该股票吗？',
+        confirmText: '确定',
+        cancelText: '取消',
+    }).then((confirmed) => {
+        if (!confirmed) return;
         const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
         postRequest(url, { 'func': 'hide' }).then(res => {
             if (!res || res.status !== 'success') return;
-            // 后端返回下一只（已剔除被隐藏股票），直接跳转；无则回列表
-            if (res.next && res.next.code) {
-                location.href = `${pageConfig.site}/${res.next.market}/${res.next.code}`;
+            // hide 后不刷新页面：后端已在剔除前算好下一只（最后一只则前一只）
+            // 直接用 loadChartPage 加载该股票，行为与点击 next 一致（AJAX 不刷新）
+            const target = res.next || res.prev;
+            if (target) {
+                pageConfig.code = target.code;
+                pageConfig.market = target.market;
+                if (target.name) pageConfig.name = target.name;
+                loadChartPage('view', pageConfig.view);
             } else {
-                backToList();
+                backToList(); // 列表为空
             }
         });
     });
@@ -634,38 +654,28 @@ function exitEventListen() {
 
         // 获取当前日期作为默认值（格式 YYYY-MM-DD）
         const today = new Date().toISOString().slice(0, 10);
-        
-        Swal.fire({
-            title: '关闭股票',
-            width: 420,
-            customClass: {
-                popup: 'sweet-popup', 
-                title: 'sweet-title'
-            },
-            html: `
-                <div style="text-align: left;">
-                    <label for="swal-close-date" class="form-label fs-6" style="font-weight:200;">时间：</label>
-                    <input type="date" id="swal-close-date" class="form-control fs-6" value="${today}">
 
-                    <label for="swal-close-comment" class="form-label fs-6" style="font-weight:200; margin-top:2px;">备注：</label>
-                    <textarea id="swal-close-comment" class="form-control fs-6" style="resize: none;" rows="2"></textarea>
-                </div>
-            `,
-            showCancelButton: true,
-            confirmButtonText: '确认',
-            cancelButtonText: '取消',
-            confirmButtonColor: '#0d6efd',
-            // cancelButtonColor: '#6c757d',
-            preConfirm: () => {
-                const closeDate = document.getElementById('swal-close-date').value;
-                const comment = document.getElementById('swal-close-comment').value.trim();
-                
-                // 返回一个对象，在 then 中可接收
+        const formHtml = `
+            <div class="text-start">
+                <label for="bs-close-date" class="form-label mb-1">时间：</label>
+                <input type="date" id="bs-close-date" class="form-control form-control-sm" value="${today}">
+                <label for="bs-close-comment" class="form-label mb-1 mt-2">备注：</label>
+                <textarea id="bs-close-comment" class="form-control form-control-sm" style="resize: none;" rows="2"></textarea>
+            </div>`;
+
+        showFormModal({
+            title: '关闭股票',
+            formHtml,
+            confirmText: '确认',
+            cancelText: '取消',
+            onConfirm: (modalEl) => {
+                const closeDate = modalEl.querySelector('#bs-close-date').value;
+                const comment = modalEl.querySelector('#bs-close-comment').value.trim();
                 return { closeDate, comment };
-            }
+            },
         }).then((result) => {
-            if (result.isConfirmed) {
-                const { closeDate, comment } = result.value;
+            if (result) {
+                const { closeDate, comment } = result;
                 exitAction({
                     reason: 'manual',
                     comments: comment,

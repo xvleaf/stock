@@ -200,6 +200,9 @@
     font-size: 15px;
 }
 .chart-param .param-input {
+    display: inline-block;
+    min-width: 1rem;
+    text-align: center;
     outline: none;
     cursor: pointer;
     font-size: 14px;
@@ -410,5 +413,6 @@ body.pseudo-fullscreen-open {
 .row-only-a > td { background-color: rgba(13,110,253,.08) !important; }
 .row-only-b > td { background-color: rgba(220,53,69,.08) !important; }
 
-/* 伪全屏图表 z-index 为 99999，需让 SweetAlert2 弹框盖在其上 */
-.swal2-container { z-index: 100001 !important; }
+
+/* 伪全屏图表 z-index 为 99999，需让 Bootstrap Modal 弹框盖在其上 */
+.modal { z-index: 100001 !important; }

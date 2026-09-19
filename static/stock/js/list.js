@@ -28,7 +28,7 @@ export function syncTableHeaderCellStyle() {
         fixedHeaderRow.innerHTML = '';
         sourceThList.forEach(th => {
             const cell = document.createElement('div');
-            cell.textContent = th.textContent.trim();
+            cell.innerHTML = th.innerHTML;
             cell.className = th.className;
             fixedHeaderRow.appendChild(cell);
         });
@@ -211,4 +211,58 @@ export function tableHeaderInit() {
     beforeUnloadCleanup = onBeforeUnload;
     // 返回清理函数（供外部手动调用）
     return cleanup;
+}
+/**
+ * 统一分页控件初始化：翻页 + 每页数量，POST 到当前 URL 后刷新页面。
+ * @param {string} postUrl - 接收 page/per_page 的 POST 地址
+ */
+export function initPagination(postUrl) {
+    const pag = document.querySelector('.list-pagination');
+    if (!pag) return;
+
+    function saveAndReload(patch) {
+        fetch(postUrl, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+            body: JSON.stringify(patch),
+        }).then(() => { window.location.reload(); });
+    }
+
+    pag.querySelector('.page-prev')?.addEventListener('click', (e) => {
+        if (e.currentTarget.disabled) return;
+        saveAndReload({ page: parseInt(e.currentTarget.dataset.page) });
+    });
+    pag.querySelector('.page-next')?.addEventListener('click', (e) => {
+        if (e.currentTarget.disabled) return;
+        saveAndReload({ page: parseInt(e.currentTarget.dataset.page) });
+    });
+    pag.querySelector('.page-size')?.addEventListener('change', (e) => {
+        saveAndReload({ per_page: e.target.value, page: 1 });
+    });
+    // 页码输入框（contenteditable）：失焦或回车跳转，参考 kline k,d 交互；内容未变化不刷新
+    const jumpInput = pag.querySelector('.page-jump-input');
+    if (jumpInput) {
+        const original = parseInt(jumpInput.dataset.page);
+        const doJump = () => {
+            let val = parseInt(jumpInput.textContent.trim());
+            if (isNaN(val) || val < 1) val = 1;
+            const max = parseInt(jumpInput.dataset.max);
+            if (max && val > max) val = max;
+            jumpInput.textContent = val;
+            if (val === original) return; // 内容未变化，不刷新
+            saveAndReload({ page: val });
+        };
+        jumpInput.addEventListener('blur', doJump);
+        jumpInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                jumpInput.blur();
+            }
+        });
+    }
+}
+
+export function getCsrfToken() {
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
 }

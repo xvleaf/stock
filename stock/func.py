@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import decimal
 from .fetch import kline, trend
@@ -170,3 +171,99 @@ def _market_of(code):
     if code.startswith(('8', '4')):
         return 'BJ'
     return 'SH'
+
+
+# =====================================================================
+# 统一列表分页 / 导航工具（供筛选列表、筛选对比、关注列表等复用）
+# =====================================================================
+PAGE_SIZE_CHOICES = [10, 20, 50]
+DEFAULT_PAGE_SIZE = int(os.environ.get('GLOBAL_PER_PAGE', '10'))
+GLOBAL_PAGE_SIZE_KEY = 'global-per-page'
+
+
+def get_page_size(session):
+    """从全局 session 读取每页条数，非法值回退默认。"""
+    raw = str(get_cache(session, GLOBAL_PAGE_SIZE_KEY, str(DEFAULT_PAGE_SIZE)))
+    try:
+        v = int(raw)
+        return v if v in PAGE_SIZE_CHOICES else DEFAULT_PAGE_SIZE
+    except (TypeError, ValueError):
+        return DEFAULT_PAGE_SIZE
+
+
+def set_page_size(session, value):
+    try:
+        v = int(value)
+        if v in PAGE_SIZE_CHOICES:
+            set_cache(session, GLOBAL_PAGE_SIZE_KEY, str(v))
+    except (TypeError, ValueError):
+        pass
+
+
+def resolve_focus_page(session, queryset, per_page, code_getter=None):
+    """
+    若 session 中有 view-current-code（从 view 返回列表时带入），
+    计算其在已排序 queryset 中的页码（1-based），消费掉该 code 并返回页码；无则返回 None。
+    """
+    if code_getter is None:
+        code_getter = lambda obj: getattr(obj, 'code', None)
+    focus_code = get_cache(session, 'view-current-code')
+    if not focus_code:
+        return None
+    delete_cache(session, 'view-current-code')
+    for idx, obj in enumerate(queryset.iterator()):
+        if code_getter(obj) == focus_code:
+            return idx // per_page + 1
+    return None
+
+
+def paginate_queryset(request, queryset, page_key, code_getter=None):
+    """
+    统一分页入口。
+    - queryset: 已排序的查询集
+    - page_key: 存储当前页码的 session key，如 'filter-list-page'
+    - code_getter: 从对象取 code 的函数，默认 obj.code
+    - 返回 dict: items, current_page, total_pages, per_page, total_count
+    """
+    from django.core.paginator import Paginator
+    per_page = get_page_size(request.session)
+
+    # 优先用 view-current-code 定位页码（从 view 返回列表时）
+    focus_page = resolve_focus_page(request.session, queryset, per_page, code_getter)
+    if focus_page is not None:
+        current_page = focus_page
+        set_cache(request.session, page_key, current_page)
+    else:
+        raw = get_cache(request.session, page_key, 1)
+        try:
+            current_page = int(raw)
+        except (TypeError, ValueError):
+            current_page = 1
+
+    paginator = Paginator(queryset, per_page)
+    current_page = max(1, min(current_page, paginator.num_pages or 1))
+    page = paginator.get_page(current_page)
+    return {
+        'items': page.object_list,
+        'current_page': current_page,
+        'total_pages': paginator.num_pages,
+        'per_page': per_page,
+        'total_count': paginator.count,
+    }
+
+
+# ---- view 返回列表来源记忆 ----
+def set_view_back(session, url):
+    set_cache(session, 'view-back-url', url)
+
+
+def get_view_back(session):
+    return get_cache(session, 'view-back-url')
+
+
+def set_view_current_code(session, code):
+    set_cache(session, 'view-current-code', code)
+
+
+def get_view_current_code(session):
+    return get_cache(session, 'view-current-code')

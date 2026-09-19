@@ -22,6 +22,14 @@ def focus_list(request):
         except json.JSONDecodeError:
             return JsonResponse({'error': '无效的JSON'}, status=400)
 
+        # 分页 / 每页数量（独立处理，可同时接收 page + per_page）
+        if 'page' in data or 'per_page' in data:
+            if 'page' in data:
+                func.set_cache(request.session, 'focus-list-page', int(data['page']))
+            if 'per_page' in data:
+                func.set_page_size(request.session, data['per_page'])
+            return JsonResponse({'status': 'success'})
+
         if data.get('action') == 'sort':
             ordered_codes = data.get('codes', [])
             for i, c in enumerate(ordered_codes):
@@ -47,7 +55,11 @@ def focus_list(request):
     items = []
     # models 自带 sort_order 排序，因此不需要进行排序
     focus_qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING)
-    for fs in focus_qs:
+
+    # 统一分页
+    pg = func.paginate_queryset(request, focus_qs, 'focus-list-page')
+
+    for fs in pg['items']:
         deci = 3 if fs.cat in ('fund', 'bond') else 2
         items.append({
             'code': fs.code,
@@ -59,9 +71,15 @@ def focus_list(request):
             'change': '--',
             'deci': deci
         })
+    func.set_view_back(request.session, '/focus/list')
     return render(request, 'focus-list.html', {
         'list': items,
-        'interval': quote.QUOTE_REQUEST_INTERVAL
+        'interval': quote.QUOTE_REQUEST_INTERVAL,
+        'current_page': pg['current_page'],
+        'total_pages': pg['total_pages'],
+        'per_page': pg['per_page'],
+        'result_total': pg['total_count'],
+        'page_size_choices': func.PAGE_SIZE_CHOICES,
     })
 
 
@@ -153,7 +171,8 @@ def focus_view(request, market, code):
             'market': market,
             'name': focus.name,
             'cat': focus.cat,
-            'view': view_mode
+            'view': view_mode,
+            'backUrl': func.get_view_back(request.session) or '/focus/list',
         }
         
         return render(request, 'focus-view.html', {

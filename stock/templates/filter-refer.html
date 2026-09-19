@@ -1,61 +1,175 @@
 {% extends "base-view.html" %}
 {% block title %}筛选对比{% endblock %}
 {% block content %}
-<div class="form-wrap">
-    <div class="row g-2 align-items-end mb-3">
-        <div class="col">
-            <label class="form-label small mb-1">筛选 A</label>
-            <select id="taskA" class="form-select form-select-sm">
-                {% for t in tasks %}
-                <option value="{{ t.id }}">#{{ t.id }} {{ t.name }}（{{ t.stock_count }}）</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="col">
-            <label class="form-label small mb-1">筛选 B</label>
-            <select id="taskB" class="form-select form-select-sm">
-                {% for t in tasks %}
-                <option value="{{ t.id }}">#{{ t.id }} {{ t.name }}（{{ t.stock_count }}）</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="col-auto">
-            <button type="button" class="btn btn-primary btn-sm" id="referBtn">对比</button>
-        </div>
-    </div>
-
-    <div id="referSummary" class="small mb-2"></div>
-
-    <div id="fixedHeader">
-        <div class="fixed-header-inner"><div class="fixed-header-row" id="fixedHeaderRow"></div></div>
-    </div>
-    <div class="table-responsive" id="tableWrap">
+<div id="fixedHeader">
+    <div class="fixed-header-inner"><div class="fixed-header-row" id="fixedHeaderRow"></div></div>
+</div>
+<div class="table-responsive" id="tableWrap">
         <table class="table table-stock table-hover" id="stockTable">
             <thead id="originalThead">
                 <tr>
-                    <th style="width:10%;">序号</th>
-                    <th style="width:20%;">代码</th>
-                    <th style="width:40%;">名称</th>
-                    <th style="width:30%;">归属</th>
+                    <th style="width:20%;">序号</th>
+                    <th style="width:30%;">代码</th>
+                    <th style="width:30%;">名称</th>
+                    <th style="width:20%;"><button type="button" class="btn btn-link btn-sm p-0 text-decoration-none header-filter-btn scope-filter-btn">归属</button></th>
                 </tr>
             </thead>
-            <tbody id="stockBody"></tbody>
+            <tbody id="stockBody">
+                {% for item in items %}
+                <tr data-code="{{ item.code }}" data-market="{{ item.market }}">
+                    <td style="width:20%;"><span>{{ forloop.counter0|add:base_no }}</span></td>
+                    <td style="width:30%;"><a class="table-code-text refer-view-link" href="javascript:void(0)" data-market="{{ item.market }}" data-code="{{ item.code }}">{{ item.code }}</a></td>
+                    <td style="width:30%;"><span>{{ item.name }}</span></td>
+                    <td style="width:20%;">
+                        {% if item.region == 'both' %}<span class="badge bg-secondary">共有</span>
+                        {% elif item.region == 'only_a' %}<span class="badge bg-primary">仅A</span>
+                        {% else %}<span class="badge bg-info">仅B</span>{% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="text-center text-muted">暂无数据</tr>
+                {% endfor %}
+            </tbody>
         </table>
-    </div>
 </div>
+
+{% include 'page-navi.html' %}
+{% endblock %}
+
+{% block extra_css %}
+{% load static %}
+<link rel="stylesheet" href="{% static 'stock/css/view.css' %}">
+<style>
+.header-filter-btn { color: inherit; }
+.header-filter-btn:hover { color: #0d6efd; }
+</style>
 {% endblock %}
 
 {% block extra_js %}
 {% load static %}
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
-    import { tableHeaderInit } from "{% static 'stock/js/list.js' %}";
-    import { initFilterRefer } from "{% static 'stock/js/filter.js' %}";
+    import { tableHeaderInit, initPagination, getCsrfToken } from "{% static 'stock/js/list.js' %}";
+    import { showFormModal, showRadioModal } from "{% static 'stock/js/func.js' %}";
+
+    const tasks = {{ tasks_json|safe }};
+    const hasSelection = {{ has_selection|yesno:"true,false" }};
+    const defaultA = {{ default_a|default:"null" }};
+    const defaultB = {{ default_b|default:"null" }};
+
+    // HTML 转义，避免任务名称中的 > < & 被解析为标签
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str == null ? '' : String(str);
+        return div.innerHTML;
+    }
+
+    function saveAndReload(patch) {
+        fetch('/filter/refer', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+            body: JSON.stringify(patch),
+        }).then(() => { window.location.reload(); });
+    }
+
+    // 从对比列表进入 view：先设置 from_view 标记（对比页返回时保留选择），再跳转
+    function goReferView(market, code) {
+        fetch('/filter/refer', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+            body: JSON.stringify({ from_view: '1' }),
+        }).then(() => { window.location.href = `/filter/view/${market}/${code}`; });
+    }
+
+    // 任务A变化时，联动更新任务B：子任务→父任务→最近任务（排除A）
+    function syncTaskB(aId) {
+        const aNum = Number(aId);
+        let bId = null;
+        // 1. 任务A是否有子任务（其他任务parent_id=任务A），取最新子任务
+        const children = tasks.filter(t => t.parent_id === aNum).sort((x, y) => y.id - x.id);
+        if (children.length) {
+            bId = children[0].id;
+        } else {
+            // 2. 任务A是否有父任务
+            const taskA = tasks.find(t => t.id === aNum);
+            if (taskA && taskA.parent_id) {
+                bId = taskA.parent_id;
+            } else {
+                // 3. 无关联任务：取最近任务，若A是最近则取第二近
+                const sorted = [...tasks].sort((x, y) => y.id - x.id);
+                if (sorted.length) {
+                    bId = sorted[0].id !== aNum ? sorted[0].id : (sorted[1] ? sorted[1].id : null);
+                }
+            }
+        }
+        const selB = document.getElementById('bsTaskB');
+        if (selB && bId !== null) selB.value = bId;
+    }
+
+    function showTaskPicker() {
+        // 双重保险：若 defaultB 为空，取排除A后 id 最大的任务
+        const effectiveB = defaultB || (tasks.filter(t => t.id !== defaultA).sort((x, y) => y.id - x.id)[0]?.id) || defaultA;
+        const optsA = tasks.map(t => `<option value="${t.id}" ${defaultA && t.id === defaultA ? 'selected' : ''}>#${t.id} ${escapeHtml(t.name)}（${t.stock_count}）</option>`).join('');
+        const optsB = tasks.map(t => `<option value="${t.id}" ${effectiveB && t.id === effectiveB ? 'selected' : ''}>#${t.id} ${escapeHtml(t.name)}（${t.stock_count}）</option>`).join('');
+        const formHtml = `
+            <div class="text-start">
+                <div class="mb-2">
+                    <label class="form-label mb-1">任务 A</label>
+                    <select id="bsTaskA" class="form-select form-select-sm">${optsA}</select>
+                </div>
+                <div>
+                    <label class="form-label mb-1">任务 B</label>
+                    <select id="bsTaskB" class="form-select form-select-sm">${optsB}</select>
+                </div>
+            </div>`;
+        showFormModal({
+            title: '选择对比任务',
+            formHtml,
+            confirmText: '确定',
+            cancelText: '取消',
+            onShow: (modalEl) => {
+                modalEl.querySelector('#bsTaskA').addEventListener('change', (e) => syncTaskB(e.target.value));
+            },
+            onConfirm: (modalEl) => {
+                const a = modalEl.querySelector('#bsTaskA').value;
+                const b = modalEl.querySelector('#bsTaskB').value;
+                return { task_a: a, task_b: b };
+            },
+        }).then((result) => {
+            if (result) {
+                saveAndReload({ task_a: result.task_a, task_b: result.task_b, page: 1, from_view: '1' });
+            }
+        });
+    }
 
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         tableHeaderInit();
-        initFilterRefer();
+        initPagination('/filter/refer');
+
+        // 股票链接点击：先设置标记再跳转
+        document.querySelectorAll('.refer-view-link').forEach(link => {
+            link.addEventListener('click', () => goReferView(link.dataset.market, link.dataset.code));
+        });
+
+        if (!hasSelection) {
+            showTaskPicker();
+        }
+
+        // 表头"归属"按钮：事件委托兼容固定表头克隆
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.scope-filter-btn');
+            if (!btn) return;
+            showRadioModal({
+                title: '归属筛选',
+                options: [['all', '全部'], ['both', '共有'], ['only_a', '仅A'], ['only_b', '仅B']],
+                defaultValue: '{{ scope }}',
+            }).then((value) => {
+                if (value !== null) {
+                    saveAndReload({ scope: value, page: 1 });
+                }
+            });
+        });
     });
 </script>
 {% endblock %}

@@ -9,6 +9,8 @@ urlpatterns = [
     # ---- 股票筛选 ----
     path('filter/list', filter.filter_list, name='filter_list'),
     path('filter/run', filter.filter_run, name='filter_run'),
+    path('filter/run/status', filter.filter_run_status, name='filter_run_status'),
+    path('filter/run/stop', filter.filter_run_stop, name='filter_run_stop'),
     path('filter/refer', filter.filter_refer, name='filter_refer'),
     path('filter/config', filter.filter_config, name='filter_config'),
     path('filter/view/<str:market>/<str:code>', filter.filter_view, name='filter_view'),

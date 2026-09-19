@@ -544,6 +544,13 @@ class FilterTask(models.Model):
         (SOURCE_TASK, '上次结果'),
     ]
 
+    STATUS_RUNNING = 'running'
+    STATUS_DONE = 'done'
+    STATUS_CHOICES = [
+        (STATUS_RUNNING, '运行中'),
+        (STATUS_DONE, '已完成'),
+    ]
+
     name = models.CharField('任务名称', max_length=100, default='')
     parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True,
                                related_name='children', verbose_name='上级筛选')
@@ -551,6 +558,8 @@ class FilterTask(models.Model):
                              default=SOURCE_STOCK, db_index=True)
     conditions = models.TextField('筛选条件(JSON)', blank=True, default='[]')
     stock_count = models.IntegerField('结果数量', default=0)
+    status = models.CharField('状态', max_length=10, choices=STATUS_CHOICES,
+                              default=STATUS_DONE, db_index=True)
     remark = models.CharField('备注', max_length=200, blank=True, default='')
     created_at = models.DateField('创建日期', auto_now_add=True)
     updated_at = models.DateField('更新日期', auto_now=True)
@@ -640,8 +649,10 @@ class FilterGlobalConfig(models.Model):
     """全局筛选样本板块开关（单例表，不绑定 task）。"""
     enabled_boards = models.CharField('启用板块', max_length=100, default='', blank=True,
                                       help_text='逗号分隔的板块 key，空=全部启用')
-    exclude_st = models.CharField('排除ST', max_length=2, default='', blank=True,
+    exclude_st = models.CharField('排除ST', max_length=2, default='1', blank=True,
                                   help_text='1=样本中排除名称含 ST 的股票')
+    default_task_id = models.IntegerField('默认筛选任务ID', default=0, blank=True,
+                                           help_text='筛选清单默认显示的任务ID，0=最新任务')
 
     class Meta:
         db_table = 'models_filter_global_config'
@@ -670,5 +681,5 @@ class FilterGlobalConfig(models.Model):
     def load(cls):
         obj = cls.objects.first()
         if obj is None:
-            obj = cls.objects.create(enabled_boards='')
+            obj = cls.objects.create(enabled_boards='', exclude_st='1')
         return obj

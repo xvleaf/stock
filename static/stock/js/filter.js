@@ -1,11 +1,9 @@
 import { chartPageContainer, initChartPage, setPageConfig } from './chart.js';
-import { postRequest, getCsrfToken } from './func.js';
+import { postRequest, getCsrfToken, showRadioModal } from './func.js';
 
 // ===================== filter-list 结果清单 =====================
-export function initFilterList() {
+export function initFilterList(opts = {}) {
     const tbody = document.getElementById('stockBody');
-    const taskSelect = document.getElementById('taskSelect');
-    const markFilter = document.getElementById('markFilter');
 
     // 存 session 后回到干净的 /filter/list
     function savePref(patch) {
@@ -13,11 +11,6 @@ export function initFilterList() {
             window.location.href = '/filter/list';
         });
     }
-
-    // 任务切换
-    taskSelect?.addEventListener('change', (e) => {
-        savePref({ task_id: parseInt(e.target.value), page: 1 });
-    });
 
     // 每页条数切换
     const perPageSelect = document.getElementById('perPageSelect');
@@ -33,15 +26,20 @@ export function initFilterList() {
         savePref({ page: parseInt(e.currentTarget.dataset.page) });
     });
 
-    // 标记筛选（纯前端显隐）
-    markFilter?.addEventListener('click', (e) => {
-        const btn = e.target.closest('button[data-mark]');
+    // 表头"标记"按钮：弹窗选择后 POST 提交，后端过滤+重新分页（与对比清单一致）
+    let currentMarkFilter = opts.currentMarkFilter || 'all';
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.mark-filter-btn');
         if (!btn) return;
-        markFilter.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const mark = btn.dataset.mark;
-        tbody.querySelectorAll('tr[data-mark]').forEach(tr => {
-            tr.style.display = (!mark || tr.dataset.mark === mark) ? '' : 'none';
+        showRadioModal({
+            title: '标记筛选',
+            options: [['all', '全部'], ['1', '优先股'], ['2', '潜力股']],
+            defaultValue: currentMarkFilter,
+        }).then((value) => {
+            if (value !== null) {
+                currentMarkFilter = value;
+                savePref({ mark_filter: value });
+            }
         });
     });
 }
@@ -73,28 +71,29 @@ function compareCard(opt) {
     const freqOpts = FREQ_OPTS.map(f => `<option value="${f}" ${f === (opt.freq || 'D') ? 'selected' : ''}>${FREQ_LABEL(f)}</option>`).join('');
     const lkindOpts = [['close', '收盘价'], ['volume', '成交量']]
         .map(([v, t]) => `<option value="${v}" ${v === (opt.left_kind || 'close') ? 'selected' : ''}>${t}</option>`).join('');
-    const rkindOpts = [['ema', 'EMA'], ['ma', 'MA'], ['prc', 'PRC价格']]
+    const rkindOpts = [['ema', 'EMA'], ['ma', 'MA'], ['prc', '价格']]
         .map(([v, t]) => `<option value="${v}" ${v === (opt.right_kind || 'ema') ? 'selected' : ''}>${t}</option>`).join('');
     const opOpts = OP_OPTS.map(([v, t]) => `<option value="${v}" ${v === (opt.op || '>') ? 'selected' : ''}>${t}</option>`).join('');
     const isPrc = opt.right_kind === 'prc';
     return `
         <div class="cond-head">
-            <span class="fw-bold small">比较条件（左值 与 均线/价格比较）</span>
-            <button type="button" class="btn btn-sm btn-outline-danger del-cond">删</button>
+            <span class="fw-bold small">比较条件</span>
+            <button type="button" class="btn btn-sm btn-outline-danger del-cond">删除</button>
         </div>
         <div class="cond-row">
-            <div class="field"><label>左值</label><select class="cmp-lkind form-select form-select-sm">${lkindOpts}</select></div>
-            <div class="field"><label>左值倍率</label><input class="cmp-lmult form-control form-control-sm" type="number" step="0.01" value="${opt.left_mult || 1}" style="width:70px"></div>
-            <div class="field"><label>关系</label><select class="cmp-op form-select form-select-sm">${opOpts}</select></div>
-            <div class="field"><label>右值</label><select class="cmp-rkind form-select form-select-sm">${rkindOpts}</select></div>
-            <div class="field r-ma-fields"><label>均线周期</label><input class="cmp-rperiod form-control form-control-sm" type="number" value="${opt.right_period || 30}" style="width:70px"></div>
-            <div class="field r-ma-fields"><label>均线倍率</label><input class="cmp-rmult form-control form-control-sm" type="number" step="0.01" value="${opt.right_mult || 1}" style="width:70px"></div>
-            <div class="field r-price-field" style="display:none;"><label>价格</label><input class="cmp-price form-control form-control-sm" type="number" step="0.01" value="${opt.right_price || 0}" style="width:80px"></div>
+            <div class="field"><label>指标</label><select class="cmp-lkind form-select form-select-sm">${lkindOpts}</select></div>
+            <div class="field"><label>倍率</label><input class="cmp-lmult form-control form-control-sm" type="number" step="0.01" value="${opt.left_mult || 1}"></div>
+            <div class="field"><label>比较</label><select class="cmp-op form-select form-select-sm">${opOpts}</select></div>
+            <div class="cond-break"></div>
+            <div class="field"><label>指标</label><select class="cmp-rkind form-select form-select-sm">${rkindOpts}</select></div>
+            <div class="field r-ma-fields"><label>周期</label><input class="cmp-rperiod form-control form-control-sm" type="number" value="${opt.right_period || 30}"></div>
+            <div class="field r-ma-fields"><label>倍率</label><input class="cmp-rmult form-control form-control-sm" type="number" step="0.01" value="${opt.right_mult || 1}"></div>
+            <div class="field r-price-field" style="display:none;"><label>价格</label><input class="cmp-price form-control form-control-sm" type="number" step="0.01" value="${opt.right_price || 0}"></div>
         </div>
         <div class="cond-row mt-2">
-            <div class="field"><label>周期</label><select class="cmp-freq form-select form-select-sm">${freqOpts}</select></div>
-            <div class="field"><label>考察K线数 M</label><input class="cmp-window form-control form-control-sm" type="number" value="${opt.window || 10}" style="width:80px"></div>
-            <div class="field"><label>满足根数 N≥</label><input class="cmp-min form-control form-control-sm" type="number" value="${opt.min_count || 8}" style="width:80px"></div>
+            <div class="field"><label>K线周期</label><select class="cmp-freq form-select form-select-sm">${freqOpts}</select></div>
+            <div class="field"><label>观察窗口</label><input class="cmp-window form-control form-control-sm" type="number" value="${opt.window || 10}"></div>
+            <div class="field"><label>满足条件</label><input class="cmp-min form-control form-control-sm" type="number" value="${opt.min_count || 8}"></div>
         </div>
     `;
 }
@@ -123,14 +122,14 @@ function trendCard(opt) {
     return `
         <div class="cond-head">
             <span class="fw-bold small">趋势条件</span>
-            <button type="button" class="btn btn-sm btn-outline-danger del-cond">删</button>
+            <button type="button" class="btn btn-sm btn-outline-danger del-cond">删除</button>
         </div>
         <div class="cond-row">
             <div class="field"><label>指标</label><select class="tr-kind form-select form-select-sm">${kindOpts}</select></div>
-            <div class="field"><label>周期</label><select class="tr-freq form-select form-select-sm">${freqOpts}</select></div>
-            <div class="field"><label>均线周期</label><input class="tr-period form-control form-control-sm" type="number" value="${opt.period || 30}" style="width:80px"></div>
+            <div class="field"><label>周期</label><input class="tr-period form-control form-control-sm" type="number" value="${opt.period || 30}"></div>
             <div class="field"><label>形态</label><select class="tr-dir form-select form-select-sm">${dirOpts}</select></div>
-            <div class="field"><label>观察窗口</label><input class="tr-window form-control form-control-sm" type="number" value="${opt.window || 5}" style="width:80px"></div>
+            <div class="field"><label>K线周期</label><select class="tr-freq form-select form-select-sm">${freqOpts}</select></div>
+            <div class="field"><label>观察窗口</label><input class="tr-window form-control form-control-sm" type="number" value="${opt.window || 5}"></div>
         </div>
     `;
 }
@@ -156,10 +155,49 @@ function readCompare(card) {
     return cond;
 }
 
-export function initFilterRun({ parentId }) {
+// 根据条件自动生成任务名摘要
+function autoTaskName(conditions) {
+    if (!conditions || !conditions.length) return '';
+    const FREQ_SHORT = { D: '日', W: '周', M: '月' };
+    const LKIND = { close: '收盘', volume: '成交量' };
+    const RKIND = { ema: 'EMA', ma: 'MA', prc: '价' };
+    const DIR = { up: '上升趋势', down: '下降趋势', accel_up: '加速上升', accel_down: '加速下降' };
+    const parts = conditions.map(c => {
+        const freq = FREQ_SHORT[c.freq] || c.freq;
+        if (c.type === 'compare') {
+            const left = `${LKIND[c.left_kind] || c.left_kind}${c.left_mult && c.left_mult !== 1 ? '×' + c.left_mult : ''}`;
+            let right;
+            if (c.right_kind === 'prc') {
+                right = `${c.right_price}`;
+            } else {
+                right = `${RKIND[c.right_kind]}${c.right_period}${c.right_mult && c.right_mult !== 1 ? '×' + c.right_mult : ''}`;
+            }
+            const win = (c.window && c.window > 1) || (c.min_count && c.min_count > 1)
+                ? `[${c.min_count || 1}/${c.window || 1}]` : '';
+            return `${freq}${left}${c.op}${right}${win}`;
+        } else {
+            const win = c.window && c.window > 1 ? `[${c.window}]` : '';
+            return `${freq}${RKIND[c.kind] || c.kind}${c.period}${DIR[c.direction] || c.direction}${win}`;
+        }
+    });
+    return parts.join(' 且 ').slice(0, 80);
+}
+
+export function initFilterRun({ parentId, lastConditions, runningState }) {
     const list = document.getElementById('condList');
     const errBox = document.getElementById('errorText');
     const statusBox = document.getElementById('runStatus');
+    const runBtn = document.getElementById('runBtn');
+    const runningPanel = document.getElementById('runningPanel');
+    const runningLabel = document.getElementById('runningLabel');
+    const runningPct = document.getElementById('runningPct');
+    const runningBar = document.getElementById('runningBar');
+    const runningDetail = document.getElementById('runningDetail');
+    const taskNameInput = document.getElementById('taskName');
+
+    let pollTimer = null;
+    let userEditedName = false;
+    let nameTimer = null;
 
     function addCompare(opt) {
         const div = document.createElement('div');
@@ -167,9 +205,8 @@ export function initFilterRun({ parentId }) {
         div.dataset.type = 'compare';
         div.innerHTML = compareCard(opt);
         list.appendChild(div);
-        // 右值类型切换联动
         const rkindSel = div.querySelector('.cmp-rkind');
-        rkindSel.addEventListener('change', () => updateCompareMode(div));
+        rkindSel.addEventListener('change', () => { updateCompareMode(div); scheduleAutoName(); });
         updateCompareMode(div);
     }
     function addTrend(opt) {
@@ -180,27 +217,18 @@ export function initFilterRun({ parentId }) {
         list.appendChild(div);
     }
 
-    // 默认给两个示例条件（举例1的上下界：收盘在 EMA30 的 0.9~1.1 倍之间），方便上手
-    addCompare({
-        freq: 'D', left_kind: 'close', left_mult: 1.0,
-        op: '>', right_kind: 'ema', right_period: 30, right_mult: 0.9,
-        window: 10, min_count: 8,
-    });
-    addCompare({
-        freq: 'D', left_kind: 'close', left_mult: 1.0,
-        op: '<', right_kind: 'ema', right_period: 30, right_mult: 1.1,
-        window: 10, min_count: 8,
-    });
+    // 回填上次条件（无历史则留空，不添加示例）
+    if (lastConditions && lastConditions.length) {
+        lastConditions.forEach(c => {
+            if (c.type === 'trend') addTrend(c);
+            else addCompare(c);
+        });
+    }
+    // 进入页面立即根据当前条件自动填入任务名
+    scheduleAutoName();
 
-    document.getElementById('addCompare').addEventListener('click', () => addCompare());
-    document.getElementById('addTrend').addEventListener('click', () => addTrend());
-    list.addEventListener('click', (e) => {
-        const del = e.target.closest('.del-cond');
-        if (del) del.closest('.cond-card').remove();
-    });
-
-    document.getElementById('runBtn').addEventListener('click', async () => {
-        errBox.classList.add('d-none');
+    // 收集当前条件
+    function collectConditions() {
         const conditions = [];
         list.querySelectorAll('.cond-card').forEach(card => {
             if (card.dataset.type === 'compare') {
@@ -216,29 +244,142 @@ export function initFilterRun({ parentId }) {
                 });
             }
         });
+        return conditions;
+    }
 
+    // 自动命名（防抖）
+    function scheduleAutoName() {
+        if (userEditedName) return;
+        clearTimeout(nameTimer);
+        nameTimer = setTimeout(() => {
+            taskNameInput.value = autoTaskName(collectConditions());
+        }, 200);
+    }
+    taskNameInput.addEventListener('input', () => { userEditedName = true; });
+
+    document.getElementById('addCompare').addEventListener('click', () => { addCompare(); scheduleAutoName(); });
+    document.getElementById('addTrend').addEventListener('click', () => { addTrend(); scheduleAutoName(); });
+    list.addEventListener('click', (e) => {
+        const del = e.target.closest('.del-cond');
+        if (del) { del.closest('.cond-card').remove(); scheduleAutoName(); }
+    });
+    list.addEventListener('input', () => scheduleAutoName());
+    list.addEventListener('change', () => scheduleAutoName());
+
+    // ===== 运行中状态展示 =====
+    function lockConditions() {
+        const addC = document.getElementById('addCompare');
+        const addT = document.getElementById('addTrend');
+        if (addC) addC.classList.add('d-none');
+        if (addT) addT.classList.add('d-none');
+        document.querySelectorAll('.del-cond').forEach(b => b.classList.add('d-none'));
+        document.querySelectorAll('#condList select, #condList input').forEach(el => el.disabled = true);
+    }
+    function unlockConditions() {
+        const addC = document.getElementById('addCompare');
+        const addT = document.getElementById('addTrend');
+        if (addC) addC.classList.remove('d-none');
+        if (addT) addT.classList.remove('d-none');
+        document.querySelectorAll('.del-cond').forEach(b => b.classList.remove('d-none'));
+        document.querySelectorAll('#condList select, #condList input').forEach(el => el.disabled = false);
+        // 恢复 PRC 模式下左值的只读状态
+        document.querySelectorAll('#condList .cond-card').forEach(card => {
+            if (typeof updateCompareMode === 'function') updateCompareMode(card);
+        });
+    }
+    function showRunning(done, total) {
+        runningPanel.classList.remove('d-none');
+        const pct = total > 0 ? Math.round(done / total * 100) : 0;
+        runningLabel.textContent = '筛选运行中…';
+        runningPct.textContent = pct + '%';
+        runningBar.style.width = pct + '%';
+        runningDetail.textContent = `已处理 ${done} / ${total} 只`;
+        runBtn.textContent = '强制结束';
+        runBtn.classList.remove('btn-primary');
+        runBtn.classList.add('btn-danger');
+        runBtn.disabled = false;
+        lockConditions();
+    }
+    function hideRunning() {
+        runningPanel.classList.add('d-none');
+        runBtn.textContent = '开始筛选';
+        runBtn.classList.remove('btn-danger');
+        runBtn.classList.add('btn-primary');
+        runBtn.disabled = false;
+        unlockConditions();
+    }
+
+    // 轮询进度
+    function startPolling() {
+        stopPolling();
+        pollTimer = setInterval(async () => {
+            try {
+                const res = await fetch('/filter/run/status');
+                const data = await res.json();
+                if (data.status === 'running') {
+                    showRunning(data.done, data.total);
+                } else if (data.status === 'idle') {
+                    // 正常完成
+                    stopPolling();
+                    hideRunning();
+                    statusBox.classList.remove('d-none');
+                    statusBox.textContent = '筛选完成，正在跳转…';
+                    setTimeout(() => { window.location.href = '/filter/list'; }, 500);
+                } else if (data.status === 'stopped') {
+                    stopPolling();
+                    hideRunning();
+                    statusBox.classList.remove('d-none');
+                    statusBox.textContent = '筛选已强制终止，数据已回滚。';
+                } else if (data.status === 'timeout') {
+                    stopPolling();
+                    hideRunning();
+                    statusBox.classList.remove('d-none');
+                    statusBox.textContent = '筛选超时（2小时），已强制终止并回滚。';
+                }
+            } catch (e) { /* 忽略轮询错误 */ }
+        }, 2000);
+    }
+    function stopPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    // 页面加载时若已有运行中的筛选，直接进入轮询
+    if (runningState && runningState.total > 0) {
+        showRunning(runningState.done, runningState.total);
+        startPolling();
+    }
+
+    // 开始筛选 / 强制结束
+    runBtn.addEventListener('click', async () => {
+        // 如果正在运行，点击则强制结束
+        if (runBtn.textContent === '强制结束') {
+            await postRequest('/filter/run/stop', {});
+            statusBox.classList.remove('d-none');
+            statusBox.textContent = '正在终止…';
+            return;
+        }
+
+        errBox.classList.add('d-none');
+        statusBox.classList.add('d-none');
+        const conditions = collectConditions();
         if (!conditions.length) {
             errBox.textContent = '请至少添加一个筛选条件';
             errBox.classList.remove('d-none');
             return;
         }
 
-        const btn = document.getElementById('runBtn');
-        btn.disabled = true;
-        statusBox.classList.remove('d-none');
-        statusBox.textContent = '正在筛选，全市场逐股计算，请耐心等待……';
-
+        runBtn.disabled = true;
         const res = await postRequest('/filter/run', {
-            name: document.getElementById('taskName').value,
+            name: taskNameInput.value,
             parent_id: parentId,
             conditions,
         });
-        if (res && res.status === 'success') {
-            window.location.href = res.redirect;
+        if (res && res.status === 'running') {
+            showRunning(0, 0);
+            startPolling();
         } else {
-            btn.disabled = false;
-            statusBox.classList.add('d-none');
-            errBox.textContent = (res && res.message) || '筛选失败';
+            runBtn.disabled = false;
+            errBox.textContent = (res && res.message) || '筛选启动失败';
             errBox.classList.remove('d-none');
         }
     });
@@ -248,6 +389,17 @@ export function initFilterRun({ parentId }) {
 // ===================== filter-refer 对比 =====================
 export function initFilterRefer() {
     const tbody = document.getElementById('stockBody');
+    const regionFilter = document.getElementById('regionFilter');
+
+    // 应用归属筛选
+    function applyRegionFilter() {
+        const val = regionFilter ? regionFilter.value : '';
+        tbody.querySelectorAll('tr[data-mark]').forEach(tr => {
+            tr.style.display = (!val || tr.dataset.mark === val) ? '' : 'none';
+        });
+    }
+    regionFilter?.addEventListener('change', applyRegionFilter);
+
     document.getElementById('referBtn').addEventListener('click', async () => {
         const a = document.getElementById('taskA').value;
         const b = document.getElementById('taskB').value;
@@ -272,6 +424,7 @@ export function initFilterRefer() {
             `;
             tbody.appendChild(tr);
         });
+        applyRegionFilter();
     });
 }
 
@@ -286,16 +439,28 @@ export function initFilterConfig() {
             if (res && res.status === 'success') window.location.reload();
             return;
         }
-        const saveBtn = e.target.closest('#saveBoards');
-        if (saveBtn) {
-            const boards = Array.from(document.querySelectorAll('.board-check:checked')).map(el => el.value);
-            if (boards.length === 0) { alert('至少勾选一个板块'); return; }
-            const exclEl = document.getElementById('excludeStCheck');
-            const exclude_st = exclEl ? exclEl.checked : false;
-            const res = await postRequest('/filter/config', {
-                action: 'save_boards', boards, exclude_st,
-            });
-            if (res && res.status === 'success') { alert('已保存，对下一次筛选生效'); }
+        const defBtn = e.target.closest('.set-default-task');
+        if (defBtn) {
+            const res = await postRequest('/filter/config', { action: 'set_default', task_id: defBtn.dataset.id });
+            if (res && res.status === 'success') window.location.reload();
+            return;
         }
+        const filterBtn = e.target.closest('.second-filter-task');
+        if (filterBtn) {
+            const res = await postRequest('/filter/list', { parent_id: filterBtn.dataset.id });
+            if (res && res.status === 'success') window.location.href = '/filter/run';
+            return;
+        }
+    });
+
+    // 板块勾选 / 排除ST 即时保存
+    function saveBoardsNow() {
+        const boards = Array.from(document.querySelectorAll('.board-check:checked')).map(el => el.value);
+        const exclEl = document.getElementById('excludeStCheck');
+        const exclude_st = exclEl ? exclEl.checked : false;
+        postRequest('/filter/config', { action: 'save_boards', boards, exclude_st });
+    }
+    document.querySelectorAll('.board-check, #excludeStCheck').forEach(el => {
+        el.addEventListener('change', saveBoardsNow);
     });
 }

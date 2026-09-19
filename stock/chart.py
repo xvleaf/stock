@@ -129,6 +129,8 @@ def chart_view_api(request):
             detail = _get_stock_detail(param_site, code, market, history_id)
             if detail:
                 view_mode = func.get_cache(request.session, 'view', 'kline')
+                # 更新当前股票 code，供返回列表时页码定位（navi 切换是 AJAX，不经过 filter_view）
+                func.set_view_current_code(request.session, code)
                 context = {
                     'site': param_site,
                     'code': code,
@@ -137,6 +139,9 @@ def chart_view_api(request):
                     'cat': detail.get('cat', 'stock'),
                     'view': view_mode
                 }
+                # filter/view 的 backUrl 从独立标记读取
+                if param_site == '/filter/view':
+                    context['backUrl'] = func.get_cache(request.session, 'filter-view-back-url', '/filter/list')
                 # 获取页面配置（导航、标记等）
                 page_config = get_page_config(request.session, param_site, context['cat'])
                 context.update(page_config)
@@ -164,7 +169,15 @@ def chart_view_api(request):
         'cat': param_cat,
         'view': view_mode
     }
-    
+    # filter/view 的 backUrl 从独立标记读取（与 navi/pilot 路径一致）
+    if param_site == '/filter/view':
+        context['backUrl'] = func.get_cache(request.session, 'filter-view-back-url', '/filter/list')
+
+    # 导航缓存失效（如 hide 后被删除）时，重新构建，避免底部导航栏丢失
+    navi_data = func.get_cache(request.session, f'{param_site}-navi-data', {})
+    if (param_site, param_code, param_market) != navi_data.get('site_code_market', None):
+        set_navi_data(request.session, param_site, param_code, param_market, None, 'init')
+
     page_config = get_page_config(request.session, param_site, param_cat)
     context.update(page_config)
     html_template = 'chart-kline.html' if  view_mode == 'kline' else 'chart-trend.html'
@@ -298,7 +311,10 @@ def set_navi_data(session, site, code, market, function, action):
         shift = 1 if action == 'next' else -1
     else:
         shift = 0
-    navi_idx = navi_list.index((code, market)) + shift
+    try:
+        navi_idx = navi_list.index((code, market)) + shift
+    except ValueError:
+        return {}  # 股票不在导航列表中（已被 hide 或不存在）
     code, market = navi_list[navi_idx]
 
     if showPilot and function == 'pilot':        
@@ -359,10 +375,14 @@ def get_navi_list(site, session=None):
         qs = SectorList.objects.all()
         navi_list = list(qs.values_list('code', 'market'))
     elif site == '/filter/view':
-        # 当前筛选任务结果作为左右导航列表；已隐藏的股票不参与导航
-        task_id = func.get_cache(session, 'filter-current-task') if session else None
-        qs = FilterResult.objects.filter(task_id=task_id).exclude(hide='1').order_by('sort_order', 'id')
-        navi_list = list(qs.values_list('code', 'market'))
+        # 优先使用对比页传入的自定义 navi 列表；否则用当前 task 全部结果
+        custom = func.get_cache(session, 'filter-view-custom-navi') if session else None
+        if custom:
+            navi_list = [tuple(x) for x in custom]
+        else:
+            task_id = func.get_cache(session, 'filter-current-task') if session else None
+            qs = FilterResult.objects.filter(task_id=task_id).exclude(hide='1').order_by('sort_order', 'id')
+            navi_list = list(qs.values_list('code', 'market'))
     elif site == '/review/focus/view':
         # 未交易关注：左右切换不同股票
         qs = FocusStock.objects.filter(

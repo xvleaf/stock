@@ -11,9 +11,6 @@
     <link rel="stylesheet" href="{% static 'base/lib/bootstrap/bootstrap.min.css' %}" />
     <script src="{% static 'base/lib/bootstrap/bootstrap.bundle.min.js' %}"></script>
     
-    <!-- 对话框 -->
-    <script src="{% static 'base/lib/sweetalert2/sweetalert2.min.js' %}"></script>
-    <link rel="stylesheet" href="{% static 'base/lib/sweetalert2/sweetalert2.min.css' %}">
 
     <!-- <script src="https://cdn.jsdelivr.net/npm/iconify-icon@3.0.2/dist/iconify-icon.min.js"></script> -->
     <script src="{% static 'base/icon/iconify-icon.min.js' %}"></script>
@@ -42,5 +39,6 @@
 
     <!-- 不采用全局引入base.js，否则全局脚本与ES Module冲突，造成重复监听、状态隔离；全部页面改用import模块导入 -->
     {% block extra_js %}{% endblock %}    
+
 </body>
 </html>
