@@ -5,6 +5,7 @@ urlpatterns = [
     # ---- 板块 ----
     path('sector/list', sector.sector_list, name='sector_list'),
     path('sector/view/<str:market>/<str:code>', sector.sector_view, name='sector_view'),
+    path('sector/stocks/<str:market>/<str:code>', sector.sector_stocks_list, name='sector_stocks_list'),
 
     # ---- 股票筛选 ----
     path('filter/list', filter.filter_list, name='filter_list'),
@@ -14,6 +15,7 @@ urlpatterns = [
     path('filter/refer', filter.filter_refer, name='filter_refer'),
     path('filter/config', filter.filter_config, name='filter_config'),
     path('filter/view/<str:market>/<str:code>', filter.filter_view, name='filter_view'),
+    path('stocks/view/<str:market>/<str:code>', filter.filter_view, name='stocks_view'),
 
     # ---- 关注 ----
     path('focus', focus.focus_list, name='focus'),

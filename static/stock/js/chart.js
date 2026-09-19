@@ -194,6 +194,13 @@ export function initPageElements() {
     }
     if (codeItem) {
         codeItem.textContent = pageConfig.code;
+        // 板块 view：点击 code 进入该板块的股票清单
+        if (pageConfig.site === '/sector/view') {
+            codeItem.classList.add('pointer');
+            codeItem.onclick = () => {
+                window.location.href = `/sector/stocks/${pageConfig.market}/${pageConfig.code}`;
+            };
+        }
     }
     
     const fullScreen = document.getElementById('fullScreen');
@@ -500,7 +507,8 @@ function backToList() {
         '/trans/view': '/trans/list',
         '/review/focus/view': '/review/focus/list',
         '/review/trans/view': '/review/trans/list',
-        '/filter/view': '/filter/list'
+        '/filter/view': '/filter/list',
+        '/stocks/view': '/sector/list'
     };
     window.location.href = routeMap[pageConfig.site] || '/focus/list';
 };

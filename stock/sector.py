@@ -164,6 +164,94 @@ def sector_view(request, market, code):
         return render(request, 'sector-view.html', {'chart': json.dumps(chart_init)})
 
 
+def sector_stocks_list(request, market, code):
+    """板块股票清单：显示该板块的所有成分股（复用 filter-list.html 模板）"""
+    site = f'/sector/stocks/{market}/{code}'
+
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({'status': 'error', 'message': '无效JSON'}, status=400)
+        if 'page' in data:
+            func.set_cache(request.session, f'sector-stocks-{code}-page', int(data['page']))
+        if 'per_page' in data:
+            func.set_page_size(request.session, data['per_page'])
+        return JsonResponse({'status': 'success'})
+
+    # 获取板块信息
+    sector = SectorList.objects.filter(code=code).first()
+    if not sector:
+        return redirect('/sector/list')
+
+    # 从 tushare 获取板块成分股（缓存 2 小时）
+    cache_key = f'sector-stocks-{code}'
+    stocks = cache.get(cache_key)
+    if stocks is None:
+        try:
+            df = tushare.get_match_industry(f'{code}.{sector.cat}')
+            if df is not None and not df.empty:
+                stocks = []
+                for _, row in df.iterrows():
+                    ts_code = row['ts_code']  # 如 600000.SH
+                    parts = ts_code.split('.')
+                    if len(parts) == 2:
+                        stocks.append({'code': parts[0], 'market': parts[1], 'name': row['name']})
+                cache.set(cache_key, stocks, timeout=7200)
+            else:
+                stocks = []
+        except Exception as e:
+            print(f"获取板块股票失败: {e}")
+            stocks = []
+
+    # 过滤掉已 hide 的股票（hide 操作后 tushare 缓存未更新，需实时过滤）
+    from .models.models import StockList
+    hidden_codes = set(StockList.objects.filter(hide='1').values_list('code', flat=True))
+    stocks = [s for s in stocks if s['code'] not in hidden_codes]
+
+    # 分页（list 也支持，code_getter 从 dict 取 code）
+    pg = func.paginate_queryset(
+        request, stocks, f'sector-stocks-{code}-page',
+        code_getter=lambda x: x['code']
+    )
+
+    # 构建 items（含序号、关注状态、标记）
+    from .models.models import FocusStock
+    base_no = (pg['current_page'] - 1) * pg['per_page']
+    items = []
+    for idx, s in enumerate(pg['items']):
+        focused = FocusStock.objects.filter(code=s['code'], market=s['market'], status=FocusStock.STATUS_WATCHING).exists()
+        stock = StockList.objects.filter(code=s['code'], market=s['market']).first()
+        mark = stock.mark if stock else ''
+        items.append({
+            'no': base_no + idx + 1,
+            'code': s['code'],
+            'market': s['market'],
+            'name': s['name'],
+            'focused': focused,
+            'mark': mark,
+        })
+
+    # 设置返回来源和自定义 navi（板块股票全量列表，供 view 页面 navi 跨页切换）
+    func.set_view_back(request.session, site)
+    custom_navi = [(s['code'], s['market']) for s in stocks]
+    func.set_cache(request.session, 'stocks-view-custom-navi', custom_navi)
+    func.delete_cache(request.session, '/stocks/view-navi-data')
+
+    return render(request, 'filter-list.html', {
+        'items': items,
+        'current_page': pg['current_page'],
+        'total_pages': pg['total_pages'],
+        'per_page': pg['per_page'],
+        'result_total': pg['total_count'],
+        'page_size_choices': func.PAGE_SIZE_CHOICES,
+        'current_mark_filter': 'all',
+        'pagination_url': site,
+        'view_url_prefix': '/stocks/view',
+        'page_title': f'{sector.name} - 板块股票',
+    })
+
+
 def _update_sector_list():
     """
     从 tushare 获取板块列表，更新到本地 SecotrList 表

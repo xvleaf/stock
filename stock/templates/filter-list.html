@@ -1,5 +1,5 @@
 {% extends "base-view.html" %}
-{% block title %}筛选清单{% endblock %}
+{% block title %}{{ page_title|default:"筛选清单" }}{% endblock %}
 {% block content %}
 <!-- 表格悬浮固定表头 -->
 <div id="fixedHeader">
@@ -24,7 +24,7 @@
             <tr data-code="{{ item.code }}.{{ item.market }}" data-mark="{{ item.mark }}">
                 <td style="width:12%;"><span>{{ item.no }}</span></td>
                 <td style="width:28%;">
-                    <a class="table-code-text" href="/filter/view/{{ item.market }}/{{ item.code }}">{{ item.code }}</a>
+                    <a class="table-code-text" href="{{ view_url_prefix|default:"/filter/view" }}/{{ item.market }}/{{ item.code }}">{{ item.code }}</a>
                 </td>
                 <td style="width:30%;"><span>{{ item.name }}</span></td>
                 <td style="width:15%;">
@@ -67,7 +67,7 @@
         baseInit();
         tableHeaderInit();
         initFilterList({ currentMarkFilter: '{{ current_mark_filter }}' });
-        initPagination('/filter/list');
+        initPagination('{{ pagination_url|default:"/filter/list" }}');
     });
 </script>
 {% endblock %}

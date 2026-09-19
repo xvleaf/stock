@@ -197,7 +197,7 @@ def resolve_focus_page(session, queryset, per_page, code_getter=None):
     if not focus_code:
         return None
     delete_cache(session, 'view-current-code')
-    for idx, obj in enumerate(queryset.iterator()):
+    for idx, obj in enumerate(iter(queryset)):
         if code_getter(obj) == focus_code:
             return idx // per_page + 1
     return None
