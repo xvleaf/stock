@@ -37,20 +37,26 @@ def focus_list(request):
                 FocusStock.objects.filter(code=c[0], market=c[1]).update(sort_order=i+1)
             return JsonResponse({'status': 'success'})
 
-        result = []
-        focus_qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING)
-        for fs in focus_qs:
-            deci = 3 if fs.cat in ('fund', 'bond') else 2
-            close, change = quote.get_last_price(fs.tscode, deci)  
-            result.append({
-                'code': fs.code,
-                'market': fs.market,
-                'close': close, 
-                'change': change,
-                'deci': deci
-            })
-            
-        return JsonResponse(result, safe=False, json_dumps_params={'ensure_ascii': False})
+        # 股价刷新：只查询当前页的股票（前端传来 codes，格式为 "code.market"）
+        if 'codes' in data:
+            result = []
+            for code_market in data['codes']:
+                parts = code_market.split('.')
+                if len(parts) != 2:
+                    continue
+                code, market = parts
+                fs = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).first()
+                if fs:
+                    deci = 3 if fs.cat in ('fund', 'bond') else 2
+                    close, change = quote.get_last_price(fs.tscode, deci)
+                    result.append({
+                        'code': fs.code,
+                        'market': fs.market,
+                        'close': close,
+                        'change': change,
+                        'deci': deci
+                    })
+            return JsonResponse(result, safe=False, json_dumps_params={'ensure_ascii': False})
     
     items = []
     # models 自带 sort_order 排序，因此不需要进行排序

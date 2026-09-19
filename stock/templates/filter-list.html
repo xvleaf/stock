@@ -28,11 +28,11 @@
                 </td>
                 <td style="width:30%;"><span>{{ item.name }}</span></td>
                 <td style="width:15%;">
-                    {% if item.focused %}<span class="check-mark check-focus">✔</span>{% endif %}
+                    {% if item.focused %}<iconify-icon icon="tabler:check" class="check-focus" style="font-size:1rem;"></iconify-icon>{% endif %}
                 </td>
                 <td style="width:15%;">
-                    {% if item.mark == '1' %}<span class="check-mark check-mark1">✔</span>
-                    {% elif item.mark == '2' %}<span class="check-mark check-mark2">✔</span>
+                    {% if item.mark == '1' %}<iconify-icon icon="tabler:check" class="check-mark1" style="font-size:1rem;"></iconify-icon>
+                    {% elif item.mark == '2' %}<iconify-icon icon="tabler:check" class="check-mark2" style="font-size:1rem;"></iconify-icon>
                     {% else %}-{% endif %}
                 </td>
             </tr>
@@ -48,7 +48,6 @@
 {% load static %}
 <link rel="stylesheet" href="{% static 'stock/css/view.css' %}">
 <style>
-.check-mark { font-weight: bold; }
 .check-focus  { color: #dc2626; }
 .check-mark1   { color: #16a34a; }
 .check-mark2   { color: #2563eb; }

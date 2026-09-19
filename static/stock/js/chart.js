@@ -530,6 +530,8 @@ function focusAction() {
                 renderMarkButtons();
                 if (!currentlyFocused && res.plan) {
                     showAlert({ title: '已关注', text: `计划价 ${res.plan}，目标 ${res.target}，止损 ${res.stop}，数量 ${res.qty}`, type: 'success' });
+                } else if (currentlyFocused) {
+                    showAlert({ title: '已取消关注', text: res.message || '该股票已从关注列表中移除', type: 'info' });
                 }
             }
         });

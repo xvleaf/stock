@@ -32,10 +32,12 @@ export async function postRequest(url, data) {
 }
 
 export function refreshQuotes(url, tbody) {
+    // 收集当前页显示的股票（只查询这些，避免查询所有股票）
+    const codes = Array.from(tbody.querySelectorAll('tr[data-code]')).map(tr => tr.dataset.code);
     fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ codes: codes }),
     })
         .then(res => res.json())
         .then(data => {
@@ -220,9 +222,15 @@ export function showConfirm({ title, text, confirmText = '确定', cancelText = 
 }
 
 /** 简单提示弹窗，自动关闭 */
-export function showAlert({ title, text, type = 'info', autoClose = 2000 }) {
-    const iconMap = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-    const bodyHtml = `<div class="text-center"><div class="fs-2 mb-2">${iconMap[type] || ''}</div><p class="mb-0 fw-bold">${title || ''}</p>${text ? `<p class="mb-0 text-muted small">${text}</p>` : ''}</div>`;
+export function showAlert({ title, text, type = 'info', autoClose = 3000 }) {
+    // 方案A：Tabler Icons 线性描边图标（线宽约1.5px，更细更美观）
+    const iconHtml = {
+        success: '<iconify-icon icon="tabler:circle-check" style="color:#198754;font-size:48px;"></iconify-icon>',
+        error: '<iconify-icon icon="tabler:circle-x" style="color:#dc3545;font-size:48px;"></iconify-icon>',
+        warning: '<iconify-icon icon="tabler:alert-triangle" style="color:#fd7e14;font-size:48px;"></iconify-icon>',
+        info: '<iconify-icon icon="tabler:info-circle" style="color:#0d6efd;font-size:48px;"></iconify-icon>'
+    };
+    const bodyHtml = `<div class="text-center"><div class="mb-2">${iconHtml[type] || ''}</div><p class="mb-0 fw-bold">${title || ''}</p>${text ? `<p class="mb-0 text-muted small">${text}</p>` : ''}</div>`;
     const { modal } = _createModal({ title: '', bodyHtml, footerHtml: '' });
     if (autoClose > 0) {
         setTimeout(() => modal.hide(), autoClose);
