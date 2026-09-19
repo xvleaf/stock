@@ -453,7 +453,6 @@ def filter_list(request):
 
     # 记录来源，供 view 返回列表时定位
     func.set_view_back(request.session, '/filter/list')
-    func.set_cache(request.session, 'filter-view-back-url', '/filter/list')
     # 标记筛选后的全量列表作为 view 的自定义 navi（跨页切换）
     custom_navi = [(r.code, r.market) for r in results_qs]
     func.set_cache(request.session, 'filter-view-custom-navi', custom_navi)
@@ -659,6 +658,68 @@ def filter_run_stop(request):
     return JsonResponse({'status': 'stopping'})
 
 
+def _toggle_mark(result, mark_type):
+    """
+    切换标记（优先股/潜力股），消除 major/minor 重复代码。
+    mark_type: 'major' 或 'minor'
+    """
+    target_mark = FilterResult.MARK_PREF if mark_type == 'major' else FilterResult.MARK_POT
+    result.mark = '' if result.mark == target_mark else target_mark
+    result.save()
+    return JsonResponse({
+        'status': 'success',
+        'major': result.mark if result.mark == FilterResult.MARK_PREF else '',
+        'minor': result.mark if result.mark == FilterResult.MARK_POT else '',
+    })
+
+
+def _handle_hide(request, result, task, code, market):
+    """
+    隐藏股票：计算下一只/前一只、更新 StockList/FilterResult、更新 task stock_count、
+    失效导航缓存、更新自定义 navi 列表。从 filter_view POST 中提取，提高可读性。
+    """
+    resp = {'status': 'success', 'hide': '1'}
+    custom = func.get_cache(request.session, 'filter-view-custom-navi')
+    if custom:
+        custom_list = [tuple(x) for x in custom]
+        try:
+            idx = custom_list.index((code, market))
+        except ValueError:
+            idx = -1
+        remaining = [x for x in custom_list if x != (code, market)]
+        if 0 <= idx < len(remaining):
+            nc, nm = remaining[idx]
+            nres = FilterResult.objects.filter(code=nc, market=nm).order_by('-task_id').first()
+            resp['next'] = {'code': nc, 'market': nm, 'name': nres.name if nres else ''}
+        elif remaining:
+            pc, pm = remaining[-1]
+            pres = FilterResult.objects.filter(code=pc, market=pm).order_by('-task_id').first()
+            resp['prev'] = {'code': pc, 'market': pm, 'name': pres.name if pres else ''}
+    else:
+        qs = FilterResult.objects.filter(task=task).exclude(hide='1').order_by('sort_order', 'id')
+        nxt = qs.filter(sort_order__gt=result.sort_order).first()
+        if nxt:
+            resp['next'] = {'code': nxt.code, 'market': nxt.market, 'name': nxt.name}
+        else:
+            prv = qs.filter(sort_order__lt=result.sort_order).last()
+            if prv:
+                resp['prev'] = {'code': prv.code, 'market': prv.market, 'name': prv.name}
+    # 隐藏该股票：同步 StockList，以及所有历史结果中的同代码记录
+    StockList.objects.filter(code=code, market=market).update(hide='1')
+    FilterResult.objects.filter(code=code, market=market).update(hide='1')
+    # 更新所有包含该股票的 FilterTask 的 stock_count
+    for t in FilterTask.objects.filter(results__code=code, results__market=market).distinct():
+        t.stock_count = t.results.exclude(hide='1').count()
+        t.save(update_fields=['stock_count'])
+    # 失效导航缓存
+    func.delete_cache(request.session, '/filter/view-navi-data')
+    # 更新自定义 navi 列表（对比页进入）：移除被 hide 的股票
+    if custom:
+        custom_list = [tuple(x) for x in custom if tuple(x) != (code, market)]
+        func.set_cache(request.session, 'filter-view-custom-navi', custom_list)
+    return JsonResponse(resp)
+
+
 def _do_focus(result, ema_price=None):
     """
     关注/取消关注（双向）。
@@ -746,64 +807,10 @@ def filter_view(request, market, code):
             return JsonResponse({'error': '无效JSON'}, status=400)
 
         func_name = data.get('func')
-        if func_name == 'major':
-            result.mark = '' if result.mark == FilterResult.MARK_PREF else FilterResult.MARK_PREF
-            result.save()
-            return JsonResponse({
-                'status': 'success',
-                'major': result.mark if result.mark == FilterResult.MARK_PREF else '',
-                'minor': result.mark if result.mark == FilterResult.MARK_POT else '',
-            })
-        elif func_name == 'minor':
-            result.mark = '' if result.mark == FilterResult.MARK_POT else FilterResult.MARK_POT
-            result.save()
-            return JsonResponse({
-                'status': 'success',
-                'major': result.mark if result.mark == FilterResult.MARK_PREF else '',
-                'minor': result.mark if result.mark == FilterResult.MARK_POT else '',
-            })
+        if func_name in ('major', 'minor'):
+            return _toggle_mark(result, func_name)
         elif func_name == 'hide':
-            # 在剔除当前股票之前，计算下一只（最后一只则取前一只），供前端不刷新切换
-            resp = {'status': 'success', 'hide': '1'}
-            custom = func.get_cache(request.session, 'filter-view-custom-navi')
-            if custom:
-                custom_list = [tuple(x) for x in custom]
-                try:
-                    idx = custom_list.index((code, market))
-                except ValueError:
-                    idx = -1
-                remaining = [x for x in custom_list if x != (code, market)]
-                if 0 <= idx < len(remaining):
-                    nc, nm = remaining[idx]
-                    nres = FilterResult.objects.filter(code=nc, market=nm).order_by('-task_id').first()
-                    resp['next'] = {'code': nc, 'market': nm, 'name': nres.name if nres else ''}
-                elif remaining:
-                    pc, pm = remaining[-1]
-                    pres = FilterResult.objects.filter(code=pc, market=pm).order_by('-task_id').first()
-                    resp['prev'] = {'code': pc, 'market': pm, 'name': pres.name if pres else ''}
-            else:
-                qs = FilterResult.objects.filter(task=task).exclude(hide='1').order_by('sort_order', 'id')
-                nxt = qs.filter(sort_order__gt=result.sort_order).first()
-                if nxt:
-                    resp['next'] = {'code': nxt.code, 'market': nxt.market, 'name': nxt.name}
-                else:
-                    prv = qs.filter(sort_order__lt=result.sort_order).last()
-                    if prv:
-                        resp['prev'] = {'code': prv.code, 'market': prv.market, 'name': prv.name}
-            # 隐藏该股票：同步 StockList，以及所有历史结果中的同代码记录
-            StockList.objects.filter(code=code, market=market).update(hide='1')
-            FilterResult.objects.filter(code=code, market=market).update(hide='1')
-            # 更新所有包含该股票的 FilterTask 的 stock_count
-            for t in FilterTask.objects.filter(results__code=code, results__market=market).distinct():
-                t.stock_count = t.results.exclude(hide='1').count()
-                t.save(update_fields=['stock_count'])
-            # 失效导航缓存
-            func.delete_cache(request.session, '/filter/view-navi-data')
-            # 更新自定义 navi 列表（对比页进入）：移除被 hide 的股票
-            if custom:
-                custom_list = [tuple(x) for x in custom if tuple(x) != (code, market)]
-                func.set_cache(request.session, 'filter-view-custom-navi', custom_list)
-            return JsonResponse(resp)
+            return _handle_hide(request, result, task, code, market)
         elif func_name == 'focus':
             return _do_focus(result, data.get('ema_price'))
         else:
@@ -818,12 +825,12 @@ def filter_view(request, market, code):
 
     # 股票不在导航列表中（已被 hide 或不存在），返回来源列表
     if not navi_data:
-        back_url = func.get_cache(request.session, 'filter-view-back-url', '/filter/list')
+        back_url = func.get_view_back(request.session) or '/filter/list'
         return redirect(back_url)
 
     func.set_cache(request.session, 'view', 'kline')
-    # backUrl 从独立标记读取（筛选列表/对比列表各自设置）
-    back_url = func.get_cache(request.session, 'filter-view-back-url', '/filter/list')
+    # backUrl 统一使用 get_view_back（筛选列表/对比列表各自设置）
+    back_url = func.get_view_back(request.session) or '/filter/list'
     chart_init = {
         'site': '/filter/view',
         'code': code,
@@ -861,7 +868,7 @@ def filter_refer(request):
             func.set_page_size(request.session, data['per_page'])
         if 'from_view' in data:
             func.set_cache(request.session, 'filter-refer-from-view', data['from_view'])
-            func.set_cache(request.session, 'filter-view-back-url', '/filter/refer')
+            func.set_view_back(request.session, '/filter/refer')
         # 所有对比页内部 POST 操作后刷新，均保留任务选择（避免重新弹窗）
         func.set_cache(request.session, 'filter-refer-from-view', '1')
         return JsonResponse({'status': 'success'})
@@ -971,7 +978,7 @@ def filter_refer(request):
     # 全量过滤后的列表作为 view 自定义 navi（可跨页）
     custom_navi = [(r['code'], r['market']) for r in rows]
     func.set_cache(request.session, 'filter-view-custom-navi', custom_navi)
-    func.set_cache(request.session, 'filter-view-back-url', '/filter/refer')
+    func.set_view_back(request.session, '/filter/refer')
 
     return render(request, 'filter-refer.html', {
         'tasks': tasks,

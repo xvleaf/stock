@@ -72,6 +72,32 @@ def chart_data_api(request):
 
 
 @require_http_methods(["POST"])
+def _build_chart_response(request, site, code, market, name, cat, view_mode):
+    """
+    构建图表页面响应的共用函数：返回 (html_content, context_dict)
+    消除 navi/pilot 路径与通用路径中的重复代码（构建 context、设置 backUrl、获取 page_config、渲染模板）
+    """
+    context = {
+        'site': site,
+        'code': code,
+        'name': name,
+        'market': market,
+        'cat': cat,
+        'view': view_mode
+    }
+    # 统一 backUrl 处理：所有 view 页面使用 set_view_back/get_view_back 机制
+    if site == '/filter/view':
+        context['backUrl'] = func.get_view_back(request.session) or '/filter/list'
+
+    page_config = get_page_config(request.session, site, cat)
+    context.update(page_config)
+
+    html_template = 'chart-kline.html' if view_mode == 'kline' else 'chart-trend.html'
+    html_content = render(request, html_template, {}).content.decode('utf-8')
+
+    return html_content, context
+
+
 def chart_view_api(request):
     """
     处理图表视图切换、参数更新，返回新的图表 HTML 片段
@@ -131,27 +157,13 @@ def chart_view_api(request):
                 view_mode = func.get_cache(request.session, 'view', 'kline')
                 # 更新当前股票 code，供返回列表时页码定位（navi 切换是 AJAX，不经过 filter_view）
                 func.set_view_current_code(request.session, code)
-                context = {
-                    'site': param_site,
-                    'code': code,
-                    'name': detail.get('name', ''),
-                    'market': market,
-                    'cat': detail.get('cat', 'stock'),
-                    'view': view_mode
-                }
-                # filter/view 的 backUrl 从独立标记读取
-                if param_site == '/filter/view':
-                    context['backUrl'] = func.get_cache(request.session, 'filter-view-back-url', '/filter/list')
-                # 获取页面配置（导航、标记等）
-                page_config = get_page_config(request.session, param_site, context['cat'])
-                context.update(page_config)
-                # 渲染对应的模板
-                html_template = 'chart-kline.html' if view_mode == 'kline' else 'chart-trend.html'
-                html_content = render(request, html_template, {}).content.decode('utf-8')
+                html_content, context = _build_chart_response(
+                    request, param_site, code, market,
+                    detail.get('name', ''), detail.get('cat', 'stock'), view_mode
+                )
                 # 将 html 和 chart 配置附加到 detail
                 detail['html'] = html_content
                 detail['chart'] = context
-                # -----------------------------------------------------
                 return JsonResponse(detail)
             else:
                 return JsonResponse({'error': '股票不存在'}, status=404)
@@ -162,30 +174,17 @@ def chart_view_api(request):
 
     view_mode = func.get_cache(request.session, 'view', 'kline')
     # 更新当前股票 code，供返回列表时页码定位（loadChartPage 是 AJAX，不经过 filter_view）
-    # 与 navi/pilot 路径保持一致，否则 hide 后加载下一只时当前 code 仍为已 hide 股票，页码定位失败
     func.set_view_current_code(request.session, param_code)
-    context = {
-        'site': param_site,
-        'code': param_code,
-        'name': param_name,
-        'market': param_market,
-        'cat': param_cat,
-        'view': view_mode
-    }
-    # filter/view 的 backUrl 从独立标记读取（与 navi/pilot 路径一致）
-    if param_site == '/filter/view':
-        context['backUrl'] = func.get_cache(request.session, 'filter-view-back-url', '/filter/list')
 
     # 导航缓存失效（如 hide 后被删除）时，重新构建，避免底部导航栏丢失
     navi_data = func.get_cache(request.session, f'{param_site}-navi-data', {})
     if (param_site, param_code, param_market) != navi_data.get('site_code_market', None):
         set_navi_data(request.session, param_site, param_code, param_market, None, 'init')
 
-    page_config = get_page_config(request.session, param_site, param_cat)
-    context.update(page_config)
-    html_template = 'chart-kline.html' if  view_mode == 'kline' else 'chart-trend.html'
-    html_content = render(request, html_template, {}).content.decode('utf-8')
-
+    html_content, context = _build_chart_response(
+        request, param_site, param_code, param_market,
+        param_name, param_cat, view_mode
+    )
     return JsonResponse({'html': html_content, 'chart': context})
 
 

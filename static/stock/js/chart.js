@@ -51,6 +51,67 @@ export function initChartPage() {
     });
 }
 
+/**
+ * 共用的图表页面渲染函数：销毁旧图表、替换内容、更新配置、初始化图表和导航按钮
+ * loadChartPage 和 naviSwitch 都调用此函数，消除重复代码
+ */
+function _renderChartPage(res) {
+    destroyChart();
+    clearTrendTimer();
+
+    const container = document.getElementById('chartPageContainer');
+    container.innerHTML = res.html;
+    container.classList.remove('d-none');
+
+    const newConfig = res.chart;
+    setPageConfig(newConfig);
+
+    applyFullscreenState();
+
+    requestAnimationFrame(() => {
+        const chartPage = document.getElementById('chartPage');
+        if (chartPage) void chartPage.offsetHeight;
+
+        if (pageConfig.view === 'kline') {
+            initKlineChart();
+        } else {
+            initTrendChart();
+            // focus/view 特有的编辑按钮绑定（仅绑定一次）
+            if (!window._chartLoadedBound) {
+                window._chartLoadedBound = true;
+                window.addEventListener('chartLoaded', (e) => {
+                    if (e.detail && e.detail.site === '/focus/view') {
+                        const editBtn = document.getElementById('editBtn');
+                        if (!editBtn || editBtn.dataset.bound) return;
+                        editBtn.dataset.bound = 'true';
+                        editBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const saveBtn = document.getElementById('saveBtn');
+                            const isEditing = !saveBtn?.classList.contains('d-none');
+                            editAction(!isEditing);
+                        });
+                    }
+                });
+            }
+            if (pageConfig.site === '/focus/view') {
+                exitEventListen();
+            }
+        }
+
+        // 重新初始化页面元素（导航按钮事件绑定等）
+        initPageElements();
+    });
+}
+
+/**
+ * 共用的股票操作请求函数：发送 POST 到当前股票的 view URL
+ * focusAction、markAction、hideAction 等都调用此函数，消除重复的 URL 构建和 postRequest 调用
+ */
+function stockAction(func, extraData = {}) {
+    const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
+    return postRequest(url, { 'func': func, ...extraData });
+}
+
 /** 加载图表页面 */
 export async function loadChartPage(func, value) {
     try {
@@ -65,18 +126,8 @@ export async function loadChartPage(func, value) {
         });
 
         if (res && res.html) {
-            // 销毁旧图表
-            destroyChart();
-            clearTrendTimer();
-
-            // 替换图表内容
-            const container = document.getElementById('chartPageContainer');
-            container.innerHTML = res.html;
-            container.classList.remove('d-none');
-            
-            // 更新配置（保留名称、类别等）
-            const newConfig = res.chart;
-            setPageConfig(newConfig);
+            // 共用渲染函数：销毁旧图表、替换内容、更新配置、初始化图表和导航按钮
+            _renderChartPage(res);
 
             // 若加载的股票不在导航列表中（已被 hide 或不存在），自动返回来源列表
             // 覆盖场景：hide 后浏览器返回按钮(popstate)回退到已 hide 股票、直接 URL 访问已 hide 股票等
@@ -96,46 +147,6 @@ export async function loadChartPage(func, value) {
                     cat: pageConfig.cat
                 }, '', expectedPath);
             }
-
-            // 立即应用全屏样式（从 localStorage 恢复）
-            applyFullscreenState();
-
-            // 等待下一帧确保样式已应用
-            requestAnimationFrame(() => {
-                // 再次强制回流（安全措施）
-                const chartPage = document.getElementById('chartPage');
-                if (chartPage) void chartPage.offsetHeight;
-
-                if (pageConfig.view === 'kline') {
-                    initKlineChart();
-                } else {
-                    initTrendChart();
-                    // 仅当当前站点为 /focus/view 且图表加载完成时绑定
-                    if (!window._chartLoadedBound) {
-                        window._chartLoadedBound = true;
-                        window.addEventListener('chartLoaded', (e) => {
-                            if (e.detail && e.detail.site === '/focus/view') {
-                                const editBtn = document.getElementById('editBtn');
-                                if (!editBtn || editBtn.dataset.bound) return;
-                                editBtn.dataset.bound = 'true';
-                                editBtn.addEventListener('click', (e) => {
-                                    e.stopPropagation();
-                                    const saveBtn = document.getElementById('saveBtn');
-                                    const isEditing = !saveBtn?.classList.contains('d-none');
-                                    editAction(!isEditing);
-                                });
-                            }
-                        });
-                    }
-                    
-                    if (pageConfig.site === '/focus/view') {
-                        exitEventListen();
-                    }
-                }
-
-                // 重新初始化页面元素（导航按钮事件绑定等），与 naviSwitch 一致
-                initPageElements();
-            });
         }
     } catch (error) {
         console.error('图表加载失败:', error);
@@ -173,7 +184,6 @@ export function initPageElements() {
     const nameItem = document.getElementById('nameItem');
     const codeItem = document.getElementById('codeItem');
     const nameAct = pageConfig.cat == 'stock' ? true : false;
-    const codeAct = pageConfig.cat == 'stock' || pageConfig.cat === 'SI' ? true : false;
 
     if (nameItem) {
         nameItem.textContent = pageConfig.name;
@@ -184,10 +194,6 @@ export function initPageElements() {
     }
     if (codeItem) {
         codeItem.textContent = pageConfig.code;
-        if (codeAct) {
-            codeItem.classList.add("pointer")
-            codeItem.onclick = jumpToLink;
-        }
     }
     
     const fullScreen = document.getElementById('fullScreen');
@@ -467,37 +473,9 @@ function naviSwitch(type, action) {
             // 更新表单和标题（传入完整数据）
             updateFormData(res);
 
-            // 如果响应包含 html，直接渲染
+            // 如果响应包含 html，直接渲染（共用渲染函数）
             if (res.html) {
-                // 销毁旧图表和定时器
-                destroyChart();
-                clearTrendTimer();
-
-                // 替换图表内容
-                const container = document.getElementById('chartPageContainer');
-                container.innerHTML = res.html;
-                container.classList.remove('d-none');
-
-                // 更新配置（合并新的 chart 配置）
-                const newConfig = res.chart;
-                setPageConfig(newConfig);
-
-                // 应用全屏状态
-                applyFullscreenState();
-
-                // 等待下一帧初始化图表
-                requestAnimationFrame(() => {
-                    const chartPage = document.getElementById('chartPage');
-                    if (chartPage) void chartPage.offsetHeight;
-
-                    if (pageConfig.view === 'kline') {
-                        initKlineChart();
-                    } else {
-                        initTrendChart();
-                    }
-                    // 重新初始化页面元素（导航按钮等）
-                    initPageElements();
-                });
+                _renderChartPage(res);
                 return true;
             }
         }
@@ -508,30 +486,6 @@ function naviSwitch(type, action) {
 function viewModeChange() {
     pageConfig.view = pageConfig.view === 'kline' ? 'trend' : 'kline';
     loadChartPage('view', pageConfig.view); 
-};
-
-function jumpToLink() {
-    /** 
-    localStorage.setItem('link_code', `${cat},${market},${code}`);
-    const url = cat === 'stock'
-        ? `/link/sector/list?code=${market}.${code}`
-        : `/link/stock/list?code=${code}`;
-    window.location.href = url;
-    */
-    // 确认删除对话框
-    showConfirm({
-        title: '确定要删除吗？',
-        text: '此操作不可撤销！',
-        confirmText: '确认删除',
-        confirmClass: 'btn-danger',
-    }).then((confirmed) => {
-        if (confirmed) {
-            console.log(pageConfig.cat);
-            showAlert({ title: '已删除!', text: '文件已成功删除。', type: 'success' });
-        }
-    });
-
-
 };
 
 function backToList() {
@@ -561,17 +515,16 @@ function focusAction() {
         cancelText: '取消',
     }).then((confirmed) => {
         if (!confirmed) return;
-        const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
-        const payload = { 'func': 'focus' };
+        const extraData = {};
         if (!currentlyFocused) {
             const ema = getCurrentEma();
             if (ema == null) {
                 showAlert({ title: '错误', text: '未取到当前EMA值', type: 'error' });
                 return;
             }
-            payload.ema_price = ema;
+            extraData.ema_price = ema;
         }
-        postRequest(url, payload).then(res => {
+        stockAction('focus', extraData).then(res => {
             if (res && res.status === 'success') {
                 pageConfig.mark.focus = res.focus;
                 renderMarkButtons();
@@ -584,8 +537,7 @@ function focusAction() {
 }
 
 function markAction(func) {
-    const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
-    postRequest(url, { 'func': func }).then(res => {
+    stockAction(func).then(res => {
         if (!res || res.status !== 'success') {
             return;
         }
@@ -603,8 +555,7 @@ function hideAction() {
         cancelText: '取消',
     }).then((confirmed) => {
         if (!confirmed) return;
-        const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
-        postRequest(url, { 'func': 'hide' }).then(res => {
+        stockAction('hide').then(res => {
             if (!res || res.status !== 'success') return;
             // hide 后不刷新页面：后端已在剔除前算好下一只（最后一只则前一只）
             // 直接用 loadChartPage 加载该股票，行为与点击 next 一致（AJAX 不刷新）
