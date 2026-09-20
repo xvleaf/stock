@@ -44,6 +44,13 @@
     color: var(--color-nav-item);
 }
 
+/* ========== 资金页面图表容器 ========== */
+.capital-chart-wrap {
+    position: relative;
+    height: 400px;
+    margin: 8px 0;
+}
+
 /* ========== 分时视图 ========== */
 .chart-trend-wrap {
     position: absolute;

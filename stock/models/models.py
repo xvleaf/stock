@@ -43,13 +43,14 @@ class CashHistory(models.Model):
         return f'{self.date:%Y-%m-%d} {self.get_reason_display()} {self.amount:+}'
 
     @classmethod
-    def snapshot(cls, reason, amount, remark='', order=None):
+    def snapshot(cls, reason, amount, remark='', order=None, date=None):
         """
         快照当前资金状态并写入历史记录
         :param reason: 变化原因（REASON_* 常量）
         :param amount: 变化金额（正增负减）
         :param remark: 备注
         :param order: 关联交易订单
+        :param date: 指定变化日期，默认当天
         """
         config = CashConfig.get_config()
         cls.objects.create(
@@ -60,6 +61,7 @@ class CashHistory(models.Model):
             amount=amount,
             remark=remark,
             order=order,
+            date=date or timezone.now,
         )
 
 

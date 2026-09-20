@@ -3,38 +3,89 @@
 {% load static %}
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'stock/css/view.css' %}">
+<style>
+.task-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .25rem;
+}
+.task-icon-btn iconify-icon { flex-shrink: 0; }
+@media (max-width: 768px) {
+    .task-icon-btn .btn-text { display: none; }
+    .task-icon-btn { padding: .25rem .4rem; min-width: 2rem; }
+    .task-icon-btn iconify-icon { font-size: 1rem; }
+}
+</style>
 {% endblock %}
 {% block content %}
-<div class="capital-page">
-    {# ===== 当前资金状态卡片 ===== #}
-    <div class="capital-cards">
-        <div class="capital-card card-total">
-            <div class="card-label">总资金</div>
-            <div class="card-value" id="capitalTotal">{{ config.total|floatformat:2 }}</div>
+<div class="form-wrap">
+    {# ===== 资金状态标题 ===== #}
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0">资金状态</h6>
+    </div>
+
+    {# ===== 当前资金状态卡片（横放） ===== #}
+    <div class="d-flex flex-wrap gap-3 mb-3">
+        <div class="card flex-fill" style="min-width: 160px;">
+            <div class="card-body py-2">
+                <div class="text-muted small">总资金</div>
+                <div class="fs-5 fw-bold" id="capitalTotal">{{ config.total|floatformat:2 }}</div>
+            </div>
         </div>
-        <div class="capital-card card-cash">
-            <div class="card-label">现金</div>
-            <div class="card-value" id="capitalCash">{{ config.cash|floatformat:2 }}</div>
+        <div class="card flex-fill" style="min-width: 160px;">
+            <div class="card-body py-2">
+                <div class="text-muted small d-flex align-items-center justify-content-between">
+                    <span>现金</span>
+                    <span class="d-flex align-items-center gap-2">
+                        <iconify-icon icon="tabler:plus" class="capital-adjust-btn text-success" data-action="deposit" style="cursor:pointer;" title="存入"></iconify-icon>
+                        <iconify-icon icon="tabler:minus" class="capital-adjust-btn text-danger" data-action="withdraw" style="cursor:pointer;" title="取出"></iconify-icon>
+                    </span>
+                </div>
+                <div class="fs-5 fw-bold" id="capitalCash">{{ config.cash|floatformat:2 }}</div>
+            </div>
         </div>
-        <div class="capital-card card-stock">
-            <div class="card-label">股票市值</div>
-            <div class="card-value" id="capitalStock">{{ config.stock|floatformat:2 }}</div>
+        <div class="card flex-fill" style="min-width: 160px;">
+            <div class="card-body py-2">
+                <div class="text-muted small">股票市值</div>
+                <div class="fs-5 fw-bold" id="capitalStock">{{ config.stock|floatformat:2 }}</div>
+            </div>
         </div>
-        <div class="capital-card card-available">
-            <div class="card-label">可用资金</div>
-            <div class="card-value" id="capitalAvailable">{{ config.available|floatformat:2 }}</div>
+        <div class="card flex-fill" style="min-width: 160px;">
+            <div class="card-body py-2">
+                <div class="text-muted small">可用资金</div>
+                <div class="fs-5 fw-bold" id="capitalAvailable">{{ config.available|floatformat:2 }}</div>
+            </div>
         </div>
     </div>
 
-    {# ===== 资金调整操作区 ===== #}
-    <div class="capital-adjust">
-        <div class="adjust-group">
-            <input type="number" id="adjustAmount" class="form-control" placeholder="金额" step="0.01" min="0">
-            <input type="text" id="adjustRemark" class="form-control" placeholder="备注（可选）" maxlength="100">
-            <button class="btn btn-success capital-action" data-action="deposit">存入</button>
-            <button class="btn btn-warning capital-action" data-action="withdraw">取出</button>
+    {# ===== 资金调整 Modal ===== #}
+    <div class="modal fade" id="adjustModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2 justify-content-center border-bottom-0">
+                    <h5 class="modal-title fs-6 fw-bold text-center w-100" id="adjustModalTitle">存入</h5>
+                </div>
+                <div class="modal-body pt-0">
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">日期</label>
+                        <input type="text" id="modalAdjustDate" class="form-control form-control-sm" placeholder="YYYY-MM-DD" maxlength="10">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">金额</label>
+                        <input type="number" id="modalAdjustAmount" class="form-control form-control-sm" placeholder="单位：元" step="0.01" min="0">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">备注</label>
+                        <input type="text" id="modalAdjustRemark" class="form-control form-control-sm" placeholder="可选" maxlength="100">
+                    </div>
+                </div>
+                <div class="modal-footer py-2 justify-content-between border-top-0">
+                    <button type="button" class="btn btn-link p-0" id="adjustModalCancel">取消</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="adjustModalConfirm">确认</button>
+                </div>
+            </div>
         </div>
-        <div id="adjustMsg" class="adjust-msg"></div>
     </div>
 
     {# ===== 资金变化图表 ===== #}
@@ -47,7 +98,18 @@
 
     {# ===== 历史记录表格 ===== #}
     <div class="capital-history">
-        <h5 class="history-title">资金变化记录</h5>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">资金变化记录</h6>
+            <div class="d-flex gap-2 align-items-center">
+                <span class="text-muted" style="font-size:0.875rem;">
+                    <span class="page-jump-input" contenteditable="true" id="filterStartDate" style="display:inline;outline:none;cursor:text;border:none;background:transparent;padding:0;color:inherit;">{{ start_date }}</span>
+                </span>
+                <span class="text-muted small">至</span>
+                <span class="text-muted" style="font-size:0.875rem;">
+                    <span class="page-jump-input" contenteditable="true" id="filterEndDate" style="display:inline;outline:none;cursor:text;border:none;background:transparent;padding:0;color:inherit;">{{ end_date }}</span>
+                </span>
+            </div>
+        </div>
         <div class="table-responsive">
             <table class="table table-hover">
                 <thead>
@@ -80,6 +142,7 @@
                 </tbody>
             </table>
         </div>
+        {% include "page-navi.html" %}
     </div>
 </div>
 {% endblock %}
@@ -88,15 +151,16 @@
 <script src="{% static 'base/lib/Highcharts/js/highstock.js' %}"></script>
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
-    import { initCapitalChart, adjustCapital } from "{% static 'stock/js/capital.js' %}";
+    import { initCapitalChart, adjustCapital, initDateFilter, initAdjustModal } from "{% static 'stock/js/capital.js' %}";
+    import { initPagination } from "{% static 'stock/js/list.js' %}";
 
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         initCapitalChart();
-        // 资金调整按钮事件绑定
-        document.querySelectorAll('.capital-action').forEach(btn => {
-            btn.addEventListener('click', () => adjustCapital(btn.dataset.action));
-        });
+        initDateFilter();
+        initAdjustModal();
+        // 分页控件初始化
+        initPagination('/capital');
     });
 </script>
 {% endblock %}

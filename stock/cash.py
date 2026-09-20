@@ -8,12 +8,14 @@
 - 资金总览页面（当前状态 + 历史变化图）
 """
 import json
+import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.http import require_http_methods
 from .models.models import CashConfig, CashHistory
 from .forms.forms import CashConfigForm
+from . import func
 
 
 # ===================== 资金总览页面 =====================
@@ -22,31 +24,97 @@ def capital_view(request):
     config = CashConfig.get_config()
     # 最近一条历史记录用于展示
     latest_history = CashHistory.objects.first()
-    # 历史记录列表（最近50条）
-    history_list = CashHistory.objects.all()[:50]
+    # 分页 / 每页数量 / 日期范围（POST 提交时更新 session）
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            data = request.POST
+        if 'page' in data:
+            func.set_cache(request.session, 'capital-history-page', int(data['page']))
+        if 'per_page' in data:
+            func.set_page_size(request.session, data['per_page'])
+        if 'start_date' in data:
+            func.set_cache(request.session, 'capital-start-date', str(data['start_date']))
+        # 结束日期存入 session，同时记录设置日期（仅当天有效，跨天自动失效）
+        if 'end_date' in data and data['end_date']:
+            func.set_cache(request.session, 'capital-end-date', str(data['end_date']))
+            func.set_cache(request.session, 'capital-end-date-set-day', datetime.date.today().strftime('%Y-%m-%d'))
+        return JsonResponse({'status': 'ok'})
+    # 日期范围：起始日期持久化；结束日期当天有效，跨天自动恢复为当天
+    today = datetime.date.today()
+    today_str = today.strftime('%Y-%m-%d')
+    # 默认起始日期：去年今天 + 1天（Python日期运算自动处理大小月/闰年进位）
+    try:
+        _last_year_today = today.replace(year=today.year - 1)
+    except ValueError:
+        _last_year_today = today.replace(year=today.year - 1, day=28)
+    default_start = (_last_year_today + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+    start_str = str(func.get_cache(request.session, 'capital-start-date', default_start))
+    # 结束日期：检查设置日期是否为今天，是则用存储值，否则清除并用当天
+    end_set_day = str(func.get_cache(request.session, 'capital-end-date-set-day', ''))
+    if end_set_day == today_str:
+        end_str = str(func.get_cache(request.session, 'capital-end-date', today_str))
+    else:
+        # 跨天了，清除结束日期相关 session
+        if 'capital-end-date' in request.session:
+            del request.session['capital-end-date']
+        if 'capital-end-date-set-day' in request.session:
+            del request.session['capital-end-date-set-day']
+        end_str = today_str
+    try:
+        start_date = datetime.datetime.strptime(start_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        start_date = _last_year_today + datetime.timedelta(days=1)
+        start_str = start_date.strftime('%Y-%m-%d')
+    try:
+        end_date = datetime.datetime.strptime(end_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        end_date = today
+        end_str = end_date.strftime('%Y-%m-%d')
+    # 历史记录按日期范围过滤 + 分页
+    history_qs = CashHistory.objects.filter(date__gte=start_date, date__lte=end_date).order_by('-date', '-id')
+    pg = func.paginate_queryset(request, history_qs, 'capital-history-page')
     return render(request, 'capital.html', {
         'config': config,
         'latest': latest_history,
-        'history_list': history_list,
+        'history_list': pg['items'],
+        'current_page': pg['current_page'],
+        'total_pages': pg['total_pages'],
+        'per_page': pg['per_page'],
+        'result_total': pg['total_count'],
+        'start_date': start_str,
+        'end_date': end_str,
     })
 
 
 @require_http_methods(["GET"])
 def capital_history_api(request):
-    """返回资金历史数据（供前端 Highcharts 绘制）"""
+    """返回资金历史数据（供前端 Highcharts 绘制），支持 start/end 日期范围过滤"""
+    start_str = request.GET.get('start', '')
+    end_str = request.GET.get('end', '')
     qs = CashHistory.objects.all().order_by('date', 'id')
+    if start_str:
+        try:
+            qs = qs.filter(date__gte=datetime.datetime.strptime(start_str, '%Y-%m-%d').date())
+        except (ValueError, TypeError):
+            pass
+    if end_str:
+        try:
+            qs = qs.filter(date__lte=datetime.datetime.strptime(end_str, '%Y-%m-%d').date())
+        except (ValueError, TypeError):
+            pass
     total_series = []
     cash_series = []
     stock_series = []
     reasons = []
     for h in qs:
-        # 日期转毫秒时间戳
-        ts = int(h.date.strftime('%s')) * 1000
-        total_series.append([ts, float(h.total)])
-        cash_series.append([ts, float(h.cash)])
-        stock_series.append([ts, float(h.stock)])
+        date_str = h.date.strftime('%Y-%m-%d')
+        total_series.append([date_str, float(h.total)])
+        cash_series.append([date_str, float(h.cash)])
+        stock_series.append([date_str, float(h.stock)])
         reasons.append({
-            'ts': ts,
+            'date': date_str,
             'reason': h.get_reason_display(),
             'amount': float(h.amount),
             'remark': h.remark,
@@ -76,6 +144,13 @@ def capital_adjust_api(request):
     action = params.get('action')
     amount = Decimal(str(params.get('amount', 0)))
     remark = params.get('remark', '')
+    date_str = params.get('date', '')
+    adjust_date = None
+    if date_str:
+        try:
+            adjust_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            pass
 
     if action not in ('deposit', 'withdraw'):
         return JsonResponse({'error': '不支持的操作'}, status=400)
@@ -100,7 +175,7 @@ def capital_adjust_api(request):
 
     config.save()
     # 快照写入历史
-    CashHistory.snapshot(reason=reason, amount=change_amount, remark=remark)
+    CashHistory.snapshot(reason=reason, amount=change_amount, remark=remark, date=adjust_date)
     return JsonResponse({
         'msg': 'done',
         'total': float(config.total),
