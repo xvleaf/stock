@@ -235,7 +235,7 @@ def get_mark_config(session, site, navi_data):
             'showMark': True,
             'showFocus': False,
             'showStatus': True,
-            'showHide': True,
+            'showHide': False,
             'focus': 0,
             'status': instance.mark
         }
@@ -311,8 +311,7 @@ def get_mark_config(session, site, navi_data):
 
 def get_navi_params(session, site, navi_data):
     navi_params_limited = ['/sector/view', '/focus/view', '/trans/view',
-                           '/review/focus/view', '/review/trans/view', 
-                           '/filter/view', '/stocks/view', '/refer/view']
+                           '/review/focus/view', '/review/trans/view', '/filter/view', '/stocks/view', '/refer/view']
     if site in navi_params_limited:
         navi_params = navi_data.get('navi_params', NAVI_PARAMS_INIT)
     else:

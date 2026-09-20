@@ -5,7 +5,9 @@ urlpatterns = [
     # ---- 板块 ----
     path('sector/list', sector.sector_list, name='sector_list'),
     path('sector/view/<str:market>/<str:code>', sector.sector_view, name='sector_view'),
+    path('sector/rebuild', sector.rebuild_stock_sector, name='rebuild_stock_sector'),
     path('stocks/list/<str:market>/<str:code>', sector.stocks_list, name='stocks_list'),
+    path('stocks/sectors/<str:market>/<str:code>', sector.stock_sectors, name='stock_sectors'),
 
     # ---- 股票筛选 ----
     path('filter/list', filter.filter_list, name='filter_list'),

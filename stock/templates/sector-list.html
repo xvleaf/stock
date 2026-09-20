@@ -28,7 +28,8 @@
                     <span>{{ item.no }}</span>
                 </td>
                 <td style="width: 30%;">
-                    <a class="table-code-text" href="/sector/view/{{ item.market }}/{{ item.code }}">{{ item.code }}</a>
+                    <a class="table-code-text sector-link" href="/sector/view/{{ item.market }}/{{ item.code }}"
+                       data-market="{{ item.market }}" data-code="{{ item.code }}">{{ item.code }}</a>
                 </td>
                 <td style="width: 35%;">
                     <span>{{ item.name }}</span>
@@ -58,14 +59,39 @@
 {% load static %}
 <script type="module">
     import { baseInit} from "{% static 'base/js/base.js' %}";
-    import { tableHeaderInit, initPagination } from "{% static 'stock/js/list.js' %}";
+    import { tableHeaderInit, initPagination, getCsrfToken } from "{% static 'stock/js/list.js' %}";
     import { initSectorList } from "{% static 'stock/js/sector.js' %}";
+
+    const fromStockSectors = {% if from_stock_sectors %}true{% else %}false{% endif %};
+    const stockCode = '{{ stock_code|default:"" }}';
+    const stockMarket = '{{ stock_market|default:"" }}';
+    const paginationUrl = fromStockSectors ? `/stocks/sectors/${stockMarket}/${stockCode}` : '/sector/list';
 
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         tableHeaderInit();
         initSectorList({ currentMarkFilter: '{{ current_mark_filter }}' });
-        initPagination('/sector/list');
+        initPagination(paginationUrl);
+
+        // 从股票所属板块列表进入时，点击板块先设置 backUrl 再跳转
+        if (fromStockSectors) {
+            document.querySelectorAll('.sector-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const m = link.dataset.market;
+                    const c = link.dataset.code;
+                    fetch(`/sector/view/${m}/${c}`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+                        body: JSON.stringify({ set_back: `/stocks/sectors/${stockMarket}/${stockCode}` }),
+                    }).then(() => {
+                        window.location.href = `/sector/view/${m}/${c}`;
+                    }).catch(() => {
+                        window.location.href = `/sector/view/${m}/${c}`;
+                    });
+                });
+            });
+        }
     });
 </script>
 {% endblock %}

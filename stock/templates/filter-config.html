@@ -2,7 +2,10 @@
 {% block title %}筛选历史{% endblock %}
 {% block content %}
 <div class="form-wrap">
-    <h6 class="mb-2">全量样本</h6>
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <h6 class="mb-0">全量样本</h6>
+    <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" id="rebuildSectorBtn">刷新板块关联</button>
+</div>
     <div class="card mb-3">
         <div class="card-body py-2">
             <div class="d-flex flex-wrap gap-3 board-checks">
@@ -94,10 +97,44 @@
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
     import { initFilterConfig } from "{% static 'stock/js/filter.js' %}";
+    import { showConfirm, showAlert } from "{% static 'stock/js/func.js' %}";
+    import { getCsrfToken } from "{% static 'stock/js/list.js' %}";
 
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         initFilterConfig();
+
+        // 刷新板块关联按钮
+        const rebuildBtn = document.getElementById('rebuildSectorBtn');
+        if (rebuildBtn) {
+            rebuildBtn.addEventListener('click', () => {
+                showConfirm({
+                    title: '刷新板块关联',
+                    text: '确定要重建板块关联吗？',
+                }).then((confirmed) => {
+                    if (!confirmed) return;
+                    rebuildBtn.disabled = true;
+                    rebuildBtn.textContent = '正在刷新...';
+                    fetch('/sector/rebuild', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+                        body: JSON.stringify({}),
+                    }).then(res => res.json()).then(data => {
+                        if (data.status === 'success') {
+                            showAlert({ type: 'success', text: '刷新已开始，完成后自动生效' });
+                        } else {
+                            showAlert({ type: 'error', text: data.message || '刷新失败' });
+                            rebuildBtn.disabled = false;
+                            rebuildBtn.textContent = '刷新板块关联';
+                        }
+                    }).catch(() => {
+                        showAlert({ type: 'error', text: '请求失败，请重试' });
+                        rebuildBtn.disabled = false;
+                        rebuildBtn.textContent = '刷新板块关联';
+                    });
+                });
+            });
+        }
     });
 </script>
 {% endblock %}

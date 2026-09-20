@@ -1,4 +1,4 @@
-import { postRequest, updateFormData, initScrollFold, showChartError, showConfirm, showAlert, showFormModal } from './func.js';
+import { postRequest, updateFormData, initScrollFold, showChartError, showConfirm, showAlert, showFormModal, getCsrfToken } from './func.js';
 import { trendChart, initTrendChart, destroyTrendChart, clearTrendTimer } from './trend.js';
 import { klineChart, initKlineChart, destroyKlineChart, refreshKlineDensity, getCurrentEma } from './kline.js';
 import { changeFreq as klineChangeFreq, toggleRight as klineToggleRight } from './kline.js';
@@ -199,6 +199,22 @@ export function initPageElements() {
             codeItem.classList.add('pointer');
             codeItem.onclick = () => {
                 window.location.href = `/stocks/list/${pageConfig.market}/${pageConfig.code}`;
+            };
+        }
+        // 股票 view（cat=stock）：点击 code 进入该股票的所属板块列表
+        else if (pageConfig.cat === 'stock') {
+            codeItem.classList.add('pointer');
+            codeItem.onclick = () => {
+                // 先 AJAX 设置返回来源，再跳转
+                fetch(`/stocks/sectors/${pageConfig.market}/${pageConfig.code}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+                    body: JSON.stringify({ set_back: window.location.pathname }),
+                }).then(() => {
+                    window.location.href = `/stocks/sectors/${pageConfig.market}/${pageConfig.code}`;
+                }).catch(() => {
+                    window.location.href = `/stocks/sectors/${pageConfig.market}/${pageConfig.code}`;
+                });
             };
         }
     }

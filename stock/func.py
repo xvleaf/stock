@@ -1,11 +1,12 @@
 import os
+import threading
 import pandas as pd
 import decimal
 from .fetch import kline, trend
 from .fetch import tushare
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
-from .models.models import StockList
+from .models.models import StockList, StockSector, SectorList
 from django.db import connection, transaction
 from django.core.cache import cache
 import pytz
@@ -117,13 +118,14 @@ def delete_cache(session, key):
 def _update_stock_list():
     """
     从 tushare 获取最新股票基础信息，更新到本地 StockList 表
-    不删除旧数据，仅更新或新增
+    不删除旧数据，仅更新或新增；末尾异步更新股票-板块关联
     """
     EXCHANGE_MAP = {
         'SSE': 'SH',
         'SZSE': 'SZ',
         'BSE': 'BJ',
     }
+    new_stocks = []
 
     try:
         df = tushare.get_stock_basic()
@@ -155,8 +157,80 @@ def _update_stock_list():
                         name=row['name'],
                         industry=row['industry']
                     )
+                    new_stocks.append((row['code'], row['market']))
     except Exception as e:
         print(f"更新股票列表失败: {e}")
+        return
+
+    # 异步更新股票-板块关联（不阻塞当前请求）
+    if new_stocks or not StockSector.objects.exists():
+        t = threading.Thread(target=_update_stock_sector, args=(new_stocks,), daemon=True)
+        t.start()
+
+
+def _update_stock_sector(new_stocks):
+    """
+    更新股票-板块关联（StockSector 表）。
+    智能切换：StockSector 为空时全量模式（遍历板块，31次API），否则增量模式（仅新增股票，N次API）。
+    """
+    try:
+        if not StockSector.objects.exists():
+            # ===== 全量模式：遍历所有板块，调用 get_match_industry =====
+            print("[StockSector] 全量初始化开始...")
+            sectors = SectorList.objects.all()
+            bulk_list = []
+            for sector in sectors:
+                try:
+                    df = tushare.get_match_industry(f'{sector.code}.{sector.cat}')
+                    if df is None or df.empty:
+                        continue
+                    for _, row in df.iterrows():
+                        ts_code = row.get('ts_code', '')
+                        if not ts_code or '.' not in ts_code:
+                            continue
+                        code, market = ts_code.split('.', 1)
+                        bulk_list.append(StockSector(
+                            stock_code=code,
+                            stock_market=market,
+                            sector_code=sector.code,
+                            sector_market=sector.market,
+                        ))
+                except Exception as e:
+                    print(f"[StockSector] 板块 {sector.code} 获取成分股失败: {e}")
+            if bulk_list:
+                with transaction.atomic():
+                    StockSector.objects.all().delete()
+                    StockSector.objects.bulk_create(bulk_list, batch_size=500)
+            print(f"[StockSector] 全量初始化完成，共 {len(bulk_list)} 条关联")
+        else:
+            # ===== 增量模式：仅处理新增股票，调用 get_industry_member =====
+            if not new_stocks:
+                return
+            print(f"[StockSector] 增量更新开始，新增 {len(new_stocks)} 只股票...")
+            count = 0
+            for code, market in new_stocks:
+                try:
+                    df = tushare.get_industry_member(f'{code}.{market}')
+                    if df is None or df.empty:
+                        continue
+                    for _, row in df.iterrows():
+                        l1_code = row.get('l1_code', '')
+                        if not l1_code or '.' not in l1_code:
+                            continue
+                        sec_code, sec_cat = l1_code.split('.', 1)
+                        sec_market = 'SW' if sec_cat == 'SI' else sec_cat
+                        StockSector.objects.get_or_create(
+                            stock_code=code,
+                            stock_market=market,
+                            sector_code=sec_code,
+                            sector_market=sec_market,
+                        )
+                        count += 1
+                except Exception as e:
+                    print(f"[StockSector] 股票 {code}.{market} 获取板块失败: {e}")
+            print(f"[StockSector] 增量更新完成，新增 {count} 条关联")
+    except Exception as e:
+        print(f"[StockSector] 更新失败: {e}")
 
 
 # =====================================================================

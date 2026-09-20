@@ -1,12 +1,13 @@
 import json
 import decimal
 import datetime
+import threading
 from .fetch import kline, trend
 from .fetch import tushare
 from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.views.decorators.http import require_http_methods
-from .models.models import SectorList
+from .models.models import SectorList, StockSector
 from django.db import connection, transaction
 from django.core.cache import cache
 import pytz
@@ -32,11 +33,11 @@ def sector_list(request):
         return JsonResponse({'status': 'success'})
 
     items = []
-    sector_qs = SectorList.objects.exclude(hide='1').order_by('code')
+    sector_qs = SectorList.objects.all().order_by('code')
 
     if not sector_qs:
         _update_sector_list()
-        sector_qs = SectorList.objects.all().exclude(hide='1').order_by('code')
+        sector_qs = SectorList.objects.all().order_by('code')
 
     # 标记筛选（后端过滤，与筛选清单一致）
     mark_filter = func.get_cache(request.session, 'sector-list-mark-filter', 'all')
@@ -87,7 +88,12 @@ def sector_view(request, market, code):
             data = json.loads(request.body)
         except json.JSONDecodeError:
             return JsonResponse({'error': '无效JSON'}, status=400)
-            
+
+        # 设置返回来源（从 stock_sectors 进入板块 view 时使用）
+        if 'set_back' in data:
+            func.set_view_back(request.session, data['set_back'])
+            return JsonResponse({'status': 'success'})
+
         if data.get('func') == 'major':
             try:
                 sector = SectorList.objects.get(code=code)
@@ -104,43 +110,9 @@ def sector_view(request, market, code):
                 mark = {'status': 'success', 'minor': sector.mark}
             except SectorList.DoesNotExist:
                 mark = {'status': 'error', 'message': '代码不存在'}
-        # elif data.get('func') == 'hide':
         else:
-            try:
-                sector = SectorList.objects.get(code=code)
-                # 在剔除前，计算下一只（最后一只则取前一只），供前端不刷新切换
-                resp = {'status': 'success', 'hide': '1'}
-                custom = func.get_cache(request.session, 'sector-view-custom-navi')
-                if custom:
-                    navi_list = [tuple(x) for x in custom]
-                else:
-                    navi_list = list(SectorList.objects.exclude(hide='1').order_by('code').values_list('code', 'market'))
-                try:
-                    idx = navi_list.index((code, market))
-                except ValueError:
-                    idx = -1
-                remaining = [x for x in navi_list if x != (code, market)]
-                if 0 <= idx < len(remaining):
-                    nc, nm = remaining[idx]
-                    nsec = SectorList.objects.filter(code=nc).first()
-                    resp['next'] = {'code': nc, 'market': nm, 'name': nsec.name if nsec else ''}
-                elif remaining:
-                    pc, pm = remaining[-1]
-                    psec = SectorList.objects.filter(code=pc).first()
-                    resp['prev'] = {'code': pc, 'market': pm, 'name': psec.name if psec else ''}
-                # 隐藏该板块
-                sector.hide = '1'
-                sector.save()
-                # 失效导航缓存
-                func.delete_cache(request.session, '/sector/view-navi-data')
-                # 更新自定义 navi 列表：移除被 hide 的板块
-                if custom:
-                    custom_list = [tuple(x) for x in custom if tuple(x) != (code, market)]
-                    func.set_cache(request.session, 'sector-view-custom-navi', custom_list)
-                mark = resp
-            except SectorList.DoesNotExist:
-                mark = {'status': 'error', 'message': '代码不存在'}
-            
+            mark = {'status': 'error', 'message': '未知操作'}
+
         return JsonResponse(mark)
     else:
         navi_data = func.get_cache(request.session, f'{site}-navi-data', {})
@@ -165,7 +137,7 @@ def sector_view(request, market, code):
 
 
 def stocks_list(request, market, code):
-    """板块股票清单：显示该板块的所有成分股（复用 filter-list.html 模板）"""
+    """板块股票清单：显示该板块的所有成分股（从 StockSector 查询，复用 filter-list.html 模板）"""
     site = f'/stocks/list/{market}/{code}'
 
     if request.method == 'POST':
@@ -184,30 +156,17 @@ def stocks_list(request, market, code):
     if not sector:
         return redirect('/sector/list')
 
-    # 从 tushare 获取板块成分股（缓存 2 小时）
-    cache_key = f'sector-stocks-{code}'
-    stocks = cache.get(cache_key)
-    if stocks is None:
-        try:
-            df = tushare.get_match_industry(f'{code}.{sector.cat}')
-            if df is not None and not df.empty:
-                stocks = []
-                for _, row in df.iterrows():
-                    ts_code = row['ts_code']  # 如 600000.SH
-                    parts = ts_code.split('.')
-                    if len(parts) == 2:
-                        stocks.append({'code': parts[0], 'market': parts[1], 'name': row['name']})
-                cache.set(cache_key, stocks, timeout=7200)
-            else:
-                stocks = []
-        except Exception as e:
-            print(f"获取板块股票失败: {e}")
-            stocks = []
+    # 从 StockSector 查询该板块下的所有股票，关联 StockList 获取详情
+    from .models.models import StockList, FocusStock, StockSector
+    sector_stocks = StockSector.objects.filter(sector_code=code).select_related()
+    stock_codes_markets = [(ss.stock_code, ss.stock_market) for ss in sector_stocks]
 
-    # 过滤掉已 hide 的股票（hide 操作后 tushare 缓存未更新，需实时过滤）
-    from .models.models import StockList
-    hidden_codes = set(StockList.objects.filter(hide='1').values_list('code', flat=True))
-    stocks = [s for s in stocks if s['code'] not in hidden_codes]
+    # 构建股票列表（过滤已 hide）
+    stocks = []
+    for sc, sm in stock_codes_markets:
+        stock = StockList.objects.filter(code=sc, market=sm).first()
+        if stock and stock.hide != '1':
+            stocks.append({'code': sc, 'market': sm, 'name': stock.name})
 
     # 分页（list 也支持，code_getter 从 dict 取 code）
     pg = func.paginate_queryset(
@@ -216,7 +175,6 @@ def stocks_list(request, market, code):
     )
 
     # 构建 items（含序号、关注状态、标记）
-    from .models.models import FocusStock
     base_no = (pg['current_page'] - 1) * pg['per_page']
     items = []
     for idx, s in enumerate(pg['items']):
@@ -249,6 +207,93 @@ def stocks_list(request, market, code):
         'pagination_url': site,
         'view_url_prefix': '/stocks/view',
         'page_title': f'{sector.name} - 板块股票',
+    })
+
+
+def stock_sectors(request, market, code):
+    """股票所属板块列表：显示该股票对应的所有板块（用 sector-list.html 渲染，分页）"""
+    from .models.models import StockSector
+
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({'status': 'error', 'message': '无效JSON'}, status=400)
+        # 设置返回来源（从股票 view 进入时调用）
+        if 'set_back' in data:
+            func.set_view_back(request.session, data['set_back'])
+            return JsonResponse({'status': 'success'})
+        if 'page' in data:
+            func.set_cache(request.session, f'stock-sectors-{code}-page', int(data['page']))
+        if 'per_page' in data:
+            func.set_page_size(request.session, data['per_page'])
+        return JsonResponse({'status': 'success'})
+
+    # 从 StockSector 查询该股票的所有板块
+    sector_relations = StockSector.objects.filter(stock_code=code, stock_market=market)
+
+    # 兜底：若 StockSector 中无数据，调用 get_industry_member 获取并更新数据库
+    if not sector_relations.exists():
+        try:
+            df = tushare.get_industry_member(f'{code}.{market}')
+            if df is not None and not df.empty:
+                for _, row in df.iterrows():
+                    l1_code = row.get('l1_code', '')
+                    if not l1_code or '.' not in l1_code:
+                        continue
+                    sec_code, sec_cat = l1_code.split('.', 1)
+                    sec_market = 'SW' if sec_cat == 'SI' else sec_cat
+                    StockSector.objects.get_or_create(
+                        stock_code=code,
+                        stock_market=market,
+                        sector_code=sec_code,
+                        sector_market=sec_market,
+                    )
+                sector_relations = StockSector.objects.filter(stock_code=code, stock_market=market)
+        except Exception as e:
+            print(f"[stock_sectors] 兜底获取板块失败: {e}")
+
+    # 关联 SectorList 获取板块详情
+    sector_codes = [sr.sector_code for sr in sector_relations]
+    sector_qs = SectorList.objects.filter(code__in=sector_codes).order_by('code')
+
+    # 统一分页
+    pg = func.paginate_queryset(request, sector_qs, f'stock-sectors-{code}-page')
+
+    # 全局连续序号
+    base_no = (pg['current_page'] - 1) * pg['per_page']
+    items = []
+    for idx, fs in enumerate(pg['items']):
+        items.append({
+            'no': base_no + idx + 1,
+            'id': fs.id,
+            'code': fs.code,
+            'name': fs.name,
+            'market': fs.market,
+            'cat': fs.cat,
+            'mark': fs.mark,
+        })
+
+    # 设置返回来源（股票 view 页面）
+    back_url = func.get_view_back(request.session) or '/focus/list'
+    func.set_view_back(request.session, back_url)
+
+    # 标记筛选后的全量列表作为 view 的自定义 navi
+    custom_navi = [(r.code, r.market) for r in sector_qs]
+    func.set_cache(request.session, 'sector-view-custom-navi', custom_navi)
+    func.delete_cache(request.session, '/sector/view-navi-data')
+
+    return render(request, 'sector-list.html', {
+        'list': items,
+        'current_page': pg['current_page'],
+        'total_pages': pg['total_pages'],
+        'per_page': pg['per_page'],
+        'result_total': pg['total_count'],
+        'page_size_choices': func.PAGE_SIZE_CHOICES,
+        'current_mark_filter': 'all',
+        'from_stock_sectors': True,
+        'stock_code': code,
+        'stock_market': market,
     })
 
 
@@ -287,4 +332,19 @@ def _update_sector_list():
                     )
     except Exception as e:
         print(f"更新板块列表失败: {e}")
+
+
+def rebuild_stock_sector(request):
+    """重建板块关联：清空 StockSector，后台异步全量重建"""
+    if request.method != 'POST':
+        return JsonResponse({'error': '仅支持POST'}, status=405)
+    try:
+        # 清空现有数据（触发 _update_stock_sector 的全量模式）
+        StockSector.objects.all().delete()
+        # 后台异步执行全量重建
+        t = threading.Thread(target=func._update_stock_sector, args=([],), daemon=True)
+        t.start()
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
 
