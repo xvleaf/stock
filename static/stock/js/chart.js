@@ -198,7 +198,7 @@ export function initPageElements() {
         if (pageConfig.site === '/sector/view') {
             codeItem.classList.add('pointer');
             codeItem.onclick = () => {
-                window.location.href = `/sector/stocks/${pageConfig.market}/${pageConfig.code}`;
+                window.location.href = `/stocks/list/${pageConfig.market}/${pageConfig.code}`;
             };
         }
     }
@@ -508,7 +508,8 @@ function backToList() {
         '/review/focus/view': '/review/focus/list',
         '/review/trans/view': '/review/trans/list',
         '/filter/view': '/filter/list',
-        '/stocks/view': '/sector/list'
+        '/stocks/view': '/sector/list',
+        '/refer/view': '/refer/list'
     };
     window.location.href = routeMap[pageConfig.site] || '/focus/list';
 };

@@ -86,7 +86,7 @@ def _build_chart_response(request, site, code, market, name, cat, view_mode):
         'view': view_mode
     }
     # 统一 backUrl 处理：所有 view 页面使用 set_view_back/get_view_back 机制
-    if site in ('/filter/view', '/stocks/view'):
+    if site in ('/filter/view', '/stocks/view', '/refer/view'):
         context['backUrl'] = func.get_view_back(request.session) or '/filter/list'
 
     page_config = get_page_config(request.session, site, cat)
@@ -282,6 +282,27 @@ def get_mark_config(session, site, navi_data):
             'focus': 1 if focused else 0,
             'status': instance.mark if instance else ''
         }
+    elif site == '/refer/view':
+        # 筛选对比结果页：显示 关注/标记/隐藏 按钮
+        if navi_data:
+            get_site, code, market = navi_data.get('site_code_market')
+            if get_site == site:
+                instance = StockList.objects.filter(code=code, market=market).first()
+                focused = FocusStock.objects.filter(
+                    code=code, market=market, status=FocusStock.STATUS_WATCHING).exists()
+            else:
+                return MARK_CONFIG_INIT
+        else:
+            return MARK_CONFIG_INIT
+
+        mark_config = {
+            'showMark': True,
+            'showFocus': True,
+            'showStatus': True,
+            'showHide': True,
+            'focus': 1 if focused else 0,
+            'status': instance.mark if instance else ''
+        }
     else:
         mark_config = MARK_CONFIG_INIT
 
@@ -290,7 +311,8 @@ def get_mark_config(session, site, navi_data):
 
 def get_navi_params(session, site, navi_data):
     navi_params_limited = ['/sector/view', '/focus/view', '/trans/view',
-                           '/review/focus/view', '/review/trans/view', '/filter/view', '/stocks/view']
+                           '/review/focus/view', '/review/trans/view', 
+                           '/filter/view', '/stocks/view', '/refer/view']
     if site in navi_params_limited:
         navi_params = navi_data.get('navi_params', NAVI_PARAMS_INIT)
     else:
@@ -422,6 +444,14 @@ def get_navi_list(site, session=None):
         else:
             qs = StockList.objects.exclude(hide='1').order_by('code')
             navi_list = list(qs.values_list('code', 'market'))
+    elif site == '/refer/view':
+        # 优先使用筛选对比页传入的自定义 navi 列表；否则用全部未 hide 股票
+        custom = func.get_cache(session, 'refer-view-custom-navi') if session else None
+        if custom:
+            navi_list = [tuple(x) for x in custom]
+        else:
+            qs = StockList.objects.exclude(hide='1').order_by('code')
+            navi_list = list(qs.values_list('code', 'market'))
     elif site == '/review/focus/view':
         # 未交易关注：左右切换不同股票
         qs = FocusStock.objects.filter(
@@ -509,6 +539,15 @@ def _get_stock_detail(site, code, market, history_id=None):
             'name': stock.name,
             'cat': stock.cat,
         }
+    elif site == '/refer/view':
+        # 优先从 FilterResult 找最新记录（获取名称），兜底 StockList
+        res = FilterResult.objects.filter(code=code, market=market).order_by('-task_id').first()
+        if res:
+            return {'code': code, 'market': market, 'name': res.name, 'cat': res.cat}
+        stock = StockList.objects.filter(code=code, market=market).first()
+        if not stock:
+            return {}
+        return {'code': code, 'market': market, 'name': stock.name, 'cat': stock.cat}
     elif site == '/filter/view':
         # 筛选结果股：返回最新所属任务中的基本信息
         res = FilterResult.objects.filter(code=code, market=market).order_by('-task_id').first()

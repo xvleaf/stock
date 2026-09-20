@@ -33,7 +33,7 @@ export function initFilterList(opts = {}) {
         if (!btn) return;
         showRadioModal({
             title: '标记筛选',
-            options: [['all', '全部'], ['1', '优先股'], ['2', '潜力股']],
+            options: [['all', '全部'], ['1', '优先'], ['2', '潜力']],
             defaultValue: currentMarkFilter,
         }).then((value) => {
             if (value !== null) {
@@ -403,7 +403,7 @@ export function initFilterRefer() {
     document.getElementById('referBtn').addEventListener('click', async () => {
         const a = document.getElementById('taskA').value;
         const b = document.getElementById('taskB').value;
-        const res = await postRequest('/filter/refer', { task_a: a, task_b: b });
+        const res = await postRequest('/refer/list', { task_a: a, task_b: b });
         if (!res || res.error) return;
 
         document.getElementById('referSummary').innerHTML =

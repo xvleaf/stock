@@ -164,9 +164,9 @@ def sector_view(request, market, code):
         return render(request, 'sector-view.html', {'chart': json.dumps(chart_init)})
 
 
-def sector_stocks_list(request, market, code):
+def stocks_list(request, market, code):
     """板块股票清单：显示该板块的所有成分股（复用 filter-list.html 模板）"""
-    site = f'/sector/stocks/{market}/{code}'
+    site = f'/stocks/list/{market}/{code}'
 
     if request.method == 'POST':
         try:

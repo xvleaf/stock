@@ -14,7 +14,7 @@ export function initSectorList(opts) {
         if (!btn) return;
         showRadioModal({
             title: '标记筛选',
-            options: [['all', '全部'], ['1', '优选股'], ['2', '潜力股']],
+            options: [['all', '全部'], ['1', '优选'], ['2', '潜力']],
             defaultValue: currentMarkFilter,
         }).then((value) => {
             if (value === null) return;

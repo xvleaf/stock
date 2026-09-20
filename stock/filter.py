@@ -831,13 +831,55 @@ def _do_focus_stocks(stock, ema_price=None):
     return _do_focus(stock, ema_price)
 
 
-def filter_view(request, market, code):
-    """单只股票详情（K线）。支持 /filter/view（筛选结果）和 /stocks/view（板块股票等通用股票）两种模式。"""
-    # 根据请求路径区分模式
-    is_stocks_mode = request.path.startswith('/stocks/view')
-    site = '/stocks/view' if is_stocks_mode else '/filter/view'
+def _handle_hide_refer(request, code, market):
+    """
+    /refer/view 模式隐藏股票：计算下一只/前一只、更新 StockList/FilterResult、
+    更新 task stock_count、失效导航缓存、更新 refer-view-custom-navi。
+    """
+    resp = {'status': 'success', 'hide': '1'}
+    custom = func.get_cache(request.session, 'refer-view-custom-navi')
+    if custom:
+        custom_list = [tuple(x) for x in custom]
+        try:
+            idx = custom_list.index((code, market))
+        except ValueError:
+            idx = -1
+        remaining = [x for x in custom_list if x != (code, market)]
+        if 0 <= idx < len(remaining):
+            nc, nm = remaining[idx]
+            nstock = StockList.objects.filter(code=nc, market=nm).first()
+            resp['next'] = {'code': nc, 'market': nm, 'name': nstock.name if nstock else ''}
+        elif remaining:
+            pc, pm = remaining[-1]
+            pstock = StockList.objects.filter(code=pc, market=pm).first()
+            resp['prev'] = {'code': pc, 'market': pm, 'name': pstock.name if pstock else ''}
+    # 隐藏该股票：同步 StockList，以及所有历史结果中的同代码记录
+    StockList.objects.filter(code=code, market=market).update(hide='1')
+    FilterResult.objects.filter(code=code, market=market).update(hide='1')
+    # 更新所有包含该股票的 FilterTask 的 stock_count
+    for t in FilterTask.objects.filter(results__code=code, results__market=market).distinct():
+        t.stock_count = t.results.exclude(hide='1').count()
+        t.save(update_fields=['stock_count'])
+    # 失效导航缓存
+    func.delete_cache(request.session, '/refer/view-navi-data')
+    # 更新自定义 navi 列表：移除被 hide 的股票
+    if custom:
+        custom_list = [tuple(x) for x in custom if tuple(x) != (code, market)]
+        func.set_cache(request.session, 'refer-view-custom-navi', custom_list)
+    return JsonResponse(resp)
 
-    if is_stocks_mode:
+
+def filter_view(request, market, code):
+    """单只股票详情（K线）。支持 /filter/view、/stocks/view、/refer/view 三种模式。"""
+    # 根据请求路径区分模式
+    if request.path.startswith('/stocks/view'):
+        site = '/stocks/view'
+    elif request.path.startswith('/refer/view'):
+        site = '/refer/view'
+    else:
+        site = '/filter/view'
+
+    if site == '/stocks/view':
         # ===================== /stocks/view 模式 =====================
         stock = StockList.objects.filter(code=code, market=market).first()
         if stock is None:
@@ -883,6 +925,72 @@ def filter_view(request, market, code):
         return render(request, 'filter-view.html', {
             'chart': json.dumps(chart_init),
             'mark': stock.mark,
+            'task_id': 0,
+        })
+
+    if site == '/refer/view':
+        # ===================== /refer/view 模式（筛选对比结果） =====================
+        # 优先从 FilterResult 找最新记录（获取名称），找不到则从 StockList 查找
+        result = FilterResult.objects.filter(code=code, market=market).order_by('-task_id').first()
+        if result:
+            stock_name = result.name
+            stock_cat = result.cat
+            stock_mark = result.mark
+        else:
+            stock = StockList.objects.filter(code=code, market=market).first()
+            if stock is None:
+                raise Http404('股票不存在')
+            stock_name = stock.name
+            stock_cat = stock.cat
+            stock_mark = stock.mark
+
+        if request.method == 'POST':
+            try:
+                data = json.loads(request.body)
+            except json.JSONDecodeError:
+                return JsonResponse({'error': '无效JSON'}, status=400)
+            func_name = data.get('func')
+            if func_name in ('major', 'minor'):
+                # 操作 StockList 全局标记
+                stock = StockList.objects.filter(code=code, market=market).first()
+                if stock:
+                    return _toggle_mark_stocks(stock, func_name)
+                return JsonResponse({'status': 'error', 'message': '股票不存在'})
+            elif func_name == 'hide':
+                return _handle_hide_refer(request, code, market)
+            elif func_name == 'focus':
+                stock = StockList.objects.filter(code=code, market=market).first()
+                if stock:
+                    return _do_focus_stocks(stock, data.get('ema_price'))
+                return JsonResponse({'status': 'error', 'message': '股票不存在'})
+            else:
+                return JsonResponse({'status': 'error', 'message': '未知操作'})
+
+        # GET
+        func.set_view_current_code(request.session, code)
+        navi_data = func.get_cache(request.session, f'{site}-navi-data', {})
+        if (site, code, market) != navi_data.get('site_code_market', None):
+            navi_data = chart.set_navi_data(request.session, site, code, market, None, 'init')
+
+        # 股票不在导航列表中（已被 hide 或不存在），返回来源列表
+        if not navi_data:
+            back_url = func.get_view_back(request.session) or '/refer/list'
+            return redirect(back_url)
+
+        func.set_cache(request.session, 'view', 'kline')
+        back_url = func.get_view_back(request.session) or '/refer/list'
+        chart_init = {
+            'site': site,
+            'code': code,
+            'market': market,
+            'name': stock_name,
+            'cat': stock_cat,
+            'view': 'kline',
+            'backUrl': back_url,
+        }
+        return render(request, 'filter-view.html', {
+            'chart': json.dumps(chart_init),
+            'mark': stock_mark,
             'task_id': 0,
         })
 
@@ -961,8 +1069,8 @@ def filter_view(request, market, code):
     })
 
 
-def filter_refer(request):
-    """两次筛选结果对比，后端分页。所有状态（task_a/task_b/scope/page/per_page）均存 session，URL 恒为 /filter/refer。"""
+def refer_list(request):
+    """两次筛选结果对比，后端分页。所有状态（task_a/task_b/scope/page/per_page）均存 session，URL 恒为 /refer/list。"""
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -981,7 +1089,7 @@ def filter_refer(request):
             func.set_page_size(request.session, data['per_page'])
         if 'from_view' in data:
             func.set_cache(request.session, 'filter-refer-from-view', data['from_view'])
-            func.set_view_back(request.session, '/filter/refer')
+            func.set_view_back(request.session, '/refer/list')
         # 所有对比页内部 POST 操作后刷新，均保留任务选择（避免重新弹窗）
         func.set_cache(request.session, 'filter-refer-from-view', '1')
         return JsonResponse({'status': 'success'})
@@ -1090,8 +1198,9 @@ def filter_refer(request):
 
     # 全量过滤后的列表作为 view 自定义 navi（可跨页）
     custom_navi = [(r['code'], r['market']) for r in rows]
-    func.set_cache(request.session, 'filter-view-custom-navi', custom_navi)
-    func.set_view_back(request.session, '/filter/refer')
+    func.set_cache(request.session, 'refer-view-custom-navi', custom_navi)
+    func.delete_cache(request.session, '/refer/view-navi-data')
+    func.set_view_back(request.session, '/refer/list')
 
     return render(request, 'filter-refer.html', {
         'tasks': tasks,

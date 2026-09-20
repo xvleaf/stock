@@ -65,7 +65,7 @@
     }
 
     function saveAndReload(patch) {
-        fetch('/filter/refer', {
+        fetch('/refer/list', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
             body: JSON.stringify(patch),
@@ -74,11 +74,11 @@
 
     // 从对比列表进入 view：先设置 from_view 标记（对比页返回时保留选择），再跳转
     function goReferView(market, code) {
-        fetch('/filter/refer', {
+        fetch('/refer/list', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
             body: JSON.stringify({ from_view: '1' }),
-        }).then(() => { window.location.href = `/filter/view/${market}/${code}`; });
+        }).then(() => { window.location.href = `/refer/view/${market}/${code}`; });
     }
 
     // 任务A变化时，联动更新任务B：子任务→父任务→最近任务（排除A）
@@ -145,7 +145,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         tableHeaderInit();
-        initPagination('/filter/refer');
+        initPagination('/refer/list');
 
         // 股票链接点击：先设置标记再跳转
         document.querySelectorAll('.refer-view-link').forEach(link => {
