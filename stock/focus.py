@@ -85,7 +85,6 @@ def focus_list(request):
         'total_pages': pg['total_pages'],
         'per_page': pg['per_page'],
         'result_total': pg['total_count'],
-        'page_size_choices': func.PAGE_SIZE_CHOICES,
     })
 
 

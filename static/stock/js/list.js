@@ -1,4 +1,5 @@
 import {RESIZE_DELAY_LAYOUT, isMainNavHidden, getMainNavHeight} from '../../base/js/base.js';
+import { showAlert } from './func.js';
 
 let originalThead = null;
 let fixedHeaderWrap = null;
@@ -236,9 +237,29 @@ export function initPagination(postUrl) {
         if (e.currentTarget.disabled) return;
         saveAndReload({ page: parseInt(e.currentTarget.dataset.page) });
     });
-    pag.querySelector('.page-size')?.addEventListener('change', (e) => {
-        saveAndReload({ per_page: e.target.value, page: 1 });
-    });
+    // 每页数量输入框（contenteditable）：失焦或回车提交，无效值提示错误并恢复原值，不提交后台
+    const sizeInput = pag.querySelector('.page-size-input');
+    if (sizeInput) {
+        const originalSize = parseInt(sizeInput.dataset.size);
+        const doSubmit = () => {
+            let val = parseInt(sizeInput.textContent.trim());
+            if (isNaN(val) || val < 1) {
+                showAlert({ title: '提示', text: '请输入有效的正整数', type: 'warning' });
+                sizeInput.textContent = originalSize;
+                return;
+            }
+            sizeInput.textContent = val;
+            if (val === originalSize) return; // 内容未变化，不刷新
+            saveAndReload({ per_page: val, page: 1 });
+        };
+        sizeInput.addEventListener('blur', doSubmit);
+        sizeInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sizeInput.blur();
+            }
+        });
+    }
     // 页码输入框（contenteditable）：失焦或回车跳转，参考 kline k,d 交互；内容未变化不刷新
     const jumpInput = pag.querySelector('.page-jump-input');
     if (jumpInput) {

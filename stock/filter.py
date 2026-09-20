@@ -486,7 +486,6 @@ def filter_list(request):
         'current_page': pg['current_page'],
         'total_pages': pg['total_pages'],
         'result_total': pg['total_count'],
-        'page_size_choices': func.PAGE_SIZE_CHOICES,
         'current_mark_filter': mark_filter,
     })
 
@@ -1220,7 +1219,6 @@ def refer_list(request):
         'count_a': count_a,
         'count_b': count_b,
         'count_both': count_both,
-        'page_size_choices': func.PAGE_SIZE_CHOICES,
     })
 
 

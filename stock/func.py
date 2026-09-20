@@ -236,25 +236,25 @@ def _update_stock_sector(new_stocks):
 # =====================================================================
 # 统一列表分页 / 导航工具（供筛选列表、筛选对比、关注列表等复用）
 # =====================================================================
-PAGE_SIZE_CHOICES = [10, 20, 50]
-DEFAULT_PAGE_SIZE = int(os.environ.get('GLOBAL_PER_PAGE', '10'))
+DEFAULT_PAGE_SIZE = 10  # 硬编码默认值，不再使用环境变量
 GLOBAL_PAGE_SIZE_KEY = 'global-per-page'
 
 
 def get_page_size(session):
-    """从全局 session 读取每页条数，非法值回退默认。"""
+    """从全局 session 读取每页条数，非法值（非正整数）回退默认。"""
     raw = str(get_cache(session, GLOBAL_PAGE_SIZE_KEY, str(DEFAULT_PAGE_SIZE)))
     try:
         v = int(raw)
-        return v if v in PAGE_SIZE_CHOICES else DEFAULT_PAGE_SIZE
+        return v if v >= 1 else DEFAULT_PAGE_SIZE
     except (TypeError, ValueError):
         return DEFAULT_PAGE_SIZE
 
 
 def set_page_size(session, value):
+    """设置每页条数，仅接受正整数。"""
     try:
         v = int(value)
-        if v in PAGE_SIZE_CHOICES:
+        if v >= 1:
             set_cache(session, GLOBAL_PAGE_SIZE_KEY, str(v))
     except (TypeError, ValueError):
         pass

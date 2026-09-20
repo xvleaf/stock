@@ -9,9 +9,5 @@
                 data-page="{{ current_page|add:'1' }}"
                 {% if current_page >= total_pages %}disabled{% endif %}>下一页</button>
     </div>
-    <select class="form-select form-select-sm page-size text-muted" style="width:auto;">
-        {% for ps in page_size_choices %}
-        <option value="{{ ps }}" {% if per_page == ps %}selected{% endif %}>{{ ps }} 条/页</option>
-        {% endfor %}
-    </select>
+    <span class="text-muted" style="font-size:0.875rem;">每页 <span class="page-size-input" contenteditable="true" data-size="{{ per_page }}" style="display:inline;outline:none;cursor:text;border:none;background:transparent;padding:0;color:inherit;">{{ per_page }}</span> 行</span>
 </div>

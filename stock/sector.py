@@ -75,7 +75,6 @@ def sector_list(request):
         'total_pages': pg['total_pages'],
         'per_page': pg['per_page'],
         'result_total': pg['total_count'],
-        'page_size_choices': func.PAGE_SIZE_CHOICES,
         'current_mark_filter': mark_filter,
     })
 
@@ -207,7 +206,6 @@ def stocks_list(request, market, code):
         'total_pages': pg['total_pages'],
         'per_page': pg['per_page'],
         'result_total': pg['total_count'],
-        'page_size_choices': func.PAGE_SIZE_CHOICES,
         'current_mark_filter': 'all',
         'pagination_url': site,
         'view_url_prefix': '/stocks/view',
@@ -294,7 +292,6 @@ def stock_sectors(request, market, code):
         'total_pages': pg['total_pages'],
         'per_page': pg['per_page'],
         'result_total': pg['total_count'],
-        'page_size_choices': func.PAGE_SIZE_CHOICES,
         'current_mark_filter': 'all',
         'from_stock_sectors': True,
         'stock_code': code,
