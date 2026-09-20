@@ -86,8 +86,19 @@ def _build_chart_response(request, site, code, market, name, cat, view_mode):
         'view': view_mode
     }
     # 统一 backUrl 处理：所有 view 页面使用 set_view_back/get_view_back 机制
-    if site in ('/filter/view', '/stocks/view', '/refer/view'):
-        context['backUrl'] = func.get_view_back(request.session) or '/filter/list'
+    # 新增 view 类型时务必在此添加对应条目，否则 loadChartPage 后 backUrl 会被覆盖丢失
+    backUrl_defaults = {
+        '/filter/view': '/filter/list',
+        '/stocks/view': '/sector/list',
+        '/refer/view': '/refer/list',
+        '/sector/view': '/sector/list',
+        '/focus/view': '/focus/list',
+        '/trans/view': '/trans/list',
+        '/review/focus/view': '/review/focus/list',
+        '/review/trans/view': '/review/trans/list',
+    }
+    if site in backUrl_defaults:
+        context['backUrl'] = func.get_view_back(request.session) or backUrl_defaults[site]
 
     page_config = get_page_config(request.session, site, cat)
     context.update(page_config)

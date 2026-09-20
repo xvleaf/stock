@@ -122,6 +122,9 @@ def sector_view(request, market, code):
         func.set_cache(request.session, 'view', 'kline') 
 
         sector = SectorList.objects.filter(code=code).first()
+        # 构建 navi 和 mark 配置（与其他 view 页面一致，否则前端 pageConfig.navi 为 undefined 导致 initPageElements 中断）
+        navi_init = chart.get_navi_params(request.session, site, navi_data)
+        mark_init = chart.get_mark_config(request.session, site, navi_data)
         # 图表配置
         chart_init = {
             'site': site,
@@ -131,6 +134,8 @@ def sector_view(request, market, code):
             'cat': sector.cat,
             'view': 'kline',
             'backUrl': func.get_view_back(request.session) or '/sector/list',
+            'navi': navi_init,
+            'mark': mark_init,
         }
 
         return render(request, 'sector-view.html', {'chart': json.dumps(chart_init)})
