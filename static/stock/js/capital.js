@@ -81,7 +81,7 @@ function renderChart(data) {
     chartInstance = Highcharts.chart(chartEl, {
         chart: {
             height: 400,
-            spacing: [10, 10, 10, 10],
+            spacing: [10, 5, 10, 2],
             borderWidth: 0,
             events: {
                 load: function () {
@@ -119,7 +119,7 @@ function renderChart(data) {
         yAxis: {
             min: yMin,
             max: yMax,
-            title: { text: '金额（元）' },
+            title: { text: '金额（元）', margin: 3 },
             labels: {
                 formatter: function () {
                     return this.value >= 10000

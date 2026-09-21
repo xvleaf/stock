@@ -177,19 +177,19 @@ def capital_adjust_api(request):
         config.cash += amount
         config.available += amount
         change_amount = amount
-        reason = CashHistory.REASON_DEPOSIT
+        event = CashHistory.EVENT_DEPOSIT
     else:
         if amount > config.cash:
             return JsonResponse({'error': '取出金额超过可用现金'}, status=400)
         config.cash -= amount
         config.available -= amount
         change_amount = -amount
-        reason = CashHistory.REASON_WITHDRAW
+        event = CashHistory.EVENT_WITHDRAW
     # 总资产始终等于现金+股票
     config.total = config.cash + config.stock
     config.save()
     # 快照写入历史
-    CashHistory.snapshot(reason=reason, amount=change_amount, remark=remark, date=adjust_date)
+    CashHistory.snapshot(event=event, amount=change_amount, remark=remark, date=adjust_date)
     return JsonResponse({
         'msg': 'done',
         'total': float(config.total),
@@ -211,12 +211,6 @@ def capital_setting(request):
             # 总资产始终等于现金+股票
             config.total = config.cash + config.stock
             config.save()
-            # 手动调整也记录一条历史
-            CashHistory.snapshot(
-                reason=CashHistory.REASON_ADJUST,
-                amount=Decimal('0'),
-                remark='手动调整资金配置'
-            )
             return redirect('capital_setting')
     else:
         form = CashConfigForm(instance=config)

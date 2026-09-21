@@ -7,26 +7,24 @@ import datetime
 # ===================== 资金变化历史 =====================
 class CashHistory(models.Model):
     """资金变化历史 —— 记录每次总资金/现金/股票市值的变化节点及原因"""
-    REASON_DEPOSIT = 'deposit'       # 存入资金
-    REASON_WITHDRAW = 'withdraw'     # 取出资金
-    REASON_BUY = 'buy'               # 买入股票
-    REASON_SELL = 'sell'             # 卖出股票
-    REASON_ADJUST = 'adjust'         # 手动调整
-    REASON_DIVIDEND = 'dividend'     # 分红
-    REASON_CHOICES = [
-        (REASON_DEPOSIT, '存入资金'),
-        (REASON_WITHDRAW, '取出资金'),
-        (REASON_BUY, '买入股票'),
-        (REASON_SELL, '卖出股票'),
-        (REASON_ADJUST, '手动调整'),
-        (REASON_DIVIDEND, '分红'),
+    EVENT_DEPOSIT = 'deposit'       # 存入资金
+    EVENT_WITHDRAW = 'withdraw'     # 取出资金
+    EVENT_BUY = 'buy'               # 买入股票
+    EVENT_SELL = 'sell'             # 卖出股票
+    EVENT_DIVIDEND = 'dividend'     # 分红
+    EVENT_CHOICES = [
+        (EVENT_DEPOSIT, '存入资金'),
+        (EVENT_WITHDRAW, '取出资金'),
+        (EVENT_BUY, '买入股票'),
+        (EVENT_SELL, '卖出股票'),
+        (EVENT_DIVIDEND, '分红'),
     ]
     date = models.DateField('变化日期', default=timezone.now, db_index=True)
     total = models.DecimalField('资产', max_digits=14, decimal_places=2, default=0)
     cash = models.DecimalField('现金', max_digits=14, decimal_places=2, default=0)
     stock = models.DecimalField('股票', max_digits=14, decimal_places=2, default=0)
     profit = models.DecimalField('收益', max_digits=14, decimal_places=2, default=0)
-    event = models.CharField('事项', max_length=20, choices=REASON_CHOICES, default=REASON_ADJUST)
+    event = models.CharField('事项', max_length=20, choices=EVENT_CHOICES, default=EVENT_DEPOSIT)
     amount = models.DecimalField('变动', max_digits=14, decimal_places=2, default=0,
                                  help_text='正数=增加, 负数=减少')
     remark = models.CharField('备注', max_length=200, blank=True, default='')
@@ -44,10 +42,10 @@ class CashHistory(models.Model):
         return f'{self.date:%Y-%m-%d} {self.get_event_display()} {self.amount:+}'
 
     @classmethod
-    def snapshot(cls, reason, amount, remark='', order=None, date=None):
+    def snapshot(cls, event, amount, remark='', order=None, date=None):
         """
         快照当前资金状态并写入历史记录
-        :param reason: 变化原因（REASON_* 常量）
+        :param event: 变化事项（EVENT_* 常量）
         :param amount: 变化金额（正增负减）
         :param remark: 备注
         :param order: 关联交易订单
@@ -59,7 +57,7 @@ class CashHistory(models.Model):
             cash=config.cash,
             stock=config.stock,
             profit=config.profit,
-            event=reason,
+            event=event,
             amount=amount,
             remark=remark,
             order=order,
@@ -460,7 +458,7 @@ class TransDeal(models.Model):
             total_change = -fee
             cash_change = -(amount + fee)
             stock_change = amount
-            reason = CashHistory.REASON_BUY
+            event = CashHistory.EVENT_BUY
             remark = f'买入 {self.order.code} {self.qty}股@{self.price}'
         else:
             # 卖出：现金增加，股票持仓成本减少，总资金变化=盈亏
@@ -469,7 +467,7 @@ class TransDeal(models.Model):
             total_change = (amount - fee - cost_part).quantize(Decimal('0.01'))
             cash_change = amount - fee
             stock_change = -cost_part
-            reason = CashHistory.REASON_SELL
+            event = CashHistory.EVENT_SELL
             remark = f'卖出 {self.order.code} {self.qty}股@{self.price}'
 
         config.cash = (config.cash + cash_change).quantize(Decimal('0.01'))
@@ -484,7 +482,7 @@ class TransDeal(models.Model):
             cash=config.cash,
             stock=config.stock,
             profit=config.profit,
-            event=reason,
+            event=event,
             amount=total_change,
             remark=remark,
             order=self.order,
