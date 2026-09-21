@@ -33,7 +33,7 @@ def capital_view(request):
         if 'page' in data:
             func.set_cache(request.session, 'capital-history-page', int(data['page']))
         if 'per_page' in data:
-            func.set_page_size(request.session, data['per_page'])
+            func.set_cache(request.session, 'capital-per-page', int(data['per_page']))
         if 'start_date' in data:
             func.set_cache(request.session, 'capital-start-date', str(data['start_date']))
         # 结束日期存入 session，同时记录设置日期（仅当天有效，跨天自动失效）
@@ -72,13 +72,24 @@ def capital_view(request):
     except (ValueError, TypeError):
         end_date = today
         end_str = end_date.strftime('%Y-%m-%d')
-    # 历史记录按日期范围过滤 + 分页
+    # 历史记录按日期范围过滤 + 分页（每页条数独立存储，不影响其他页面）
     history_qs = CashHistory.objects.filter(date__gte=start_date, date__lte=end_date).order_by('-date', '-id')
-    pg = func.paginate_queryset(request, history_qs, 'capital-history-page')
+    capital_per_page = int(func.get_cache(request.session, 'capital-per-page', str(func.DEFAULT_PAGE_SIZE)))
+    pg = func.paginate_queryset(request, history_qs, 'capital-history-page', per_page=capital_per_page)
+    # 计算每条记录的本次收益 = 当前profit - 前一条profit（按正序计算，第一条为None）
+    items = list(pg['items'])
+    items_asc = sorted(items, key=lambda h: (h.date, h.id))
+    prev_profit = None
+    for h in items_asc:
+        if prev_profit is None:
+            h.current_profit = None
+        else:
+            h.current_profit = h.profit - prev_profit
+        prev_profit = h.profit
     return render(request, 'capital.html', {
         'config': config,
         'latest': latest_history,
-        'history_list': pg['items'],
+        'history_list': items,
         'current_page': pg['current_page'],
         'total_pages': pg['total_pages'],
         'per_page': pg['per_page'],
@@ -107,25 +118,29 @@ def capital_history_api(request):
     total_series = []
     cash_series = []
     stock_series = []
+    profit_series = []
     reasons = []
     for h in qs:
         date_str = h.date.strftime('%Y-%m-%d')
         total_series.append([date_str, float(h.total)])
         cash_series.append([date_str, float(h.cash)])
         stock_series.append([date_str, float(h.stock)])
+        profit_series.append([date_str, float(h.profit)])
         reasons.append({
             'date': date_str,
-            'reason': h.get_reason_display(),
+            'event': h.get_event_display(),
             'amount': float(h.amount),
             'remark': h.remark,
             'total': float(h.total),
             'cash': float(h.cash),
             'stock': float(h.stock),
+            'profit': float(h.profit),
         })
     return JsonResponse({
         'total': total_series,
         'cash': cash_series,
         'stock': stock_series,
+        'profit': profit_series,
         'reasons': reasons,
     })
 
@@ -159,7 +174,6 @@ def capital_adjust_api(request):
 
     config = CashConfig.get_config()
     if action == 'deposit':
-        config.total += amount
         config.cash += amount
         config.available += amount
         change_amount = amount
@@ -167,12 +181,12 @@ def capital_adjust_api(request):
     else:
         if amount > config.cash:
             return JsonResponse({'error': '取出金额超过可用现金'}, status=400)
-        config.total -= amount
         config.cash -= amount
         config.available -= amount
         change_amount = -amount
         reason = CashHistory.REASON_WITHDRAW
-
+    # 总资产始终等于现金+股票
+    config.total = config.cash + config.stock
     config.save()
     # 快照写入历史
     CashHistory.snapshot(reason=reason, amount=change_amount, remark=remark, date=adjust_date)
@@ -182,6 +196,8 @@ def capital_adjust_api(request):
         'cash': float(config.cash),
         'stock': float(config.stock),
         'available': float(config.available),
+        'risk': float(config.risk),
+        'profit': float(config.profit),
     })
 
 
@@ -192,6 +208,9 @@ def capital_setting(request):
         form = CashConfigForm(request.POST, instance=config)
         if form.is_valid():
             form.save()
+            # 总资产始终等于现金+股票
+            config.total = config.cash + config.stock
+            config.save()
             # 手动调整也记录一条历史
             CashHistory.snapshot(
                 reason=CashHistory.REASON_ADJUST,

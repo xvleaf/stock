@@ -47,20 +47,21 @@ function renderChart(data) {
         chartInstance = null;
     }
 
-    // 收集所有唯一日期作为分类（按字符串排序）
+    // 按数据点顺序收集日期（不去重，同一天多笔变动各自独立显示）
+    const maxLen = Math.max(data.total.length, data.cash.length, data.stock.length);
+    const refSeries = data.total.length ? data.total : (data.cash.length ? data.cash : data.stock);
     const allDates = [];
-    [data.total, data.cash, data.stock].forEach(series => {
-        series.forEach(p => {
-            if (p[0] && !allDates.includes(p[0])) allDates.push(p[0]);
-        });
-    });
-    allDates.sort();
+    for (let i = 0; i < maxLen; i++) {
+        allDates.push(refSeries[i] ? refSeries[i][0] : '');
+    }
 
-    // 将 [date, value] 转为按分类顺序的纯数值数组
+    // 按索引取值转为纯数值数组（同一天多个点各自保留，不覆盖）
     function toValues(seriesData) {
-        const map = {};
-        seriesData.forEach(p => { map[p[0]] = p[1]; });
-        return allDates.map(d => map[d] !== undefined ? map[d] : null);
+        const result = [];
+        for (let i = 0; i < maxLen; i++) {
+            result.push(seriesData[i] ? seriesData[i][1] : null);
+        }
+        return result;
     }
 
     // 计算全局最小/最大值，yAxis 上下各留 5%
@@ -73,27 +74,45 @@ function renderChart(data) {
     const yMin = minVal >= 0 ? minVal * 0.95 : minVal * 1.05;
     const yMax = maxVal >= 0 ? maxVal * 1.05 : maxVal * 0.95;
 
+    // 图表创建前：刻度位置为所有数据点索引（确保刻度不在25px边距区显示）
+    const tickPositions = [];
+    for (let i = 0; i <= allDates.length - 1; i++) tickPositions.push(i);
+
     chartInstance = Highcharts.chart(chartEl, {
         chart: {
             height: 400,
-            spacing: [10, 10, 15, 10],
+            spacing: [10, 10, 10, 10],
             borderWidth: 0,
+            events: {
+                load: function () {
+                    if (allDates.length < 2) return;
+                    const xAxis = this.xAxis[0];
+                    const px25 = xAxis.toValue(25) - xAxis.toValue(0);
+                    // 仅扩展x轴两端25px边距，刻度位置由tickPositions限定在数据点范围内
+                    xAxis.update({
+                        min: -px25,
+                        max: (allDates.length - 1) + px25,
+                    });
+                },
+            },
         },
         title: {
             text: '资金变化趋势',
             margin: 5,
-            style: { fontSize: '1rem', fontWeight: 'bold' },
+            style: { fontSize: '1rem', color: '#212529' },
         },
         xAxis: {
-            type: 'category',
-            categories: allDates,
+            type: 'linear',
+            min: 0,
+            max: allDates.length - 1,
+            tickPositions: tickPositions,
+            minPadding: 0,
+            maxPadding: 0,
             labels: {
-                rotation: -30,
                 style: { fontSize: '11px' },
                 formatter: function () {
-                    const cats = this.axis && this.axis.categories ? this.axis.categories : [];
-                    const cat = cats[this.value] !== undefined ? cats[this.value] : this.value;
-                    return typeof cat === 'string' && cat.length >= 5 ? cat.substring(5) : cat;
+                    const cat = allDates[this.value];
+                    return cat && cat.length >= 5 ? cat.substring(5) : '';
                 },
             },
         },
@@ -123,10 +142,7 @@ function renderChart(data) {
                 dashStyle: 'dash',
             }, false],
             formatter: function () {
-                // 从第一个 point 的 xAxis 获取分类名称
-                const xAxis = this.points && this.points[0] ? this.points[0].series.xAxis : null;
-                const cats = xAxis && xAxis.categories ? xAxis.categories : [];
-                const dateStr = cats[this.x] !== undefined ? cats[this.x] : this.x;
+                const dateStr = allDates[this.x] !== undefined ? allDates[this.x] : this.x;
                 let rows = '';
                 this.points.forEach(p => {
                     rows += `<tr><td style="padding:2px 5px"><span style="color:${p.color}">●</span> ${p.series.name}</td><td style="padding:2px 5px">${p.y.toFixed(2)}</td></tr>`;
@@ -237,11 +253,11 @@ function openAdjustModal(action) {
     currentAdjustAction = action;
     const titleEl = document.getElementById('adjustModalTitle');
     if (titleEl) titleEl.textContent = action === 'deposit' ? '存入' : '取出';
-    // 清空输入
+    // 清空输入（日期默认填当天）
     const dateEl = document.getElementById('modalAdjustDate');
     const amountEl = document.getElementById('modalAdjustAmount');
     const remarkEl = document.getElementById('modalAdjustRemark');
-    if (dateEl) dateEl.value = '';
+    if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
     if (amountEl) amountEl.value = '';
     if (remarkEl) remarkEl.value = '';
     // 显示 Modal
@@ -306,6 +322,8 @@ export function adjustCapital(action) {
             updateCard('capitalCash', res.cash);
             updateCard('capitalStock', res.stock);
             updateCard('capitalAvailable', res.available);
+            updateCard('capitalRisk', res.risk);
+            updateCard('capitalProfit', res.profit);
             showAlert({ title: '成功', text: `${actionText}成功`, type: 'success' });
             // 自动刷新页面（图表 + 记录表格同时更新）
             setTimeout(() => { window.location.reload(); }, 600);

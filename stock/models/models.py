@@ -22,11 +22,12 @@ class CashHistory(models.Model):
         (REASON_DIVIDEND, '分红'),
     ]
     date = models.DateField('变化日期', default=timezone.now, db_index=True)
-    total = models.DecimalField('总资金', max_digits=14, decimal_places=2, default=0)
+    total = models.DecimalField('资产', max_digits=14, decimal_places=2, default=0)
     cash = models.DecimalField('现金', max_digits=14, decimal_places=2, default=0)
-    stock = models.DecimalField('股票市值', max_digits=14, decimal_places=2, default=0)
-    reason = models.CharField('变化原因', max_length=20, choices=REASON_CHOICES, default=REASON_ADJUST)
-    amount = models.DecimalField('变化金额', max_digits=14, decimal_places=2, default=0,
+    stock = models.DecimalField('股票', max_digits=14, decimal_places=2, default=0)
+    profit = models.DecimalField('收益', max_digits=14, decimal_places=2, default=0)
+    event = models.CharField('事项', max_length=20, choices=REASON_CHOICES, default=REASON_ADJUST)
+    amount = models.DecimalField('变动', max_digits=14, decimal_places=2, default=0,
                                  help_text='正数=增加, 负数=减少')
     remark = models.CharField('备注', max_length=200, blank=True, default='')
     order = models.ForeignKey('TransOrder', on_delete=models.SET_NULL, null=True, blank=True,
@@ -40,7 +41,7 @@ class CashHistory(models.Model):
         ordering = ['-date', '-id']
 
     def __str__(self):
-        return f'{self.date:%Y-%m-%d} {self.get_reason_display()} {self.amount:+}'
+        return f'{self.date:%Y-%m-%d} {self.get_event_display()} {self.amount:+}'
 
     @classmethod
     def snapshot(cls, reason, amount, remark='', order=None, date=None):
@@ -57,7 +58,8 @@ class CashHistory(models.Model):
             total=config.total,
             cash=config.cash,
             stock=config.stock,
-            reason=reason,
+            profit=config.profit,
+            event=reason,
             amount=amount,
             remark=remark,
             order=order,
@@ -67,10 +69,12 @@ class CashHistory(models.Model):
 
 # ===================== 账户资金配置 =====================
 class CashConfig(models.Model):
-    total = models.DecimalField('总资金', max_digits=14, decimal_places=2, default=100000)
+    total = models.DecimalField('资产', max_digits=14, decimal_places=2, default=100000)
     cash = models.DecimalField('现金', max_digits=14, decimal_places=2, default=100000)
     stock = models.DecimalField('股票', max_digits=14, decimal_places=2, default=100000)
     available = models.DecimalField('可用资金', max_digits=14, decimal_places=2, default=100000)
+    risk = models.DecimalField('风险资金', max_digits=14, decimal_places=2, default=0)
+    profit = models.DecimalField('投资收益', max_digits=14, decimal_places=2, default=0)
     commission_ratio = models.DecimalField('佣金费率', max_digits=8, decimal_places=5, default=Decimal('0.00025'))
     commission_min = models.DecimalField('最低佣金', max_digits=8, decimal_places=2, default=Decimal('5'))
     stamp_buy_ratio = models.DecimalField('印花税率(买入)', max_digits=8, decimal_places=5, default=Decimal('0.0005'))
@@ -468,17 +472,19 @@ class TransDeal(models.Model):
             reason = CashHistory.REASON_SELL
             remark = f'卖出 {self.order.code} {self.qty}股@{self.price}'
 
-        config.total = (config.total + total_change).quantize(Decimal('0.01'))
         config.cash = (config.cash + cash_change).quantize(Decimal('0.01'))
         config.stock = (config.stock + stock_change).quantize(Decimal('0.01'))
         config.available = (config.available + cash_change).quantize(Decimal('0.01'))
+        # 总资产始终等于现金+股票
+        config.total = (config.cash + config.stock).quantize(Decimal('0.01'))
         config.save()
 
         CashHistory.objects.create(
             total=config.total,
             cash=config.cash,
             stock=config.stock,
-            reason=reason,
+            profit=config.profit,
+            event=reason,
             amount=total_change,
             remark=remark,
             order=self.order,

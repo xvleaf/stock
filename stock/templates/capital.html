@@ -25,64 +25,59 @@
         <h6 class="mb-0">资金状态</h6>
     </div>
 
-    {# ===== 当前资金状态卡片（横放） ===== #}
-    <div class="d-flex flex-wrap gap-3 mb-3">
-        <div class="card flex-fill" style="min-width: 160px;">
-            <div class="card-body py-2">
-                <div class="text-muted small">总资金</div>
-                <div class="fs-5 fw-bold" id="capitalTotal">{{ config.total|floatformat:2 }}</div>
-            </div>
-        </div>
-        <div class="card flex-fill" style="min-width: 160px;">
-            <div class="card-body py-2">
-                <div class="text-muted small d-flex align-items-center justify-content-between">
-                    <span>现金</span>
-                    <span class="d-flex align-items-center gap-2">
-                        <iconify-icon icon="tabler:plus" class="capital-adjust-btn text-success" data-action="deposit" style="cursor:pointer;" title="存入"></iconify-icon>
-                        <iconify-icon icon="tabler:minus" class="capital-adjust-btn text-danger" data-action="withdraw" style="cursor:pointer;" title="取出"></iconify-icon>
-                    </span>
+    {# ===== 当前资金状态卡片（桌面6个一行，手机每行3个） ===== #}
+    <div class="row g-2 mb-3">
+        <div class="col-4 col-lg-2">
+            <div class="card h-100">
+                <div class="card-body py-2">
+                    <div class="text-muted small">资产</div>
+                    <div class="fs-6 fw-bold" id="capitalTotal">{{ config.total|floatformat:2 }}</div>
                 </div>
-                <div class="fs-5 fw-bold" id="capitalCash">{{ config.cash|floatformat:2 }}</div>
             </div>
         </div>
-        <div class="card flex-fill" style="min-width: 160px;">
-            <div class="card-body py-2">
-                <div class="text-muted small">股票市值</div>
-                <div class="fs-5 fw-bold" id="capitalStock">{{ config.stock|floatformat:2 }}</div>
-            </div>
-        </div>
-        <div class="card flex-fill" style="min-width: 160px;">
-            <div class="card-body py-2">
-                <div class="text-muted small">可用资金</div>
-                <div class="fs-5 fw-bold" id="capitalAvailable">{{ config.available|floatformat:2 }}</div>
-            </div>
-        </div>
-    </div>
-
-    {# ===== 资金调整 Modal ===== #}
-    <div class="modal fade" id="adjustModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header py-2 justify-content-center border-bottom-0">
-                    <h5 class="modal-title fs-6 fw-bold text-center w-100" id="adjustModalTitle">存入</h5>
+        <div class="col-4 col-lg-2">
+            <div class="card h-100">
+                <div class="card-body py-2">
+                    <div class="text-muted small d-flex align-items-center justify-content-between">
+                        <span>现金</span>
+                        <span class="d-flex align-items-center gap-2">
+                            <iconify-icon icon="tabler:plus" class="capital-adjust-btn text-success" data-action="deposit" style="cursor:pointer;" title="存入"></iconify-icon>
+                            <iconify-icon icon="tabler:minus" class="capital-adjust-btn text-danger" data-action="withdraw" style="cursor:pointer;" title="取出"></iconify-icon>
+                        </span>
+                    </div>
+                    <div class="fs-6 fw-bold" id="capitalCash">{{ config.cash|floatformat:2 }}</div>
                 </div>
-                <div class="modal-body pt-0">
-                    <div class="mb-2">
-                        <label class="form-label small mb-1">日期</label>
-                        <input type="text" id="modalAdjustDate" class="form-control form-control-sm" placeholder="YYYY-MM-DD" maxlength="10">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label small mb-1">金额</label>
-                        <input type="number" id="modalAdjustAmount" class="form-control form-control-sm" placeholder="单位：元" step="0.01" min="0">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label small mb-1">备注</label>
-                        <input type="text" id="modalAdjustRemark" class="form-control form-control-sm" placeholder="可选" maxlength="100">
-                    </div>
+            </div>
+        </div>
+        <div class="col-4 col-lg-2">
+            <div class="card h-100">
+                <div class="card-body py-2">
+                    <div class="text-muted small">股票</div>
+                    <div class="fs-6 fw-bold" id="capitalStock">{{ config.stock|floatformat:2 }}</div>
                 </div>
-                <div class="modal-footer py-2 justify-content-between border-top-0">
-                    <button type="button" class="btn btn-link p-0" id="adjustModalCancel">取消</button>
-                    <button type="button" class="btn btn-primary btn-sm" id="adjustModalConfirm">确认</button>
+            </div>
+        </div>
+        <div class="col-4 col-lg-2">
+            <div class="card h-100">
+                <div class="card-body py-2">
+                    <div class="text-muted small">可用资金</div>
+                    <div class="fs-6 fw-bold" id="capitalAvailable">{{ config.available|floatformat:2 }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-4 col-lg-2">
+            <div class="card h-100">
+                <div class="card-body py-2">
+                    <div class="text-muted small">风险资金</div>
+                    <div class="fs-6 fw-bold" id="capitalRisk">{{ config.risk|floatformat:2 }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-4 col-lg-2">
+            <div class="card h-100">
+                <div class="card-body py-2">
+                    <div class="text-muted small">投资收益</div>
+                    <div class="fs-6 fw-bold" id="capitalProfit">{{ config.profit|floatformat:2 }}</div>
                 </div>
             </div>
         </div>
@@ -111,15 +106,16 @@
             </div>
         </div>
         <div class="table-responsive">
-            <table class="table table-hover">
+            <table class="table table-hover" style="min-width: 760px;">
                 <thead>
                     <tr>
                         <th>日期</th>
-                        <th>原因</th>
-                        <th>变化金额</th>
-                        <th>总资金</th>
+                        <th>事项</th>
+                        <th>变动</th>
+                        <th>资产</th>
                         <th>现金</th>
-                        <th>股票市值</th>
+                        <th>股票</th>
+                        <th>收益</th>
                         <th>备注</th>
                     </tr>
                 </thead>
@@ -127,22 +123,52 @@
                     {% for h in history_list %}
                     <tr>
                         <td>{{ h.date|date:"Y-m-d" }}</td>
-                        <td><span class="reason-badge reason-{{ h.reason }}">{{ h.get_reason_display }}</span></td>
+                        <td><span class="reason-badge reason-{{ h.event }}">{{ h.get_event_display }}</span></td>
                         <td class="{% if h.amount > 0 %}text-success{% elif h.amount < 0 %}text-danger{% endif %}">
                             {{ h.amount|floatformat:2 }}
                         </td>
                         <td>{{ h.total|floatformat:2 }}</td>
                         <td>{{ h.cash|floatformat:2 }}</td>
                         <td>{{ h.stock|floatformat:2 }}</td>
+                        <td>{% if h.current_profit is not None %}{{ h.current_profit|floatformat:2 }}{% else %}-{% endif %}</td>
                         <td>{{ h.remark|default:"-" }}</td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="7" class="text-center text-muted">暂无记录</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted">暂无记录</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
         {% include "page-navi.html" %}
+    </div>
+</div>
+
+{# ===== 资金调整 Modal（置于 form-wrap 外部，避免 iPhone Safari 父元素CSS干扰） ===== #}
+<div class="modal fade" id="adjustModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2 justify-content-center border-bottom-0">
+                <h5 class="modal-title fs-6 fw-bold text-center w-100" id="adjustModalTitle">存入</h5>
+            </div>
+            <div class="modal-body pt-0">
+                <div class="mb-2">
+                    <label class="form-label small mb-1">日期</label>
+                    <input type="text" id="modalAdjustDate" class="form-control form-control-sm" placeholder="YYYY-MM-DD" maxlength="10">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">金额</label>
+                    <input type="number" id="modalAdjustAmount" class="form-control form-control-sm" placeholder="单位：元" step="0.01" min="0">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">备注</label>
+                    <input type="text" id="modalAdjustRemark" class="form-control form-control-sm" placeholder="可选" maxlength="100">
+                </div>
+            </div>
+            <div class="modal-footer py-2 justify-content-between border-top-0">
+                <button type="button" class="btn btn-link p-0" id="adjustModalCancel">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" id="adjustModalConfirm">确认</button>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}

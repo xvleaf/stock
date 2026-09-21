@@ -277,16 +277,18 @@ def resolve_focus_page(session, queryset, per_page, code_getter=None):
     return None
 
 
-def paginate_queryset(request, queryset, page_key, code_getter=None):
+def paginate_queryset(request, queryset, page_key, code_getter=None, per_page=None):
     """
     统一分页入口。
     - queryset: 已排序的查询集
     - page_key: 存储当前页码的 session key，如 'filter-list-page'
     - code_getter: 从对象取 code 的函数，默认 obj.code
+    - per_page: 每页条数，传入则覆盖全局设置（用于页面独立分页）
     - 返回 dict: items, current_page, total_pages, per_page, total_count
     """
     from django.core.paginator import Paginator
-    per_page = get_page_size(request.session)
+    if per_page is None:
+        per_page = get_page_size(request.session)
 
     # 优先用 view-current-code 定位页码（从 view 返回列表时）
     focus_page = resolve_focus_page(request.session, queryset, per_page, code_getter)
