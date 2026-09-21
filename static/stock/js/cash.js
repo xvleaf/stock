@@ -1,15 +1,15 @@
-// capital.js — 资金总览页面：图表初始化 + 资金调整 + 日期筛选
+// cash.js — 资金总览页面：图表初始化 + 资金调整 + 日期筛选
 import { showAlert, getCsrfToken } from './func.js';
 
-const HISTORY_URL = '/capital/history';
-const ADJUST_URL = '/capital/adjust';
+const HISTORY_URL = '/cash/history';
+const ADJUST_URL = '/cash/adjust';
 
 let chartInstance = null;
 let currentAdjustAction = 'deposit';
 let adjustModalInstance = null;
 
 // ===================== 图表初始化 =====================
-export function initCapitalChart() {
+export function initCashChart() {
     const startEl = document.getElementById('filterStartDate');
     const endEl = document.getElementById('filterEndDate');
     const start = (startEl?.textContent || '').replace(/\s/g, '').trim();
@@ -19,9 +19,9 @@ export function initCapitalChart() {
     fetch(url)
         .then(r => r.json())
         .then(data => {
-            const placeholder = document.getElementById('capitalPlaceholder');
-            const chartEl = document.getElementById('capitalChart');
-            const chartWrap = chartEl?.closest('.capital-chart-wrap');
+            const placeholder = document.getElementById('cashPlaceholder');
+            const chartEl = document.getElementById('cashChart');
+            const chartWrap = chartEl?.closest('.cash-chart-wrap');
             if (!data || !data.total || data.total.length === 0) {
                 if (placeholder) placeholder.style.display = 'flex';
                 if (chartEl) chartEl.style.display = 'none';
@@ -39,7 +39,7 @@ export function initCapitalChart() {
 }
 
 function renderChart(data) {
-    const chartEl = document.getElementById('capitalChart');
+    const chartEl = document.getElementById('cashChart');
     if (!chartEl || typeof Highcharts === 'undefined') return;
 
     if (chartInstance) {
@@ -201,7 +201,7 @@ export function initDateFilter() {
             if (endEl) endEl.textContent = origEnd;
             return;
         }
-        fetch('/capital', {
+        fetch('/cash', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -232,7 +232,7 @@ export function initDateFilter() {
 // ===================== 资金调整 Modal =====================
 export function initAdjustModal() {
     // +/- 按钮打开 Modal
-    document.querySelectorAll('.capital-adjust-btn').forEach(btn => {
+    document.querySelectorAll('.cash-adjust-btn').forEach(btn => {
         btn.addEventListener('click', () => openAdjustModal(btn.dataset.action));
     });
     // 取消按钮
@@ -245,7 +245,7 @@ export function initAdjustModal() {
     // 确认按钮
     const confirmBtn = document.getElementById('adjustModalConfirm');
     if (confirmBtn) {
-        confirmBtn.addEventListener('click', () => adjustCapital(currentAdjustAction));
+        confirmBtn.addEventListener('click', () => adjustCash(currentAdjustAction));
     }
 }
 
@@ -271,7 +271,7 @@ function openAdjustModal(action) {
 }
 
 // ===================== 资金调整 =====================
-export function adjustCapital(action) {
+export function adjustCash(action) {
     const amountInput = document.getElementById('modalAdjustAmount');
     const remarkInput = document.getElementById('modalAdjustRemark');
     const dateInput = document.getElementById('modalAdjustDate');
@@ -318,12 +318,12 @@ export function adjustCapital(action) {
             // 关闭 Modal
             if (adjustModalInstance) adjustModalInstance.hide();
             // 更新卡片数值
-            updateCard('capitalTotal', res.total);
-            updateCard('capitalCash', res.cash);
-            updateCard('capitalStock', res.stock);
-            updateCard('capitalAvailable', res.available);
-            updateCard('capitalRisk', res.risk);
-            updateCard('capitalProfit', res.profit);
+            updateCard('cashTotal', res.total);
+            updateCard('cashCash', res.cash);
+            updateCard('cashStock', res.stock);
+            updateCard('cashAvailable', res.available);
+            updateCard('cashRisk', res.risk);
+            updateCard('cashProfit', res.profit);
             showAlert({ title: '成功', text: `${actionText}成功`, type: 'success' });
             // 自动刷新页面（图表 + 记录表格同时更新）
             setTimeout(() => { window.location.reload(); }, 600);

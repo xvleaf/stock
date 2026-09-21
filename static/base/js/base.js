@@ -27,7 +27,7 @@ const NAV_ACTIVE_RULES = [
     { selector: '#reviewDropdown', prefixes: ['/review', '/setting', '/files', '/admin', '/logout'] },
     { selector: '#focusDropdown', prefixes: ['/focus', '/fund', '/sector', '/filter', '/stocks', '/refer', '/focus/view'] },
     { selector: 'a.nav-link[href="/trans/list"]', prefixes: ['/trans'] },
-    { selector: 'a.nav-link[href="/capital"]', prefixes: ['/capital'] },
+    { selector: 'a.nav-link[href="/cash"]', prefixes: ['/cash'] },
 ];
 // ====================== 对外导航工具函数 ======================
 /** 获取导航是否隐藏 */

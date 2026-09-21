@@ -17,9 +17,9 @@
     .task-icon-btn iconify-icon { font-size: 1rem; }
 }
 /* 资金卡片数字：桌面1rem，手机端(<=768px)缩小到0.8rem防换行 */
-.capital-card-num { font-size: 1rem; white-space: nowrap; }
+.cash-card-num { font-size: 1rem; white-space: nowrap; }
 @media (max-width: 768px) {
-    .capital-card-num { font-size: 0.8rem; }
+    .cash-card-num { font-size: 0.8rem; }
 }
 </style>
 {% endblock %}
@@ -36,7 +36,7 @@
             <div class="card h-100">
                 <div class="card-body py-2">
                     <div class="text-muted small">资产</div>
-                    <div class="capital-card-num fw-bold" id="capitalTotal">{{ config.total|floatformat:2 }}</div>
+                    <div class="cash-card-num fw-bold" id="cashTotal">{{ config.total|floatformat:2 }}</div>
                 </div>
             </div>
         </div>
@@ -46,11 +46,11 @@
                     <div class="text-muted small d-flex align-items-center justify-content-between">
                         <span>现金</span>
                         <span class="d-flex align-items-center gap-2">
-                            <iconify-icon icon="tabler:plus" class="capital-adjust-btn text-success" data-action="deposit" style="cursor:pointer;" title="存入"></iconify-icon>
-                            <iconify-icon icon="tabler:minus" class="capital-adjust-btn text-danger" data-action="withdraw" style="cursor:pointer;" title="取出"></iconify-icon>
+                            <iconify-icon icon="tabler:plus" class="cash-adjust-btn text-success" data-action="deposit" style="cursor:pointer;" title="存入"></iconify-icon>
+                            <iconify-icon icon="tabler:minus" class="cash-adjust-btn text-danger" data-action="withdraw" style="cursor:pointer;" title="取出"></iconify-icon>
                         </span>
                     </div>
-                    <div class="capital-card-num fw-bold" id="capitalCash">{{ config.cash|floatformat:2 }}</div>
+                    <div class="cash-card-num fw-bold" id="cashCash">{{ config.cash|floatformat:2 }}</div>
                 </div>
             </div>
         </div>
@@ -58,7 +58,7 @@
             <div class="card h-100">
                 <div class="card-body py-2">
                     <div class="text-muted small">股票</div>
-                    <div class="capital-card-num fw-bold" id="capitalStock">{{ config.stock|floatformat:2 }}</div>
+                    <div class="cash-card-num fw-bold" id="cashStock">{{ config.stock|floatformat:2 }}</div>
                 </div>
             </div>
         </div>
@@ -66,7 +66,7 @@
             <div class="card h-100">
                 <div class="card-body py-2">
                     <div class="text-muted small">可用资金</div>
-                    <div class="capital-card-num fw-bold" id="capitalAvailable">{{ config.available|floatformat:2 }}</div>
+                    <div class="cash-card-num fw-bold" id="cashAvailable">{{ config.available|floatformat:2 }}</div>
                 </div>
             </div>
         </div>
@@ -74,7 +74,7 @@
             <div class="card h-100">
                 <div class="card-body py-2">
                     <div class="text-muted small">风险资金</div>
-                    <div class="capital-card-num fw-bold" id="capitalRisk">{{ config.risk|floatformat:2 }}</div>
+                    <div class="cash-card-num fw-bold" id="cashRisk">{{ config.risk|floatformat:2 }}</div>
                 </div>
             </div>
         </div>
@@ -82,22 +82,22 @@
             <div class="card h-100">
                 <div class="card-body py-2">
                     <div class="text-muted small">投资收益</div>
-                    <div class="capital-card-num fw-bold" id="capitalProfit">{{ config.profit|floatformat:2 }}</div>
+                    <div class="cash-card-num fw-bold" id="cashProfit">{{ config.profit|floatformat:2 }}</div>
                 </div>
             </div>
         </div>
     </div>
 
     {# ===== 资金变化图表 ===== #}
-    <div class="capital-chart-wrap">
-        <div class="chart-placeholder" id="capitalPlaceholder" style="display:none;">
+    <div class="cash-chart-wrap">
+        <div class="chart-placeholder" id="cashPlaceholder" style="display:none;">
             <div class="chart-placeholder-text">暂无资金历史数据</div>
         </div>
-        <div id="capitalChart" class="capital-chart"></div>
+        <div id="cashChart" class="cash-chart"></div>
     </div>
 
     {# ===== 历史记录表格 ===== #}
-    <div class="capital-history">
+    <div class="cash-history">
         <div class="d-flex justify-content-between align-items-center mb-2">
             <h6 class="mb-0">资金变化记录</h6>
             <div class="d-flex gap-2 align-items-center">
@@ -182,7 +182,7 @@
 <script src="{% static 'base/lib/Highcharts/js/highstock.js' %}"></script>
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
-    import { initCapitalChart, adjustCapital, initDateFilter, initAdjustModal } from "{% static 'stock/js/capital.js' %}";
+    import { initCashChart, adjustCash, initDateFilter, initAdjustModal } from "{% static 'stock/js/cash.js' %}";
     import { initPagination } from "{% static 'stock/js/list.js' %}";
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -191,7 +191,7 @@
         initDateFilter();
         initAdjustModal();
         // 分页控件初始化
-        initPagination('/capital');
+        initPagination('/cash');
     });
 </script>
 {% endblock %}

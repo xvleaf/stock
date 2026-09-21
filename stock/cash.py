@@ -19,7 +19,7 @@ from . import func
 
 
 # ===================== 资金总览页面 =====================
-def capital_view(request):
+def cash_view(request):
     """资金页面：当前状态 + 历史变化图"""
     config = CashConfig.get_config()
     # 最近一条历史记录用于展示
@@ -31,15 +31,15 @@ def capital_view(request):
         except (json.JSONDecodeError, ValueError):
             data = request.POST
         if 'page' in data:
-            func.set_cache(request.session, 'capital-history-page', int(data['page']))
+            func.set_cache(request.session, 'cash-history-page', int(data['page']))
         if 'per_page' in data:
-            func.set_cache(request.session, 'capital-per-page', int(data['per_page']))
+            func.set_cache(request.session, 'cash-per-page', int(data['per_page']))
         if 'start_date' in data:
-            func.set_cache(request.session, 'capital-start-date', str(data['start_date']))
+            func.set_cache(request.session, 'cash-start-date', str(data['start_date']))
         # 结束日期存入 session，同时记录设置日期（仅当天有效，跨天自动失效）
         if 'end_date' in data and data['end_date']:
-            func.set_cache(request.session, 'capital-end-date', str(data['end_date']))
-            func.set_cache(request.session, 'capital-end-date-set-day', datetime.date.today().strftime('%Y-%m-%d'))
+            func.set_cache(request.session, 'cash-end-date', str(data['end_date']))
+            func.set_cache(request.session, 'cash-end-date-set-day', datetime.date.today().strftime('%Y-%m-%d'))
         return JsonResponse({'status': 'ok'})
     # 日期范围：起始日期持久化；结束日期当天有效，跨天自动恢复为当天
     today = datetime.date.today()
@@ -50,17 +50,17 @@ def capital_view(request):
     except ValueError:
         _last_year_today = today.replace(year=today.year - 1, day=28)
     default_start = (_last_year_today + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
-    start_str = str(func.get_cache(request.session, 'capital-start-date', default_start))
+    start_str = str(func.get_cache(request.session, 'cash-start-date', default_start))
     # 结束日期：检查设置日期是否为今天，是则用存储值，否则清除并用当天
-    end_set_day = str(func.get_cache(request.session, 'capital-end-date-set-day', ''))
+    end_set_day = str(func.get_cache(request.session, 'cash-end-date-set-day', ''))
     if end_set_day == today_str:
-        end_str = str(func.get_cache(request.session, 'capital-end-date', today_str))
+        end_str = str(func.get_cache(request.session, 'cash-end-date', today_str))
     else:
         # 跨天了，清除结束日期相关 session
-        if 'capital-end-date' in request.session:
-            del request.session['capital-end-date']
-        if 'capital-end-date-set-day' in request.session:
-            del request.session['capital-end-date-set-day']
+        if 'cash-end-date' in request.session:
+            del request.session['cash-end-date']
+        if 'cash-end-date-set-day' in request.session:
+            del request.session['cash-end-date-set-day']
         end_str = today_str
     try:
         start_date = datetime.datetime.strptime(start_str, '%Y-%m-%d').date()
@@ -74,8 +74,8 @@ def capital_view(request):
         end_str = end_date.strftime('%Y-%m-%d')
     # 历史记录按日期范围过滤 + 分页（每页条数独立存储，不影响其他页面）
     history_qs = CashHistory.objects.filter(date__gte=start_date, date__lte=end_date).order_by('-date', '-id')
-    capital_per_page = int(func.get_cache(request.session, 'capital-per-page', str(func.DEFAULT_PAGE_SIZE)))
-    pg = func.paginate_queryset(request, history_qs, 'capital-history-page', per_page=capital_per_page)
+    cash_per_page = int(func.get_cache(request.session, 'cash-per-page', str(func.DEFAULT_PAGE_SIZE)))
+    pg = func.paginate_queryset(request, history_qs, 'cash-history-page', per_page=cash_per_page)
     # 计算每条记录的本次收益 = 当前profit - 前一条profit（按正序计算，第一条为None）
     items = list(pg['items'])
     items_asc = sorted(items, key=lambda h: (h.date, h.id))
@@ -86,7 +86,7 @@ def capital_view(request):
         else:
             h.current_profit = h.profit - prev_profit
         prev_profit = h.profit
-    return render(request, 'capital.html', {
+    return render(request, 'cash-view.html', {
         'config': config,
         'latest': latest_history,
         'history_list': items,
@@ -100,7 +100,7 @@ def capital_view(request):
 
 
 @require_http_methods(["GET"])
-def capital_history_api(request):
+def cash_history_api(request):
     """返回资金历史数据（供前端 Highcharts 绘制），支持 start/end 日期范围过滤"""
     start_str = request.GET.get('start', '')
     end_str = request.GET.get('end', '')
@@ -146,7 +146,7 @@ def capital_history_api(request):
 
 
 @require_http_methods(["POST"])
-def capital_adjust_api(request):
+def cash_adjust_api(request):
     """
     手动调整资金（存入/取出），并写入历史记录
     POST JSON: {action: 'deposit'|'withdraw', amount: 10000, remark: ''}
@@ -202,7 +202,7 @@ def capital_adjust_api(request):
 
 
 # ===================== 账户设置（保留旧接口） =====================
-def capital_setting(request):
+def cash_setting(request):
     config = CashConfig.get_config()
     if request.method == 'POST':
         form = CashConfigForm(request.POST, instance=config)
@@ -211,7 +211,7 @@ def capital_setting(request):
             # 总资产始终等于现金+股票
             config.total = config.cash + config.stock
             config.save()
-            return redirect('capital_setting')
+            return redirect('cash_setting')
     else:
         form = CashConfigForm(instance=config)
     return render(request, 'stock/setting.html', {'form': form})
