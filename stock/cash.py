@@ -21,9 +21,12 @@ from . import func
 # ===================== 资金总览页面 =====================
 def cash_view(request):
     """资金页面：当前状态 + 历史变化图"""
+    initialized = CashConfig.has_config()
     config = CashConfig.get_config()
     # 最近一条历史记录用于展示
     latest_history = CashHistory.objects.first()
+    # 可撤回的记录ID：仅当最新一条为存入/取出时
+    revocable_id = latest_history.id if latest_history and latest_history.event in (CashHistory.EVENT_DEPOSIT, CashHistory.EVENT_WITHDRAW) else None
     # 分页 / 每页数量 / 日期范围（POST 提交时更新 session）
     if request.method == 'POST':
         try:
@@ -88,7 +91,9 @@ def cash_view(request):
         prev_profit = h.profit
     return render(request, 'cash-view.html', {
         'config': config,
+        'initialized': initialized,
         'latest': latest_history,
+        'revocable_id': revocable_id,
         'history_list': items,
         'current_page': pg['current_page'],
         'total_pages': pg['total_pages'],
@@ -197,6 +202,96 @@ def cash_adjust_api(request):
         'risk': float(config.risk),
         'profit': float(config.profit),
     })
+
+
+# ===================== 撤回最近一笔存入/取出 =====================
+@require_http_methods(["POST"])
+def cash_revoke(request):
+    """
+    撤回最近一笔存入/取出记录（仅当该记录是最新一条且为存入/取出时允许）
+    POST JSON: {history_id: 123}
+    """
+    try:
+        params = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': '无效JSON'}, status=400)
+    history_id = params.get('history_id')
+    if not history_id:
+        return JsonResponse({'error': '缺少记录ID'}, status=400)
+
+    # 最新一条记录（按id倒序，因为snapshot时id递增）
+    latest = CashHistory.objects.order_by('-id').first()
+    if not latest or latest.id != int(history_id):
+        return JsonResponse({'error': '仅可撤回最新一笔记录'}, status=400)
+    if latest.event not in (CashHistory.EVENT_DEPOSIT, CashHistory.EVENT_WITHDRAW):
+        return JsonResponse({'error': '仅可撤回存入/取出记录'}, status=400)
+
+    config = CashConfig.get_config()
+    amount = abs(latest.amount)
+    if latest.event == CashHistory.EVENT_DEPOSIT:
+        # 撤回存入：现金减少
+        config.cash -= amount
+    else:
+        # 撤回取出：现金增加
+        config.cash += amount
+    config.total = config.cash + config.stock
+    config.save()
+    latest.delete()
+    return JsonResponse({'msg': 'done'})
+
+
+# ===================== 初始化资金 =====================
+@require_http_methods(["POST"])
+def cash_init(request):
+    """
+    首次使用时初始化资金配置 + 写入初始存入记录
+    POST JSON: {date, cash, stock, allowance, commission_ratio, commission_min, stamp_buy_ratio, stamp_sell_ratio}
+    """
+    if CashConfig.has_config():
+        return JsonResponse({'error': '已初始化，请勿重复提交'}, status=400)
+    try:
+        params = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': '无效JSON'}, status=400)
+    date_str = params.get('date', '')
+    try:
+        init_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return JsonResponse({'error': '日期格式应为 YYYY-MM-DD'}, status=400)
+    try:
+        cash_val = Decimal(str(params.get('cash', 0)))
+        stock_val = Decimal(str(params.get('stock', 0)))
+        allowance_val = Decimal(str(params.get('allowance', 0)))
+        commission_ratio_val = Decimal(str(params.get('commission_ratio', 0)))
+        commission_min_val = Decimal(str(params.get('commission_min', 0)))
+        stamp_buy_val = Decimal(str(params.get('stamp_buy_ratio', 0)))
+        stamp_sell_val = Decimal(str(params.get('stamp_sell_ratio', 0)))
+    except Exception:
+        return JsonResponse({'error': '金额格式错误'}, status=400)
+    if cash_val < 0 or stock_val < 0 or allowance_val < 0:
+        return JsonResponse({'error': '金额不能为负'}, status=400)
+
+    total_val = cash_val + stock_val
+    config = CashConfig(pk=1)
+    config.total = total_val.quantize(Decimal('0.01'))
+    config.cash = cash_val.quantize(Decimal('0.01'))
+    config.stock = stock_val.quantize(Decimal('0.01'))
+    config.allowance = allowance_val.quantize(Decimal('0.01'))
+    config.risk = Decimal('0')
+    config.profit = Decimal('0')
+    config.commission_ratio = commission_ratio_val
+    config.commission_min = commission_min_val
+    config.stamp_buy_ratio = stamp_buy_val
+    config.stamp_sell_ratio = stamp_sell_val
+    config.save()
+    # 写入初始存入记录
+    CashHistory.snapshot(
+        event=CashHistory.EVENT_DEPOSIT,
+        amount=total_val,
+        remark='初始资金',
+        date=init_date,
+    )
+    return JsonResponse({'msg': 'done'})
 
 
 # ===================== 变更风险额度 =====================

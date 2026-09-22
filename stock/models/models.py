@@ -69,13 +69,13 @@ class CashHistory(models.Model):
 class CashConfig(models.Model):
     total = models.DecimalField('资产', max_digits=14, decimal_places=2, default=100000)
     cash = models.DecimalField('现金', max_digits=14, decimal_places=2, default=100000)
-    stock = models.DecimalField('股票', max_digits=14, decimal_places=2, default=100000)
-    allowance = models.DecimalField('风险额度', max_digits=14, decimal_places=2, default=100000)
+    stock = models.DecimalField('股票', max_digits=14, decimal_places=2, default=0)
+    allowance = models.DecimalField('风险额度', max_digits=14, decimal_places=2, default=2000)
     risk = models.DecimalField('风险资金', max_digits=14, decimal_places=2, default=0)
     profit = models.DecimalField('投资收益', max_digits=14, decimal_places=2, default=0)
-    commission_ratio = models.DecimalField('佣金费率', max_digits=8, decimal_places=5, default=Decimal('0.00025'))
-    commission_min = models.DecimalField('最低佣金', max_digits=8, decimal_places=2, default=Decimal('5'))
-    stamp_buy_ratio = models.DecimalField('印花税率(买入)', max_digits=8, decimal_places=5, default=Decimal('0.0005'))
+    commission_ratio = models.DecimalField('佣金费率', max_digits=8, decimal_places=5, default=Decimal('0.000085'))
+    commission_min = models.DecimalField('最低佣金', max_digits=8, decimal_places=2, default=Decimal('0'))
+    stamp_buy_ratio = models.DecimalField('印花税率(买入)', max_digits=8, decimal_places=5, default=Decimal('0'))
     stamp_sell_ratio = models.DecimalField('印花税率(卖出)', max_digits=8, decimal_places=5, default=Decimal('0.0005'))
     updated_at = models.DateField('更新日期', auto_now=True)
 
@@ -87,8 +87,18 @@ class CashConfig(models.Model):
 
     @classmethod
     def get_config(cls):
-        obj, _ = cls.objects.get_or_create(pk=1)
-        return obj
+        obj = cls.objects.filter(pk=1).first()
+        if obj:
+            return obj
+        # 数据库为空时，资产/现金/股票/额度/风险/收益返回0，费率字段自动取模型默认值，不创建记录
+        return cls(
+            pk=1, total=0, cash=0, stock=0,
+            allowance=0, risk=0, profit=0,
+        )
+
+    @classmethod
+    def has_config(cls):
+        return cls.objects.filter(pk=1).exists()
 
     def __str__(self):
         return f'资金配置(风险额度:{self.allowance})'

@@ -33,6 +33,8 @@ urlpatterns = [
     path('cash', cash.cash_view, name='cash'),
     path('cash/history', cash.cash_history_api, name='cash_history'),
     path('cash/adjust', cash.cash_adjust_api, name='cash_adjust'),
+    path('cash/revoke', cash.cash_revoke, name='cash_revoke'),
+    path('cash/init', cash.cash_init, name='cash_init'),
     path('cash/quota', cash.cash_quota, name='cash_quota'),
     path('cash/setting', cash.cash_setting, name='cash_setting'),
 

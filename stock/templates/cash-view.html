@@ -1,5 +1,5 @@
 {% extends "base-view.html" %}
-{% block title %}资金总览{% endblock %}
+{% block title %}资金{% endblock %}
 {% load static %}
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'stock/css/view.css' %}">
@@ -131,7 +131,7 @@
                     {% for h in history_list %}
                     <tr>
                         <td>{{ h.date|date:"Y-m-d" }}</td>
-                        <td><span class="reason-badge reason-{{ h.event }}">{{ h.get_event_display }}</span></td>
+                        <td><span class="reason-badge reason-{{ h.event }}">{{ h.get_event_display }}</span>{% if revocable_id and h.id == revocable_id %}<iconify-icon icon="tabler:circle-minus" class="cash-revoke-btn" data-id="{{ h.id }}" style="cursor:pointer;font-size:0.75rem;vertical-align:super;color:#1677ff;" title="撤回"></iconify-icon>{% endif %}</td>
                         <td class="{% if h.amount > 0 %}text-success{% elif h.amount < 0 %}text-danger{% endif %}">
                             {{ h.amount|floatformat:2 }}
                         </td>
@@ -200,13 +200,62 @@
         </div>
     </div>
 </div>
+
+{# ===== 初始化资金 Modal ===== #}
+<div class="modal fade" id="initModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2 justify-content-center border-bottom-0">
+                <h5 class="modal-title fs-6 fw-bold text-center w-100">初始化资金</h5>
+            </div>
+            <div class="modal-body pt-0">
+                <div class="mb-2">
+                    <label class="form-label small mb-1">记录日期</label>
+                    <input type="text" id="modalInitDate" class="form-control form-control-sm" placeholder="YYYY-MM-DD" maxlength="10">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">现金资产</label>
+                    <input type="number" id="modalInitCash" class="form-control form-control-sm" placeholder="单位：元" step="0.01" min="0">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">股票资产</label>
+                    <input type="number" id="modalInitStock" class="form-control form-control-sm" placeholder="单位：元" step="0.01" min="0">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">风险额度</label>
+                    <input type="number" id="modalInitAllowance" class="form-control form-control-sm" placeholder="单位：元" step="0.01" min="0">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">佣金费率</label>
+                    <input type="number" id="modalInitCommissionRatio" class="form-control form-control-sm" placeholder="佣金费率" step="0.00001" min="0" value="{{ config.commission_ratio }}">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">最低佣金</label>
+                    <input type="number" id="modalInitCommissionMin" class="form-control form-control-sm" placeholder="单位：元" step="0.01" min="0" value="{{ config.commission_min }}">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">印花税率（买入）</label>
+                    <input type="number" id="modalInitStampBuy" class="form-control form-control-sm" placeholder="买入印花税率" step="0.00001" min="0" value="{{ config.stamp_buy_ratio }}">
+                </div>
+                <div class="mb-0">
+                    <label class="form-label small mb-1">印花税率（卖出）</label>
+                    <input type="number" id="modalInitStampSell" class="form-control form-control-sm" placeholder="卖出印花税率" step="0.00001" min="0" value="{{ config.stamp_sell_ratio }}">
+                </div>
+            </div>
+            <div class="modal-footer py-2 justify-content-between border-top-0">
+                <button type="button" class="btn btn-link p-0" id="initModalCancel">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" id="initModalConfirm">确认</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script src="{% static 'base/lib/Highcharts/js/highstock.js' %}"></script>
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
-    import { initCashChart, adjustCash, initDateFilter, initAdjustModal, initQuotaModal } from "{% static 'stock/js/cash.js' %}";
+    import { initCashChart, adjustCash, initDateFilter, initAdjustModal, initQuotaModal, initRevokeBtn, initInitModal } from "{% static 'stock/js/cash.js' %}";
     import { initPagination } from "{% static 'stock/js/list.js' %}";
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -215,6 +264,8 @@
         initDateFilter();
         initAdjustModal();
         initQuotaModal();
+        initRevokeBtn();
+        initInitModal({{ initialized|yesno:"true,false" }});
         // 分页控件初始化
         initPagination('/cash');
     });

@@ -1,8 +1,10 @@
 // cash.js — 资金总览页面：图表初始化 + 资金调整 + 日期筛选
-import { showAlert, getCsrfToken } from './func.js';
+import { showAlert, showConfirm, getCsrfToken } from './func.js';
 
 const HISTORY_URL = '/cash/history';
 const ADJUST_URL = '/cash/adjust';
+const REVOKE_URL = '/cash/revoke';
+const INIT_URL = '/cash/init';
 
 let chartInstance = null;
 let currentAdjustAction = 'deposit';
@@ -64,6 +66,9 @@ function renderChart(data) {
         return result;
     }
 
+    // 纵轴上下留白比例
+    const Y_AXIS_PADDING = 0.05;
+
     // 计算全局最小/最大值，yAxis 上下各留 5%
     const allValues = [];
     [data.total, data.cash, data.stock].forEach(series => {
@@ -71,12 +76,63 @@ function renderChart(data) {
     });
     const minVal = Math.min(...allValues);
     const maxVal = Math.max(...allValues);
-    const yMin = minVal >= 0 ? minVal * 0.95 : minVal * 1.05;
-    const yMax = maxVal >= 0 ? maxVal * 1.05 : maxVal * 0.95;
+    // 先按 5% 计算初始 yMin/yMax
+    let yMin = minVal >= 0 ? minVal * (1 - Y_AXIS_PADDING) : minVal * (1 + Y_AXIS_PADDING);
+    let yMax = maxVal >= 0 ? maxVal * (1 + Y_AXIS_PADDING) : maxVal * (1 - Y_AXIS_PADDING);
+    // 统一上下留白为较大值，确保最小值不贴近横轴
+    const paddingTop = yMax - maxVal;
+    const paddingBottom = minVal - yMin;
+    const padding = Math.max(paddingTop, paddingBottom);
+    yMax = maxVal + padding;
+    yMin = minVal - padding;
 
-    // 图表创建前：刻度位置为所有数据点索引（确保刻度不在25px边距区显示）
-    const tickPositions = [];
-    for (let i = 0; i <= allDates.length - 1; i++) tickPositions.push(i);
+    // 图表创建前：混合方案计算刻度位置（优先整除均匀间距，太少时回退循环去掉）
+    const total = allDates.length;
+    const chartWidth = chartEl.offsetWidth || 800;
+    const LABEL_WIDTH = 60;
+    const maxLabels = Math.min(24, Math.max(3, Math.floor(chartWidth / LABEL_WIDTH)));
+
+    let tickPositions;
+    if (total <= maxLabels) {
+        // 数据点少，全部显示
+        tickPositions = [];
+        for (let i = 0; i < total; i++) tickPositions.push(i);
+    } else {
+        const expectedStep = Math.max(1, Math.ceil((total - 1) / (maxLabels - 1)));
+        // 方案A：向上找能整除 (total-1) 的 step，实现间距均匀
+        let step = expectedStep;
+        while (step <= total - 1 && (total - 1) % step !== 0) {
+            step++;
+        }
+        const actualLabels = (total - 1) / step + 1;
+
+        if (actualLabels >= maxLabels / 2) {
+            // 整除方案：标签数可接受，所有间距严格相等
+            tickPositions = [];
+            for (let i = 0; i <= total - 1; i += step) {
+                tickPositions.push(i);
+            }
+        } else {
+            // 回退方案：步长 + 首尾保留 + 循环去掉间距不足的倒数第二个
+            step = expectedStep;
+            tickPositions = [];
+            for (let i = 0; i < total; i += step) {
+                tickPositions.push(i);
+            }
+            if (tickPositions[tickPositions.length - 1] !== total - 1) {
+                tickPositions.push(total - 1);
+            }
+            while (tickPositions.length >= 2) {
+                const last = tickPositions[tickPositions.length - 1];
+                const secondLast = tickPositions[tickPositions.length - 2];
+                if (last - secondLast < step) {
+                    tickPositions.splice(tickPositions.length - 2, 1);
+                } else {
+                    break;
+                }
+            }
+        }
+    }
 
     chartInstance = Highcharts.chart(chartEl, {
         chart: {
@@ -109,6 +165,7 @@ function renderChart(data) {
             minPadding: 0,
             maxPadding: 0,
             labels: {
+                rotation: 0,
                 style: { fontSize: '11px' },
                 formatter: function () {
                     const cat = allDates[this.value];
@@ -394,7 +451,7 @@ export function adjustCash(action) {
             updateCard('cashProfit', res.profit);
             showAlert({ title: '成功', text: `${actionText}成功`, type: 'success' });
             // 自动刷新页面（图表 + 记录表格同时更新）
-            setTimeout(() => { window.location.reload(); }, 600);
+            setTimeout(() => { window.location.reload(); }, 3000);
         })
         .catch(err => {
             console.error('资金调整失败:', err);
@@ -407,4 +464,152 @@ function updateCard(id, value) {
     if (el && value !== undefined && value !== null) {
         el.textContent = Number(value).toFixed(2);
     }
+}
+
+// ===================== 撤回最近一笔存入/取出 =====================
+export function initRevokeBtn() {
+    document.querySelectorAll('.cash-revoke-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.id;
+            if (!id) return;
+            showConfirm({
+                title: '撤回确认',
+                text: '确定要撤回该笔操作吗？',
+            }).then(confirmed => {
+                if (confirmed) revokeCash(id);
+            });
+        });
+    });
+}
+
+function revokeCash(historyId) {
+    fetch(REVOKE_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken(),
+        },
+        body: JSON.stringify({ history_id: parseInt(historyId) }),
+    })
+        .then(r => r.json())
+        .then(res => {
+            if (res.error) {
+                showAlert({ title: '失败', text: res.error, type: 'error' });
+                return;
+            }
+            showAlert({ title: '成功', text: '已撤回', type: 'success' });
+            setTimeout(() => { window.location.reload(); }, 3000);
+        })
+        .catch(err => {
+            console.error('撤回失败:', err);
+            showAlert({ title: '失败', text: '请求失败，请稍后重试', type: 'error' });
+        });
+}
+
+// ===================== 初始化资金弹窗 =====================
+let initModalInstance = null;
+
+export function initInitModal(initialized) {
+    const modalEl = document.getElementById('initModal');
+    if (!modalEl) return;
+    initModalInstance = new bootstrap.Modal(modalEl);
+    // 未初始化时自动弹出
+    if (!initialized) {
+        // 默认填写当前日期
+        const dateInput = document.getElementById('modalInitDate');
+        if (dateInput) {
+            const today = new Date();
+            const y = today.getFullYear();
+            const m = String(today.getMonth() + 1).padStart(2, '0');
+            const d = String(today.getDate()).padStart(2, '0');
+            dateInput.value = `${y}-${m}-${d}`;
+        }
+        setTimeout(() => initModalInstance.show(), 300);
+    }
+    // 取消按钮
+    const cancelBtn = document.getElementById('initModalCancel');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => initModalInstance.hide());
+    }
+    // 确认按钮
+    const confirmBtn = document.getElementById('initModalConfirm');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', submitInit);
+    }
+}
+
+function submitInit() {
+    const dateStr = document.getElementById('modalInitDate')?.value?.trim();
+    const cash = parseFloat(document.getElementById('modalInitCash')?.value);
+    const stock = parseFloat(document.getElementById('modalInitStock')?.value);
+    const allowance = parseFloat(document.getElementById('modalInitAllowance')?.value);
+    const commissionRatio = parseFloat(document.getElementById('modalInitCommissionRatio')?.value);
+    const commissionMin = parseFloat(document.getElementById('modalInitCommissionMin')?.value);
+    const stampBuy = parseFloat(document.getElementById('modalInitStampBuy')?.value);
+    const stampSell = parseFloat(document.getElementById('modalInitStampSell')?.value);
+
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        showAlert({ title: '提示', text: '请输入有效的日期（YYYY-MM-DD）', type: 'warning' });
+        return;
+    }
+    if (isNaN(cash) || cash < 0) {
+        showAlert({ title: '提示', text: '请输入有效的现金资产', type: 'warning' });
+        return;
+    }
+    if (isNaN(stock) || stock < 0) {
+        showAlert({ title: '提示', text: '请输入有效的股票资产', type: 'warning' });
+        return;
+    }
+    if (isNaN(allowance) || allowance < 0) {
+        showAlert({ title: '提示', text: '请输入有效的风险额度', type: 'warning' });
+        return;
+    }
+    if (isNaN(commissionRatio) || commissionRatio < 0) {
+        showAlert({ title: '提示', text: '请输入有效的佣金费率', type: 'warning' });
+        return;
+    }
+    if (isNaN(commissionMin) || commissionMin < 0) {
+        showAlert({ title: '提示', text: '请输入有效的最低佣金', type: 'warning' });
+        return;
+    }
+    if (isNaN(stampBuy) || stampBuy < 0) {
+        showAlert({ title: '提示', text: '请输入有效的买入印花税率', type: 'warning' });
+        return;
+    }
+    if (isNaN(stampSell) || stampSell < 0) {
+        showAlert({ title: '提示', text: '请输入有效的卖出印花税率', type: 'warning' });
+        return;
+    }
+
+    fetch(INIT_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken(),
+        },
+        body: JSON.stringify({
+            date: dateStr,
+            cash: cash,
+            stock: stock,
+            allowance: allowance,
+            commission_ratio: commissionRatio,
+            commission_min: commissionMin,
+            stamp_buy_ratio: stampBuy,
+            stamp_sell_ratio: stampSell,
+        }),
+    })
+        .then(r => r.json())
+        .then(res => {
+            if (res.error) {
+                showAlert({ title: '失败', text: res.error, type: 'error' });
+                return;
+            }
+            if (initModalInstance) initModalInstance.hide();
+            showAlert({ title: '成功', text: '资金初始化完成', type: 'success' });
+            setTimeout(() => { window.location.reload(); }, 3000);
+        })
+        .catch(err => {
+            console.error('初始化失败:', err);
+            showAlert({ title: '失败', text: '请求失败，请稍后重试', type: 'error' });
+        });
 }
