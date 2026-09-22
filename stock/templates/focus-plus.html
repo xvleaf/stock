@@ -128,6 +128,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         initFocusPlus({
+            cash: {{ cash|floatformat:2 }},
             available: {{ available|floatformat:2 }},
             initChart: {{ chart|safe }}
         });

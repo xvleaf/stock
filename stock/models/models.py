@@ -70,7 +70,7 @@ class CashConfig(models.Model):
     total = models.DecimalField('资产', max_digits=14, decimal_places=2, default=100000)
     cash = models.DecimalField('现金', max_digits=14, decimal_places=2, default=100000)
     stock = models.DecimalField('股票', max_digits=14, decimal_places=2, default=100000)
-    available = models.DecimalField('可用资金', max_digits=14, decimal_places=2, default=100000)
+    allowance = models.DecimalField('风险额度', max_digits=14, decimal_places=2, default=100000)
     risk = models.DecimalField('风险资金', max_digits=14, decimal_places=2, default=0)
     profit = models.DecimalField('投资收益', max_digits=14, decimal_places=2, default=0)
     commission_ratio = models.DecimalField('佣金费率', max_digits=8, decimal_places=5, default=Decimal('0.00025'))
@@ -91,7 +91,7 @@ class CashConfig(models.Model):
         return obj
 
     def __str__(self):
-        return f'资金配置(可用资金:{self.available})'
+        return f'资金配置(风险额度:{self.allowance})'
 
 
 # ===================== 板块列表 =====================
@@ -297,6 +297,7 @@ class TransOrder(models.Model):
     sell_fee = models.DecimalField('累计卖出费用', max_digits=10, decimal_places=2, default=0)
     total_fee = models.DecimalField('费用总计', max_digits=10, decimal_places=2, default=0)
     profit = models.DecimalField('盈利金额', max_digits=14, decimal_places=2, default=0)
+    risk_amount = models.DecimalField('风险资金占用', max_digits=14, decimal_places=2, default=0)
     comments = models.TextField('备注', blank=True, default='')
     created_at = models.DateField('创建日期', auto_now_add=True)
     updated_at = models.DateField('更新日期', auto_now=True)
@@ -472,7 +473,30 @@ class TransDeal(models.Model):
 
         config.cash = (config.cash + cash_change).quantize(Decimal('0.01'))
         config.stock = (config.stock + stock_change).quantize(Decimal('0.01'))
-        config.available = (config.available + cash_change).quantize(Decimal('0.01'))
+        # 风险资金：买入时累加，卖出时按比例冲抵（清仓时直接归零）
+        if self.intent == self.INTENT_BUY:
+            stop_price = self.order.stop_price or Decimal('0')
+            deal_risk = ((self.price - stop_price) * qty).quantize(Decimal('0.01'))
+            if deal_risk > 0:
+                self.order.risk_amount = (self.order.risk_amount + deal_risk).quantize(Decimal('0.01'))
+                config.risk = (config.risk + deal_risk).quantize(Decimal('0.01'))
+                self.order.save(update_fields=['risk_amount'])
+        else:
+            # 卖出：按卖出数量占卖出前持仓的比例冲抵风险资金
+            position_before = self.order.position_qty + self.qty  # recalculate 已执行，position_qty 是卖出后的
+            if position_before > 0 and self.order.risk_amount > 0:
+                if self.order.position_qty == 0:
+                    # 清仓：全部冲抵
+                    offset_risk = self.order.risk_amount
+                    self.order.risk_amount = Decimal('0')
+                else:
+                    ratio = Decimal(str(self.qty)) / Decimal(str(position_before))
+                    offset_risk = (self.order.risk_amount * ratio).quantize(Decimal('0.01'))
+                    self.order.risk_amount = (self.order.risk_amount - offset_risk).quantize(Decimal('0.01'))
+                config.risk = (config.risk - offset_risk).quantize(Decimal('0.01'))
+                if config.risk < 0:
+                    config.risk = Decimal('0')
+                self.order.save(update_fields=['risk_amount'])
         # 总资产始终等于现金+股票
         config.total = (config.cash + config.stock).quantize(Decimal('0.01'))
         config.save()

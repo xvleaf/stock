@@ -132,7 +132,8 @@ def focus_plus(request):
 
     return render(request, 'focus-plus.html', {
         'form': form, 
-        'available': CashConfig.get_config().available,  
+        'cash': CashConfig.get_config().cash,
+        'available': CashConfig.get_config().allowance - CashConfig.get_config().risk,  
         # 需转换为 JSON 字符串
         'chart': json.dumps(chart_init)   
     })
@@ -184,7 +185,8 @@ def focus_view(request, market, code):
             'form': form,
             'chart': json.dumps(chart_init),
             'edit_mode': False,
-            'available': CashConfig.get_config().available,
+            'cash': CashConfig.get_config().cash,
+            'available': CashConfig.get_config().allowance - CashConfig.get_config().risk,
         })
 
 

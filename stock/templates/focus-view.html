@@ -155,6 +155,7 @@ Highcharts.setOptions({
         baseInit();
         initFocusView({
             editMode: {{ edit_mode|yesno:"true,false" }},
+            cash: {{ cash|floatformat:2 }},
             available: {{ available|floatformat:2 }},
             initChart: {{ chart|safe }}
         });

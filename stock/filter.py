@@ -18,6 +18,10 @@ from django.core.cache import cache
 # 筛选进行中的全局锁（防止并发重复筛选）
 FILTER_RUNNING_KEY = 'filter-running'
 FILTER_RUNNING_TIMEOUT = 7200   # 2 小时
+
+# 筛选添加关注时的默认倍率
+TARGET_PROFIT_RATIO = 1.1    # 目标价 = 计划价 × 1.1
+STOP_LOSS_RATIO = 0.98       # 止损价 = 计划价 × 0.98
 FILTER_PROGRESS_KEY = 'filter-progress'
 FILTER_STOP_KEY = 'filter-stop'
 FILTER_TIMEOUT_KEY = 'filter-timeout'
@@ -725,7 +729,7 @@ def _do_focus(result, ema_price=None):
     """
     关注/取消关注（双向）。
     - 未关注：建关注记录，plan_price=前端传来的当前 EMA 值；
-      target=1.1倍，stop=0.95倍，数量按可用资金，备注「筛选时添加」，排在关注列表最后。
+      target=1.1倍，stop=0.98倍，数量按可用资金，备注「筛选时添加」，排在关注列表最后。
     - 已关注：关闭该记录，备注「筛选时关闭」。
     """
     existing = FocusStock.objects.filter(
@@ -751,9 +755,9 @@ def _do_focus(result, ema_price=None):
         return JsonResponse({'status': 'error', 'message': 'EMA价格缺失'}, status=400)
 
     plan = float(ema_price)
-    target = round(plan * 1.1, 3)
-    stop = round(plan * 0.95, 3)
-    qty = cash.calc_allowed_qty(plan) if plan > 0 else 0
+    target = round(plan * TARGET_PROFIT_RATIO, 3)
+    stop = round(plan * STOP_LOSS_RATIO, 3)
+    qty = cash.calc_allowed_qty(plan, stop) if plan > 0 else 0
 
     # 排在关注列表最后
     from django.db.models import Max as _Max

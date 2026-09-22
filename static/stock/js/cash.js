@@ -249,6 +249,74 @@ export function initAdjustModal() {
     }
 }
 
+// ===================== 变更风险额度 Modal =====================
+let quotaModalInstance = null;
+
+export function initQuotaModal() {
+    // 编辑图标打开 Modal
+    const editBtn = document.getElementById('cashEditQuota');
+    if (editBtn) {
+        editBtn.addEventListener('click', openQuotaModal);
+    }
+    // 取消按钮
+    const cancelBtn = document.getElementById('quotaModalCancel');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            if (quotaModalInstance) quotaModalInstance.hide();
+        });
+    }
+    // 确认按钮
+    const confirmBtn = document.getElementById('quotaModalConfirm');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', submitQuota);
+    }
+}
+
+function openQuotaModal() {
+    // 填入当前额度
+    const amountEl = document.getElementById('modalQuotaAmount');
+    const currentEl = document.getElementById('cashAllowance');
+    if (amountEl && currentEl) {
+        amountEl.value = currentEl.textContent.replace(/,/g, '');
+    }
+    // 显示 Modal
+    const modalEl = document.getElementById('quotaModal');
+    if (modalEl && typeof bootstrap !== 'undefined') {
+        if (!quotaModalInstance) {
+            quotaModalInstance = new bootstrap.Modal(modalEl);
+        }
+        quotaModalInstance.show();
+    }
+}
+
+function submitQuota() {
+    const amountEl = document.getElementById('modalQuotaAmount');
+    const amount = parseFloat(amountEl?.value);
+    if (isNaN(amount) || amount < 0) {
+        showAlert({ title: '提示', text: '请输入有效的金额', type: 'warning' });
+        return;
+    }
+    fetch('/cash/quota', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify({ amount }),
+    })
+        .then(r => r.json())
+        .then(res => {
+            if (res.error) {
+                showAlert({ title: '失败', text: res.error, type: 'error' });
+                return;
+            }
+            if (quotaModalInstance) quotaModalInstance.hide();
+            updateCard('cashAllowance', res.allowance);
+            showAlert({ title: '成功', text: '风险额度已更新', type: 'success' });
+        })
+        .catch(err => {
+            console.error('变更风险额度失败:', err);
+            showAlert({ title: '失败', text: '请求失败，请稍后重试', type: 'error' });
+        });
+}
+
 function openAdjustModal(action) {
     currentAdjustAction = action;
     const titleEl = document.getElementById('adjustModalTitle');
@@ -321,7 +389,7 @@ export function adjustCash(action) {
             updateCard('cashTotal', res.total);
             updateCard('cashCash', res.cash);
             updateCard('cashStock', res.stock);
-            updateCard('cashAvailable', res.available);
+            updateCard('cashAllowance', res.allowance);
             updateCard('cashRisk', res.risk);
             updateCard('cashProfit', res.profit);
             showAlert({ title: '成功', text: `${actionText}成功`, type: 'success' });

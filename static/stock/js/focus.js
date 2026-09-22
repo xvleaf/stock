@@ -311,17 +311,18 @@ export function initFocusPlus(config) {
 
     // ---- 事件绑定（使用公共函数） ----
     priceInput?.addEventListener('input', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', config.available);
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', config.cash, config.available);
         updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
     });
     targetInput?.addEventListener('input', () => {
         updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
     });
     stopInput?.addEventListener('input', () => {
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', config.cash, config.available);
         updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
     });
     qtyInput?.addEventListener('input', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', config.available);
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', config.cash, config.available);
     });
 
     // catSel?.addEventListener('change', () => {clearFormErr(); fetchStockInfo()});
@@ -331,7 +332,7 @@ export function initFocusPlus(config) {
 
     // 初始计算
     if (priceInput) {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', config.available);
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', config.cash, config.available);
         updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
     }
 
@@ -346,7 +347,8 @@ export function initFocusView(config) {
     if (!form) return;
 
     const editMode = config.editMode || false;
-    const capital = config.available || 0;
+    const cash = config.cash || 0;
+    const riskBudget = config.available || 0;
     const initChart = config.initChart || {};
     setPageConfig(initChart);
 
@@ -356,21 +358,22 @@ export function initFocusView(config) {
     }
     
     document.getElementById('id_plan_price')?.addEventListener('input', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', capital);
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
         updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
     });
     document.getElementById('id_target_price')?.addEventListener('input', () => {
         updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
     });
     document.getElementById('id_stop_price')?.addEventListener('input', () => {
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
         updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
     });
     document.getElementById('id_plan_qty')?.addEventListener('input', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', capital);
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
     });
 
     // 初始计算
-    updateAllowedQty('id_plan_price', 'id_allowed_qty', capital);
+    updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
     updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
 
     // 初始状态
@@ -413,24 +416,38 @@ function updateWinRatio(priceId, targetId, stopId, ratioId) {
 }
 
 /**
+ * 计算允许购买数量（取现金限制和风险额度限制的较小值，按手取整）
  * @param {string} priceId - 计划价格输入框 ID
  * @param {string} allowedId - 允许数量输入框 ID
- * @param {number} capital - 可用资金
+ * @param {string} stopId - 止损价格输入框 ID
+ * @param {number} cash - 可用现金
+ * @param {number} riskBudget - 剩余风险额度（allowance - risk）
  */
-function updateAllowedQty(priceId, allowedId, capital) {
+function updateAllowedQty(priceId, allowedId, stopId, cash, riskBudget) {
     const priceEl = document.getElementById(priceId);
     const allowedEl = document.getElementById(allowedId);
+    const stopEl = document.getElementById(stopId);
     if (!priceEl || !allowedEl) return;
 
     const price = parseFloat(priceEl.value) || 0;
-    if (price <= 0 || !capital || capital <= 0) {
+    const stop = parseFloat(stopEl?.value) || 0;
+    if (price <= 0) {
         allowedEl.value = 0;
         allowedEl.style.color = '';
         allowedEl.style.fontWeight = '';
         return;
     }
 
-    const maxQty = Math.floor(capital / price);
+    // 现金限制
+    const byCash = (cash > 0) ? Math.floor(cash / price) : 0;
+    // 默认仅受现金限制
+    let maxQty = byCash;
+    // 风险额度限制（仅当止损价 < 计划价且有剩余风险额度时才计算）
+    const riskPerShare = price - stop;
+    if (riskPerShare > 0 && riskBudget > 0) {
+        const byRisk = Math.floor(riskBudget / riskPerShare);
+        maxQty = Math.min(byCash, byRisk);
+    }
     const qty = Math.floor(maxQty / 100) * 100;
     allowedEl.value = qty;
     // 超限检查（计划数量 > 允许数量时高亮）

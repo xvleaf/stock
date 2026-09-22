@@ -187,12 +187,12 @@ class CashConfigForm(forms.ModelForm):
     class Meta:
         model = CashConfig
         fields = [
-            'total', 'available', 'commission_ratio', 'commission_min', 
+            'total', 'allowance', 'commission_ratio', 'commission_min', 
             'stamp_buy_ratio', 'stamp_sell_ratio'
         ]
         widgets = {
             'total': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'available': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'allowance': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'commission_ratio': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.00001'}),
             'commission_min': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'stamp_buy_ratio': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.00001'}),

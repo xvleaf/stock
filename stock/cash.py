@@ -175,14 +175,12 @@ def cash_adjust_api(request):
     config = CashConfig.get_config()
     if action == 'deposit':
         config.cash += amount
-        config.available += amount
         change_amount = amount
         event = CashHistory.EVENT_DEPOSIT
     else:
         if amount > config.cash:
             return JsonResponse({'error': '取出金额超过可用现金'}, status=400)
         config.cash -= amount
-        config.available -= amount
         change_amount = -amount
         event = CashHistory.EVENT_WITHDRAW
     # 总资产始终等于现金+股票
@@ -195,10 +193,33 @@ def cash_adjust_api(request):
         'total': float(config.total),
         'cash': float(config.cash),
         'stock': float(config.stock),
-        'available': float(config.available),
+        'allowance': float(config.allowance),
         'risk': float(config.risk),
         'profit': float(config.profit),
     })
+
+
+# ===================== 变更风险额度 =====================
+@require_http_methods(["POST"])
+def cash_quota(request):
+    """
+    手动修改风险额度（allowance）
+    POST JSON: {amount: 100000}
+    """
+    try:
+        params = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': '无效JSON'}, status=400)
+    try:
+        amount = Decimal(str(params.get('amount', 0)))
+    except Exception:
+        return JsonResponse({'error': '金额格式错误'}, status=400)
+    if amount < 0:
+        return JsonResponse({'error': '风险额度不能为负'}, status=400)
+    config = CashConfig.get_config()
+    config.allowance = amount.quantize(Decimal('0.01'))
+    config.save()
+    return JsonResponse({'msg': 'done', 'allowance': float(config.allowance)})
 
 
 # ===================== 账户设置（保留旧接口） =====================
@@ -223,18 +244,28 @@ def _q(value, places='0.01'):
     return Decimal(str(value)).quantize(Decimal(places), rounding=ROUND_HALF_UP)
 
 
-def calc_allowed_qty(plan_price):
+def calc_allowed_qty(plan_price, stop_price=0):
     """
-    根据可用资金和计划买入价计算允许购买数量（按手取整）
+    计算允许购买数量（按手取整），取现金限制和风险额度限制的较小值
     :param plan_price: 计划买入价
+    :param stop_price: 止损价
     :return: int 股数
     """
     config = CashConfig.get_config()
-    capital = Decimal(str(config.available))
     price = Decimal(str(plan_price))
-    if price <= 0 or capital <= 0:
-        return 0
-    max_qty = int(capital / price)
+    # 现金限制
+    if price <= 0 or config.cash <= 0:
+        by_cash = 0
+    else:
+        by_cash = int(config.cash / price)
+    # 风险额度限制
+    remaining = config.allowance - config.risk
+    risk_per_share = price - Decimal(str(stop_price or 0))
+    if remaining <= 0 or risk_per_share <= 0:
+        by_risk = 0
+    else:
+        by_risk = int(remaining / risk_per_share)
+    max_qty = min(by_cash, by_risk)
     # 向下取整（1手100股）
     return (max_qty // 100) * 100
 
