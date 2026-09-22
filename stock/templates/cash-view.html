@@ -131,7 +131,7 @@
                     {% for h in history_list %}
                     <tr>
                         <td>{{ h.date|date:"Y-m-d" }}</td>
-                        <td><span class="reason-badge reason-{{ h.event }}">{{ h.get_event_display }}</span>{% if revocable_id and h.id == revocable_id %}<iconify-icon icon="tabler:circle-minus" class="cash-revoke-btn" data-id="{{ h.id }}" style="cursor:pointer;font-size:0.75rem;vertical-align:super;color:#1677ff;" title="撤回"></iconify-icon>{% endif %}</td>
+                        <td><span class="reason-badge reason-{{ h.event }}">{{ h.get_event_display }}</span>{% if revocable_id and h.id == revocable_id %}<iconify-icon icon="tabler:exposure-minus-1" class="cash-revoke-btn" data-id="{{ h.id }}" style="cursor:pointer;font-size:0.75rem;vertical-align:super;color:#1677ff;" title="撤回"></iconify-icon>{% endif %}</td>
                         <td class="{% if h.amount > 0 %}text-success{% elif h.amount < 0 %}text-danger{% endif %}">
                             {{ h.amount|floatformat:2 }}
                         </td>

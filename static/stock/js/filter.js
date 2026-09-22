@@ -1,5 +1,5 @@
 import { chartPageContainer, initChartPage, setPageConfig } from './chart.js';
-import { postRequest, getCsrfToken, showRadioModal } from './func.js';
+import { postRequest, getCsrfToken, showRadioModal, showConfirm } from './func.js';
 
 // ===================== filter-list 结果清单 =====================
 export function initFilterList(opts = {}) {
@@ -434,9 +434,14 @@ export function initFilterConfig() {
     document.addEventListener('click', async (e) => {
         const btn = e.target.closest('.del-task');
         if (btn) {
-            if (!confirm('确认删除该筛选任务及其结果？')) return;
-            const res = await postRequest('/filter/config', { action: 'delete', task_id: btn.dataset.id });
-            if (res && res.status === 'success') window.location.reload();
+            showConfirm({
+                title: '删除任务',
+                text: '确认删除该筛选任务及其结果？',
+            }).then(async (confirmed) => {
+                if (!confirmed) return;
+                const res = await postRequest('/filter/config', { action: 'delete', task_id: btn.dataset.id });
+                if (res && res.status === 'success') window.location.reload();
+            });
             return;
         }
         const defBtn = e.target.closest('.set-default-task');
