@@ -58,7 +58,10 @@
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
                     <label class="form-label">交易方向</label>
-                    <input type="text" class="form-control readonly-field" id="id_intent_choice" value="{% if initial.intent == 'B' %}买入{% else %}卖出{% endif %}" readonly>
+                    <select name="intent_choice" class="form-select">
+                        <option value="B" {% if initial.intent == 'B' %}selected{% endif %}>买入</option>
+                        <option value="S" {% if initial.intent == 'S' %}selected{% endif %}>卖出</option>
+                    </select>
                 </div>
             </div>
             <div class="col-md-3 col-sm-6">

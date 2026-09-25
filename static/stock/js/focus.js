@@ -482,8 +482,6 @@ function updateWinRatio(priceId, targetId, stopId, ratioId) {
 
     const ratio = calcWinRatio(buy, target, stop, intent);
     ratioEl.value = ratio;
-    ratioEl.style.color = (ratio === 0 || ratio === 99) ? '#00008B' : '';
-    ratioEl.style.fontWeight = (ratio === 0 || ratio === 99) ? 'bold' : '';
 }
 
 /**

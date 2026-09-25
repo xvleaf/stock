@@ -745,8 +745,8 @@ def _do_focus(result, ema_price=None):
             existing.status = FocusStock.STATUS_CLOSED
             existing.close_reason = FocusStock.CLOSE_REASON_MANUAL
             existing.close_date = timezone.now().date()
-            existing.comments = '筛选时关闭'
             existing.save()
+            existing.save_history(action='close', comments='筛选时关闭')
         return JsonResponse({'status': 'success', 'focus': 0, 'msg': '已取消关注'})
 
     if ema_price is None:
@@ -767,16 +767,16 @@ def _do_focus(result, ema_price=None):
     max_order = FocusStock.objects.aggregate(m=_Max('sort_order'))['m'] or 0
 
     with transaction.atomic():
-        FocusStock.objects.create(
+        new_focus = FocusStock.objects.create(
             code=result.code, name=result.name, market=result.market, cat=result.cat,
             plan_price=decimal.Decimal(str(round(plan, 3))),
             plan_qty=qty,
             target_price=decimal.Decimal(str(target)),
             stop_price=decimal.Decimal(str(stop)),
             allowed_qty=qty,
-            comments='筛选时添加',
             sort_order=max_order + 1,
         )
+        new_focus.save_history(action='create', comments='筛选时添加')
     return JsonResponse({'status': 'success', 'focus': 1,
                          'plan': round(plan, 3), 'target': target, 'stop': stop, 'qty': qty})
 

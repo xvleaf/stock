@@ -116,7 +116,7 @@ def focus_plus(request):
                     max_sort = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).count()
                     focus.sort_order = max_sort
                     focus.save()
-                    focus.save_history(action='create')
+                    focus.save_history(action='create', comments=form.cleaned_data.get('comments', ''))
                 return redirect('focus_view', market=focus.market, code=focus.code)
     else:
         initial = {}
@@ -143,7 +143,9 @@ def focus_plus(request):
 
 def focus_view(request, market, code):
     site = '/focus/view'
-    focus = get_object_or_404(FocusStock, code=code, market=market, status=FocusStock.STATUS_WATCHING)
+    focus = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).first()
+    if not focus:
+        return redirect('focus_list')
 
     if request.method == 'POST':
         form = FocusStockForm(request.POST, instance=focus, view_mode=True)
@@ -156,7 +158,7 @@ def focus_view(request, market, code):
                 updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price, updated.stop_price, updated.intent)
                 updated.updated_at = updated.focus_date 
                 updated.save()
-                updated.save_history(action='edit')
+                updated.save_history(action='edit', comments=form.cleaned_data.get('comments', ''))
             func.delete_cache(request.session, f'{site}-navi-data')
         
         return redirect('focus_view', market=market, code=code)
@@ -210,7 +212,9 @@ def focus_view(request, market, code):
 def focus_edit(request, market, code):
     """编辑关注股票页面"""
     site = '/focus/edit'
-    focus = get_object_or_404(FocusStock, code=code, market=market, status=FocusStock.STATUS_WATCHING)
+    focus = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).first()
+    if not focus:
+        return redirect('focus_list')
 
     if request.method == 'POST':
         form = FocusStockForm(request.POST, instance=focus)
@@ -222,7 +226,7 @@ def focus_edit(request, market, code):
                 updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price, updated.stop_price, updated.intent)
                 updated.updated_at = updated.focus_date
                 updated.save()
-                updated.save_history(action='edit')
+                updated.save_history(action='edit', comments=form.cleaned_data.get('comments', ''))
             func.delete_cache(request.session, '/focus/view-navi-data')
             return redirect('focus_view', market=market, code=code)
     else:
@@ -235,7 +239,7 @@ def focus_edit(request, market, code):
             'stop_price': focus.stop_price,
             'win_ratio': focus.win_ratio,
             'allowed_qty': focus.allowed_qty,
-            'comments': focus.comments,
+            'comments': '',
             'intent_choice': focus.intent,
         }
         form = FocusStockForm(instance=focus, initial=initial)
@@ -258,6 +262,7 @@ def focus_edit(request, market, code):
     return render(request, 'focus-edit.html', {
         'form': form,
         'focus': focus,
+        'initial': initial,
         'stock_code': focus.code,
         'stock_name': focus.name,
         'cat_display': cat_display,
@@ -289,9 +294,9 @@ def focus_close(request, market, code):
 
         focus.status = FocusStock.STATUS_CLOSED
         focus.close_reason = data.get('reason', FocusStock.CLOSE_REASON_MANUAL)
-        focus.comments = data.get('comments', None)
+        close_comments = data.get('comments', '') or ''
         focus.save()
-        focus.save_history(action='close')
+        focus.save_history(action='close', comments=close_comments)
         func.delete_cache(request.session, '/focus/view-navi-data')
         print(focus.close_date)
         return JsonResponse({'status': 'success', 'message': '已关闭'})
@@ -329,7 +334,7 @@ def get_focus_data_dict(focus, history=None):
         'stop_price': fmt_price(target.stop_price),
         'allowed_qty': focus.allowed_qty,
         'win_ratio': target.win_ratio,
-        'comments': target.comments,
+        'comments': target.comments if history else '',
         'intent': target.intent if history else focus.intent,
         'market_display': dict(MARKET_CHOICES).get(focus.market, focus.market),
         'cat_display': dict(CAT_CHOICES).get(focus.cat, focus.cat),

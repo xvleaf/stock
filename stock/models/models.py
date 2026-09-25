@@ -4,6 +4,45 @@ from decimal import Decimal
 import datetime
 
 
+# ===================== 账户资金配置 =====================
+class CashConfig(models.Model):
+    total = models.DecimalField('资产', max_digits=14, decimal_places=2, default=100000)
+    cash = models.DecimalField('现金', max_digits=14, decimal_places=2, default=100000)
+    stock = models.DecimalField('股票', max_digits=14, decimal_places=2, default=0)
+    allowance = models.DecimalField('风险额度', max_digits=14, decimal_places=2, default=2000)
+    risk = models.DecimalField('风险资金', max_digits=14, decimal_places=2, default=0)
+    profit = models.DecimalField('投资收益', max_digits=14, decimal_places=2, default=0)
+    commission_ratio = models.DecimalField('佣金费率', max_digits=8, decimal_places=6, default=Decimal('0.000085'))
+    commission_min = models.DecimalField('最低佣金', max_digits=8, decimal_places=2, default=Decimal('0'))
+    stamp_buy_ratio = models.DecimalField('印花税率(买入)', max_digits=8, decimal_places=6, default=Decimal('0'))
+    stamp_sell_ratio = models.DecimalField('印花税率(卖出)', max_digits=8, decimal_places=6, default=Decimal('0.0005'))
+    updated_at = models.DateField('更新日期', auto_now=True)
+
+    class Meta:        
+        # 自定义模型在数据库中的显示名称
+        db_table = 'models_cash_config'
+        verbose_name = '资金配置'
+        verbose_name_plural = verbose_name
+
+    @classmethod
+    def get_config(cls):
+        obj = cls.objects.filter(pk=1).first()
+        if obj:
+            return obj
+        # 数据库为空时，资产/现金/股票/额度/风险/收益返回0，费率字段自动取模型默认值，不创建记录
+        return cls(
+            pk=1, total=0, cash=0, stock=0,
+            allowance=0, risk=0, profit=0,
+        )
+
+    @classmethod
+    def has_config(cls):
+        return cls.objects.filter(pk=1).exists()
+
+    def __str__(self):
+        return f'资金配置(风险额度:{self.allowance})'
+
+
 # ===================== 资金变化历史 =====================
 class CashHistory(models.Model):
     """资金变化历史 —— 记录每次总资金/现金/股票市值的变化节点及原因"""
@@ -64,45 +103,6 @@ class CashHistory(models.Model):
             order=order,
             date=date or timezone.now,
         )
-
-
-# ===================== 账户资金配置 =====================
-class CashConfig(models.Model):
-    total = models.DecimalField('资产', max_digits=14, decimal_places=2, default=100000)
-    cash = models.DecimalField('现金', max_digits=14, decimal_places=2, default=100000)
-    stock = models.DecimalField('股票', max_digits=14, decimal_places=2, default=0)
-    allowance = models.DecimalField('风险额度', max_digits=14, decimal_places=2, default=2000)
-    risk = models.DecimalField('风险资金', max_digits=14, decimal_places=2, default=0)
-    profit = models.DecimalField('投资收益', max_digits=14, decimal_places=2, default=0)
-    commission_ratio = models.DecimalField('佣金费率', max_digits=8, decimal_places=6, default=Decimal('0.000085'))
-    commission_min = models.DecimalField('最低佣金', max_digits=8, decimal_places=2, default=Decimal('0'))
-    stamp_buy_ratio = models.DecimalField('印花税率(买入)', max_digits=8, decimal_places=6, default=Decimal('0'))
-    stamp_sell_ratio = models.DecimalField('印花税率(卖出)', max_digits=8, decimal_places=6, default=Decimal('0.0005'))
-    updated_at = models.DateField('更新日期', auto_now=True)
-
-    class Meta:        
-        # 自定义模型在数据库中的显示名称
-        db_table = 'models_cash_config'
-        verbose_name = '资金配置'
-        verbose_name_plural = verbose_name
-
-    @classmethod
-    def get_config(cls):
-        obj = cls.objects.filter(pk=1).first()
-        if obj:
-            return obj
-        # 数据库为空时，资产/现金/股票/额度/风险/收益返回0，费率字段自动取模型默认值，不创建记录
-        return cls(
-            pk=1, total=0, cash=0, stock=0,
-            allowance=0, risk=0, profit=0,
-        )
-
-    @classmethod
-    def has_config(cls):
-        return cls.objects.filter(pk=1).exists()
-
-    def __str__(self):
-        return f'资金配置(风险额度:{self.allowance})'
 
 
 # ===================== 板块列表 =====================
@@ -189,7 +189,6 @@ class FocusStock(models.Model):
 
     sort_order = models.IntegerField('排序', default=1)
 
-    comments = models.TextField('备注', blank=True, default='')
     created_at = models.DateField('创建日期', auto_now_add=True)
     updated_at = models.DateField('更新日期', auto_now=True)
 
@@ -219,7 +218,7 @@ class FocusStock(models.Model):
             return (self.target_price - buy) / (buy - self.stop_price)
         return Decimal('0')
 
-    def save_history(self, action='edit'):
+    def save_history(self, action='edit', comments=''):
         """保存当前关注信息到历史记录"""
         FocusHistory.objects.create(
             focus=self, 
@@ -231,7 +230,7 @@ class FocusStock(models.Model):
             target_price=self.target_price,
             stop_price=self.stop_price,
             win_ratio=self.win_ratio,
-            comments=self.comments,
+            comments=comments,
         )
 
 
@@ -286,12 +285,19 @@ class TransOrder(models.Model):
         (STATUS_OPEN, '持仓中'),
         (STATUS_CLOSED, '已平仓'),
     ]
+    INTENT_BUY = 'B'
+    INTENT_SELL = 'S'
+    INTENT_CHOICES = [
+        (INTENT_BUY, '买入'),
+        (INTENT_SELL, '卖出'),
+    ]
     focus = models.ForeignKey(FocusStock, on_delete=models.SET_NULL, null=True, blank=True,
                               related_name='orders', verbose_name='关联关注')
     code = models.CharField('股票代码', max_length=20, db_index=True)
     name = models.CharField('股票名称', max_length=50)
     market = models.CharField('股票市场', max_length=10, default='SH')
     cat = models.CharField('股票类型', max_length=10, default='stock')
+    intent = models.CharField('交易方向', max_length=1, choices=INTENT_CHOICES, default=INTENT_BUY)
     status = models.CharField('交易状态', max_length=10, choices=STATUS_CHOICES,
                               default=STATUS_OPEN, db_index=True)
     target_price = models.DecimalField('目标价格', max_digits=10, decimal_places=3,
@@ -311,7 +317,6 @@ class TransOrder(models.Model):
     profit = models.DecimalField('盈利金额', max_digits=14, decimal_places=2, default=0)
     risk_amount = models.DecimalField('风险资金占用', max_digits=14, decimal_places=2, default=0)
     position_cost_no_fee = models.DecimalField('不含手续费持仓成本', max_digits=14, decimal_places=2, default=0)
-    comments = models.TextField('备注', blank=True, default='')
     created_at = models.DateField('创建日期', auto_now_add=True)
     updated_at = models.DateField('更新日期', auto_now=True)
 
@@ -346,15 +351,15 @@ class TransOrder(models.Model):
     @property
     def avg_cost(self):
         qty = self.position_qty
-        if qty > 0:
-            return self.position_cost / qty
+        if qty != 0:
+            return abs(self.position_cost / qty)
         return Decimal('0')
 
     @property
     def avg_cost_no_fee(self):
         qty = self.position_qty
-        if qty > 0:
-            return self.position_cost_no_fee / qty
+        if qty != 0:
+            return abs(self.position_cost_no_fee / qty)
         return Decimal('0')
 
     @property
@@ -385,29 +390,98 @@ class TransOrder(models.Model):
         sell_fee = Decimal('0')
         profit = Decimal('0')
         first_buy_date = None
+        short_avg_cost = Decimal('0')  # 卖空均价（不含费）
 
         for d in histories:
             if d.action == TransHistory.ACTION_EDIT:
                 continue  # 编辑记录不参与持仓计算
             if d.intent == TransHistory.INTENT_BUY:
-                if position_qty == 0:
-                    first_buy_date = d.date
-                position_qty += d.qty
-                position_cost += d.price * d.qty + d.fee
-                position_cost_no_fee += d.price * d.qty
+                if position_qty >= 0:
+                    # 多头或空仓：买入建仓/加仓
+                    if position_qty == 0:
+                        first_buy_date = d.date
+                    position_qty += d.qty
+                    position_cost += d.price * d.qty + d.fee
+                    position_cost_no_fee += d.price * d.qty
+                    profit -= d.fee  # 买入手续费计入损失
+                else:
+                    # 空头持仓：买入平仓（可能反手）
+                    short_qty = abs(position_qty)
+                    if d.qty <= short_qty:
+                        # 全部用于空头平仓
+                        close_qty = d.qty
+                        close_amount = d.price * close_qty
+                        close_fee = d.fee * (close_qty / d.qty) if d.qty > 0 else d.fee
+                        profit += short_avg_cost * close_qty - close_amount - close_fee
+                        position_qty += close_qty
+                        # 空头减少，short_avg_cost 不变
+                    else:
+                        # 先平空头，再买多建仓
+                        close_qty = short_qty
+                        close_amount = d.price * close_qty
+                        close_fee = d.fee * (close_qty / d.qty)
+                        profit += short_avg_cost * close_qty - close_amount - close_fee
+                        position_qty += close_qty  # 变为0
+                        # 剩余部分买多建仓
+                        remain_qty = d.qty - close_qty
+                        remain_fee = d.fee - close_fee
+                        first_buy_date = d.date
+                        position_qty += remain_qty
+                        position_cost = d.price * remain_qty + remain_fee
+                        position_cost_no_fee = d.price * remain_qty
+                        profit -= remain_fee
+                        short_avg_cost = Decimal('0')
                 buy_qty += d.qty
                 buy_amount += d.price * d.qty
                 buy_fee += d.fee
-                profit -= d.fee  # 买入手续费计入损失
             else:
-                if position_qty > 0:
-                    avg = position_cost / position_qty              # 含手续费，用于显示
-                    avg_no_fee = position_cost_no_fee / position_qty # 不含手续费，用于算收益
-                    sold_cost += avg * d.qty
-                    profit += d.price * d.qty - d.fee - avg_no_fee * d.qty
-                    position_cost -= avg * d.qty
-                    position_cost_no_fee -= avg_no_fee * d.qty
-                position_qty -= d.qty
+                # 卖出
+                if position_qty <= 0:
+                    # 空头或空仓：卖出建仓/加仓
+                    if position_qty == 0:
+                        first_buy_date = d.date
+                        short_avg_cost = d.price  # 卖空均价（不含费）
+                        position_cost = -(d.price * d.qty + d.fee)
+                        position_cost_no_fee = -(d.price * d.qty)
+                    else:
+                        # 卖空加仓，更新加权平均
+                        total_short = abs(position_qty) + d.qty
+                        short_avg_cost = (short_avg_cost * abs(position_qty) + d.price * d.qty) / total_short
+                        position_cost -= (d.price * d.qty + d.fee)
+                        position_cost_no_fee -= d.price * d.qty
+                    position_qty -= d.qty
+                    profit -= d.fee  # 卖出手续费计入损失
+                else:
+                    # 多头持仓：卖出平仓（可能反手）
+                    if d.qty <= position_qty:
+                        # 全部用于多头平仓
+                        avg = position_cost / position_qty
+                        avg_no_fee = position_cost_no_fee / position_qty
+                        close_qty = d.qty
+                        sold_cost += avg * close_qty
+                        profit += d.price * close_qty - d.fee - avg_no_fee * close_qty
+                        position_cost -= avg * close_qty
+                        position_cost_no_fee -= avg_no_fee * close_qty
+                        position_qty -= close_qty
+                    else:
+                        # 先平多头，再卖空建仓
+                        avg = position_cost / position_qty
+                        avg_no_fee = position_cost_no_fee / position_qty
+                        close_qty = position_qty
+                        close_fee = d.fee * (close_qty / d.qty)
+                        sold_cost += avg * close_qty
+                        profit += d.price * close_qty - close_fee - avg_no_fee * close_qty
+                        position_cost = Decimal('0')
+                        position_cost_no_fee = Decimal('0')
+                        position_qty = 0
+                        # 剩余部分卖空建仓
+                        remain_qty = d.qty - close_qty
+                        remain_fee = d.fee - close_fee
+                        short_avg_cost = d.price
+                        position_cost = -(d.price * remain_qty + remain_fee)
+                        position_cost_no_fee = -(d.price * remain_qty)
+                        position_qty -= remain_qty
+                        profit -= remain_fee
                 sell_qty += d.qty
                 sell_amount += d.price * d.qty
                 sell_fee += d.fee
@@ -423,11 +497,17 @@ class TransOrder(models.Model):
         self.position_cost_no_fee = position_cost_no_fee.quantize(Decimal('0.01'))
         self._sold_cost = sold_cost
 
+        # 更新 intent
+        if position_qty > 0:
+            self.intent = TransHistory.INTENT_BUY
+        elif position_qty < 0:
+            self.intent = TransHistory.INTENT_SELL
+
         if position_qty == 0 and sell_qty > 0:
             self.status = self.STATUS_CLOSED
             if not self.close_date:
                 self.close_date = timezone.now()
-        elif position_qty > 0:
+        elif position_qty != 0:
             self.status = self.STATUS_OPEN
             self.close_date = None
 
@@ -675,7 +755,7 @@ class FilterGlobalConfig(models.Model):
                                            help_text='筛选清单默认显示的任务ID，0=最新任务')
 
     class Meta:
-        db_table = 'models_filter_global_config'
+        db_table = 'models_filter_config'
         verbose_name = '筛选全局配置'
         verbose_name_plural = verbose_name
 

@@ -59,13 +59,20 @@ def trans_deal(request, market, code):
     config = CashConfig.get_config()
 
     # 初始表单数据
+    can_choose_intent = not order  # 无持仓时可选择交易方向
     if order:
-        # 持仓中：默认卖出
+        # 持仓中：根据订单方向决定默认操作
+        if order.intent == 'S':
+            # 空头持仓：默认买入平仓
+            default_intent = 'B'
+        else:
+            # 多头持仓：默认卖出平仓
+            default_intent = 'S'
         initial = {
-            'intent': 'S',
+            'intent': default_intent,
             'date': timezone.now().strftime('%Y-%m-%d'),
             'price': float(order.avg_cost) if order.avg_cost > 0 else 0,
-            'qty': order.position_qty,
+            'qty': abs(order.position_qty),
             'target_price': float(order.target_price) if order.target_price else 0,
             'stop_price': float(order.stop_price) if order.stop_price else 0,
             'win_ratio': 0,
@@ -74,9 +81,9 @@ def trans_deal(request, market, code):
         avg_cost = float(order.avg_cost)
         position_qty = order.position_qty
     else:
-        # 关注中：默认买入
+        # 关注中：默认使用 focus 的关注方向
         initial = {
-            'intent': 'B',
+            'intent': focus.intent if focus else 'B',
             'date': timezone.now().strftime('%Y-%m-%d'),
             'price': float(focus.plan_price) if focus.plan_price else 0,
             'qty': focus.plan_qty,
@@ -111,6 +118,7 @@ def trans_deal(request, market, code):
         'initial': initial,
         'avg_cost': avg_cost,
         'position_qty': position_qty,
+        'can_choose_intent': can_choose_intent,
         'cash': float(config.cash),
         'available': float(config.allowance - config.risk),
         'current_risk': float(config.risk),
@@ -175,6 +183,7 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
                     name=stock_name,
                     market=market,
                     cat=stock_cat,
+                    intent='B',
                     target_price=target_price,
                     stop_price=stop_price,
                 )
@@ -183,11 +192,10 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
                 order.target_price = target_price
                 order.stop_price = stop_price
 
-            # 记录卖出前的 profit（用于计算本次收益）
+            # 记录交易前的状态
             profit_before = order.profit if order.pk else Decimal('0')
-
-            # 风险资金（买入）
-            risk_amount = cash_utils.calc_risk_capital(price, stop_price, qty, 'B')
+            risk_before = order.risk_amount if order.pk else Decimal('0')
+            position_qty_before = order.position_qty if order.pk else 0
 
             # 创建成交明细
             deal = TransHistory.objects.create(
@@ -207,16 +215,37 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
             # 重新计算订单所有汇总字段
             order.recalculate()
 
-            # 本次收益 = recalculate后的profit - 之前的profit
+            # 本次收益
             deal_profit = _q(order.profit - profit_before)
 
-            # 更新风险资金（recalculate不计算risk_amount）
-            order.risk_amount = _q(order.risk_amount + risk_amount)
+            # 风险资金计算
+            if position_qty_before >= 0:
+                # 多头或空仓：买入建仓/加仓，增加风险
+                risk_change = cash_utils.calc_risk_capital(price, stop_price, qty, 'B')
+            else:
+                # 空头持仓：买入平仓（可能反手）
+                short_qty = abs(position_qty_before)
+                if qty <= short_qty:
+                    # 全部空头平仓，按比例减少风险
+                    risk_ratio = Decimal(qty) / Decimal(short_qty)
+                    risk_change = -_q(risk_before * risk_ratio)
+                else:
+                    # 先平空头，再买多建仓（反手做多）
+                    # 空头部分：减少全部风险
+                    risk_reduce_short = risk_before
+                    # 多头部分：增加风险
+                    remain_qty = qty - short_qty
+                    risk_add_long = cash_utils.calc_risk_capital(price, stop_price, remain_qty, 'B')
+                    risk_change = risk_add_long - risk_reduce_short
+
+            order.risk_amount = _q(risk_before + risk_change)
+            if order.risk_amount < 0:
+                order.risk_amount = Decimal('0')
             order.save()
 
             # 保存该笔交易后的持仓快照
             deal.profit = order.profit
-            deal.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, target_price, stop_price, 'B') if order.position_qty > 0 else 0
+            deal.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, target_price, stop_price, order.intent) if order.position_qty != 0 else 0
             deal.risk_amount = order.risk_amount
             deal.position_qty = order.position_qty
             deal.avg_cost = order.avg_cost
@@ -227,9 +256,22 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
 
             # 更新资金配置
             config.cash -= total_cost
-            config.stock += amount
+            # stock 更新：多头建仓增加，空头平仓减少（欠股票减少）
+            if position_qty_before >= 0:
+                config.stock += amount
+            else:
+                short_qty = abs(position_qty_before)
+                if qty <= short_qty:
+                    config.stock += amount  # 空头平仓，欠股票减少
+                else:
+                    # 反手：先平空头，再买多
+                    close_amount = price * short_qty
+                    remain_amount = price * (qty - short_qty)
+                    config.stock += close_amount + remain_amount
             config.total = config.cash + config.stock
-            config.risk += risk_amount
+            config.risk += risk_change
+            if config.risk < 0:
+                config.risk = Decimal('0')
             config.profit += deal_profit
             config.save()
 
@@ -238,7 +280,7 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
                 event=CashHistory.EVENT_BUY,
                 change=-total_cost,
                 profit=deal_profit,
-                remark=f'买入{stock_name}{qty}股',
+                remark=f'买入{stock_name}{qty}股@{price}',
                 order=order,
                 date=deal_date,
             )
@@ -252,24 +294,29 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
 
         else:
             # 卖出
-            if not order:
-                return JsonResponse({'status': 'error', 'error': '该股票无持仓，无法卖出'})
-
-            if qty > order.position_qty:
-                return JsonResponse({'status': 'error', 'error': f'卖出数量超过持仓量（{order.position_qty}股）'})
-
             total_income = amount - fee
 
-            # 记录卖出前的 profit 和持仓成本（含手续费）
-            profit_before = order.profit
-            position_cost_before = order.position_cost
-
-            # 按比例冲抵风险资金
-            if order.position_qty > 0:
-                risk_ratio = Decimal(qty) / Decimal(order.position_qty)
-                risk_reduce = _q(order.risk_amount * risk_ratio)
+            # 创建或获取交易订单（卖空建仓时可能没有订单）
+            if not order:
+                order = TransOrder(
+                    focus=focus,
+                    code=code,
+                    name=stock_name,
+                    market=market,
+                    cat=stock_cat,
+                    intent='S',
+                    target_price=target_price,
+                    stop_price=stop_price,
+                )
+                order.save()
             else:
-                risk_reduce = Decimal('0')
+                order.target_price = target_price
+                order.stop_price = stop_price
+
+            # 记录交易前的状态
+            profit_before = order.profit if order.pk else Decimal('0')
+            risk_before = order.risk_amount if order.pk else Decimal('0')
+            position_qty_before = order.position_qty if order.pk else 0
 
             # 创建成交明细
             deal = TransHistory.objects.create(
@@ -281,31 +328,44 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
                 qty=qty,
                 amount=amount,
                 fee=fee,
-                target_price=order.target_price,
-                stop_price=order.stop_price,
+                target_price=target_price,
+                stop_price=stop_price,
                 comments=comments,
             )
 
             # 重新计算订单所有汇总字段
             order.recalculate()
 
-            # 本次收益 = recalculate后的profit - 之前的profit
+            # 本次收益
             deal_profit = _q(order.profit - profit_before)
 
-            # 卖出部分成本 = 卖出前持仓成本 - 卖出后持仓成本
-            sold_cost = _q(position_cost_before - order.position_cost)
+            # 风险资金计算
+            if position_qty_before <= 0:
+                # 空头或空仓：卖出建仓/加仓，增加风险
+                risk_change = cash_utils.calc_risk_capital(price, stop_price, qty, 'S')
+            else:
+                # 多头持仓：卖出平仓（可能反手）
+                if qty <= position_qty_before:
+                    # 全部多头平仓，按比例减少风险
+                    risk_ratio = Decimal(qty) / Decimal(position_qty_before)
+                    risk_change = -_q(risk_before * risk_ratio)
+                else:
+                    # 先平多头，再卖空建仓（反手做空）
+                    # 多头部分：减少全部风险
+                    risk_reduce_long = risk_before
+                    # 空头部分：增加风险
+                    remain_qty = qty - position_qty_before
+                    risk_add_short = cash_utils.calc_risk_capital(price, stop_price, remain_qty, 'S')
+                    risk_change = risk_add_short - risk_reduce_long
 
-            # 更新风险资金
-            order.risk_amount = _q(order.risk_amount - risk_reduce)
+            order.risk_amount = _q(risk_before + risk_change)
             if order.risk_amount < 0:
-                order.risk_amount = Decimal('0')
-            if order.position_qty <= 0:
                 order.risk_amount = Decimal('0')
             order.save()
 
             # 保存该笔交易后的持仓快照
             deal.profit = order.profit
-            deal.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price, 'S') if order.position_qty > 0 else 0
+            deal.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, target_price, stop_price, order.intent) if order.position_qty != 0 else 0
             deal.risk_amount = order.risk_amount
             deal.position_qty = order.position_qty
             deal.avg_cost = order.avg_cost
@@ -313,9 +373,19 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
 
             # 更新资金配置
             config.cash += total_income
-            config.stock -= sold_cost
+            # stock 更新：卖空建仓减少（欠股票），多头平仓减少
+            if position_qty_before <= 0:
+                config.stock -= amount  # 卖空建仓/加仓，欠股票增加
+            else:
+                if qty <= position_qty_before:
+                    config.stock -= amount  # 多头平仓
+                else:
+                    # 反手：先平多头，再卖空
+                    close_amount = price * position_qty_before
+                    remain_amount = price * (qty - position_qty_before)
+                    config.stock -= close_amount + remain_amount
             config.total = config.cash + config.stock
-            config.risk -= risk_reduce
+            config.risk += risk_change
             if config.risk < 0:
                 config.risk = Decimal('0')
             config.profit += deal_profit
@@ -326,7 +396,7 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
                 event=CashHistory.EVENT_SELL,
                 change=total_income,
                 profit=deal_profit,
-                remark=f'卖出{stock_name}{qty}股',
+                remark=f'卖出{stock_name}{qty}股@{price}',
                 order=order,
                 date=deal_date,
             )
@@ -468,7 +538,9 @@ def get_trans_data_dict(order, history=None):
 
 def trans_view(request, market, code):
     site = '/trans/view'
-    order = get_object_or_404(TransOrder, code=code, market=market, status=TransOrder.STATUS_OPEN)
+    order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_OPEN).first()
+    if not order:
+        return redirect('trans_list')
 
     if request.method == 'POST':
         try:
@@ -583,7 +655,9 @@ def trans_view(request, market, code):
 # ===================== 交易编辑（仅目标/止损可改） =====================
 def trans_edit(request, market, code):
     site = '/trans/edit'
-    order = get_object_or_404(TransOrder, code=code, market=market, status=TransOrder.STATUS_OPEN)
+    order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_OPEN).first()
+    if not order:
+        return redirect('trans_list')
     config = CashConfig.get_config()
 
     if request.method == 'POST':

@@ -42,7 +42,7 @@
             </div>
         </div>
 
-        {# 第2行：更新日期/持仓价格/持仓数量/预计收益 #}
+        {# 第2行：更新日期/目标价格/止损价格/盈利机会 #}
         <div class="row">
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
@@ -50,28 +50,6 @@
                     <input type="date" name="update_date" class="form-control" style="color:#0d6efd;" value="{{ initial.date }}">
                 </div>
             </div>
-            <div class="col-md-3 col-sm-6">
-                <div class="mb-3">
-                    <label class="form-label">持仓价格</label>
-                    <input type="text" class="form-control" value="{{ initial.price }}" readonly>
-                </div>
-            </div>
-            <div class="col-md-3 col-sm-6">
-                <div class="mb-3">
-                    <label class="form-label">持仓数量</label>
-                    <input type="text" class="form-control" value="{{ initial.qty }}" readonly>
-                </div>
-            </div>
-            <div class="col-md-3 col-sm-6">
-                <div class="mb-3">
-                    <label class="form-label">预期收益</label>
-                    <input type="text" id="id_profit" class="form-control" readonly value="{{ initial.profit }}">
-                </div>
-            </div>
-        </div>
-
-        {# 第3行：目标价格/止损价格/盈利机会/风险资金 #}
-        <div class="row">
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
                     <label class="form-label">目标价格</label>
@@ -91,6 +69,28 @@
                         <input type="text" id="id_win_ratio" class="form-control" readonly value="{{ initial.win_ratio }}">
                         <span class="input-group-text">%</span>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        {# 第3行：持仓价格/持仓数量/预期收益/风险资金 #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">持仓价格</label>
+                    <input type="text" class="form-control" value="{{ initial.price }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">持仓数量</label>
+                    <input type="text" class="form-control" value="{{ initial.qty }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">预期收益</label>
+                    <input type="text" id="id_profit" class="form-control" readonly value="{{ initial.profit }}">
                 </div>
             </div>
             <div class="col-md-3 col-sm-6">

@@ -188,12 +188,35 @@ export function initTransDeal(opts = {}) {
         updateCalculations();
     }
 
-    // 事件绑定（交易方向改为只读文本框，不再监听 change）
+    // 事件绑定
     priceInput.addEventListener('input', updateCalculations);
     qtyInput.addEventListener('input', updateCalculations);
     targetInput.addEventListener('input', updateCalculations);
     stopInput.addEventListener('input', updateCalculations);
     feeInput.addEventListener('input', updateProfitOnly);
+    // 交易方向变化时重新计算（无持仓时为下拉框）
+    if (intentSelect.tagName === 'SELECT') {
+        intentSelect.addEventListener('change', () => {
+            updateCalculations();
+            // 切换方向时更新目标价/止损价/盈利机会的只读状态
+            const intent = getIntentValue();
+            if (intent === 'S') {
+                targetInput.readOnly = true;
+                stopInput.readOnly = true;
+                winInput.readOnly = true;
+                targetInput.value = '-';
+                stopInput.value = '-';
+                winInput.value = '-';
+            } else {
+                targetInput.readOnly = false;
+                stopInput.readOnly = false;
+                winInput.readOnly = false;
+                targetInput.value = '';
+                stopInput.value = '';
+                winInput.value = '';
+            }
+        });
+    }
 
     // 表单提交：AJAX 方式，失败时弹窗报错，成功时跳转
     form.addEventListener('submit', (e) => {

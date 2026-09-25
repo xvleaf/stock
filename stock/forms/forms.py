@@ -56,13 +56,20 @@ class FocusStockForm(forms.ModelForm):
         required=True,
         initial=timezone.now,
     )
+
+    comments = forms.CharField(
+        label='备注',
+        widget=forms.Textarea(attrs={
+            'class': 'form-control', 'rows': 3, 'style': 'resize:none;',
+        }),
+        required=False,
+    )
     
     class Meta:
         model = FocusStock
         fields = ['code', 'name', 'focus_date',
                   'plan_price', 'plan_qty', 'target_price',
-                  'stop_price', 'allowed_qty', 'win_ratio',
-                  'comments']
+                  'stop_price', 'allowed_qty', 'win_ratio']
         widgets = {
             'code': forms.TextInput(attrs={
                 'class': 'form-control', 'id': 'id_code_input',
@@ -88,9 +95,6 @@ class FocusStockForm(forms.ModelForm):
             'win_ratio': forms.NumberInput(attrs={
                 'class': 'form-control', 'step': '1', 'min': '0', 'max': '99',
                 'id': 'id_win_ratio', 'readonly': 'readonly',
-            }),
-            'comments': forms.Textarea(attrs={
-                'class': 'form-control', 'rows': 3, 'style': 'resize:none;',
             }),
         }
 

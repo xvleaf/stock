@@ -58,36 +58,42 @@
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
                     <label class="form-label">更新日期</label>
-                    {{ form.focus_date }}
+                    <input type="date" name="focus_date" id="id_focus_date" class="form-control" style="color:#0d6efd;" value="{{ initial.focus_date|date:"Y-m-d" }}">
                 </div>
             </div>
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
-                    <label class="form-label">允许数量</label>
-                    <div class="input-group">
-                        {{ form.allowed_qty }}
-                        <span class="input-group-text">股</span>
-                    </div>
+                    <label class="form-label">交易方向</label>
+                    <select name="intent_choice" id="id_intent_choice" class="form-select" style="color:#0d6efd;">
+                        <option value="B" {% if focus.intent == 'B' %}selected{% endif %}>买入</option>
+                        <option value="S" {% if focus.intent == 'S' %}selected{% endif %}>卖出</option>
+                    </select>
                 </div>
             </div>
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
                     <label class="form-label">计划报价</label>
-                    {{ form.plan_price }}
+                    <input type="text" name="plan_price" id="id_plan_price" class="form-control" style="color:#0d6efd;" value="{{ form.plan_price.value|default_if_none:'' }}">
                 </div>
             </div>
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
                     <label class="form-label">计划数量</label>
-                    {{ form.plan_qty }}
+                    <input type="number" name="plan_qty" id="id_plan_qty" class="form-control" style="color:#0d6efd;" value="{{ form.plan_qty.value|default_if_none:'' }}">
                 </div>
             </div>
         </div>
         <div class="row">
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
-                    <label class="form-label">交易方向</label>
-                    {{ form.intent_choice }}
+                    <label class="form-label">目标价格</label>
+                    <input type="text" name="target_price" id="id_target_price" class="form-control" style="color:#0d6efd;" value="{{ form.target_price.value|default_if_none:'' }}">
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">止损价格</label>
+                    <input type="text" name="stop_price" id="id_stop_price" class="form-control" style="color:#0d6efd;" value="{{ form.stop_price.value|default_if_none:'' }}">
                 </div>
             </div>
             <div class="col-md-3 col-sm-6">
@@ -101,20 +107,17 @@
             </div>
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
-                    <label class="form-label">目标价格</label>
-                    <input type="text" name="target_price" id="id_target_price" class="form-control" value="{{ form.target_price.value|default_if_none:'' }}">
-                </div>
-            </div>
-            <div class="col-md-3 col-sm-6">
-                <div class="mb-3">
-                    <label class="form-label">止损价格</label>
-                    <input type="text" name="stop_price" id="id_stop_price" class="form-control" value="{{ form.stop_price.value|default_if_none:'' }}">
+                    <label class="form-label">允许数量</label>
+                    <div class="input-group">
+                        {{ form.allowed_qty }}
+                        <span class="input-group-text">股</span>
+                    </div>
                 </div>
             </div>
         </div>
         <div class="mb-3">
             <label class="form-label">备注</label>
-            {{ form.comments }}
+            <textarea name="comments" class="form-control" rows="3" style="resize:none;">{{ initial.comments }}</textarea>
         </div>
         <div class="d-flex">
             <button type="button" class="btn btn-outline-secondary me-2" onclick="history.back()">取消</button>
