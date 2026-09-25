@@ -24,6 +24,7 @@ urlpatterns = [
     path('focus', focus.focus_list, name='focus'),
     path('focus/list', focus.focus_list, name='focus_list'),
     path('focus/plus', focus.focus_plus, name='focus_plus'),
+    path('focus/calc', focus.focus_calc, name='focus_calc'),
     path('focus/close/<str:market>/<str:code>', focus.focus_close, name='focus_close'),
     path('focus/view/<str:market>/<str:code>', focus.focus_view, name='focus_view'),
     path('focus/edit/<str:market>/<str:code>', focus.focus_edit, name='focus_edit'),
@@ -42,6 +43,7 @@ urlpatterns = [
     # ---- 交易 ----
     path('trans/list', trans.trans_list, name='trans_list'),
     path('trans/deal/<str:market>/<str:code>', trans.trans_deal, name='trans_deal'),
+    path('trans/calc', trans.trans_calc, name='trans_calc'),
     path('trans/view/<str:market>/<str:code>', trans.trans_view, name='trans_view'),
     path('trans/edit/<str:market>/<str:code>', trans.trans_edit, name='trans_edit'),
 

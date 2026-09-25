@@ -342,3 +342,30 @@ def get_focus_data_dict(focus, history=None):
     }
 
 
+@require_http_methods(["POST"])
+def focus_calc(request):
+    """关注页面计算接口：允许数量、盈利机会"""
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': '无效的JSON'}, status=400)
+
+    intent = data.get('intent', 'B')
+    plan_price = float(data.get('plan_price', 0) or 0)
+    target_price = float(data.get('target_price', 0) or 0)
+    stop_price = float(data.get('stop_price', 0) or 0)
+
+    config = CashConfig.get_config()
+
+    # 允许数量
+    allowed_qty = cash.calc_allowed_qty(plan_price, stop_price, intent) if plan_price > 0 else 0
+
+    # 盈利机会（0-99）
+    win_ratio = cash.calc_win_ratio(plan_price, target_price, stop_price, intent)
+
+    return JsonResponse({
+        'allowed_qty': allowed_qty,
+        'win_ratio': win_ratio,
+    })
+
+

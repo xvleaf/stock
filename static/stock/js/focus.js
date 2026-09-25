@@ -1,5 +1,5 @@
 import { chartPageContainer, initChartPage, destroyChart, setPageConfig } from './chart.js';
-import { postRequest, refreshQuotes, calcAllowedQty, calcWinRatio } from './func.js';
+import { postRequest, refreshQuotes, getCsrfToken } from './func.js';
 
 // ===================== focus-list 页面 =====================
 export function initFocusList(interval) {
@@ -229,6 +229,96 @@ export function initFocusList(interval) {
     });
 }
 
+// ===================== 通用：focus 计算（AJAX 请求后台） =====================
+function createFocusCalc(priceId, targetId, stopId, allowedId, winId, intentSelector) {
+    const priceInput = document.getElementById(priceId);
+    const targetInput = document.getElementById(targetId);
+    const stopInput = document.getElementById(stopId);
+    const allowedInput = document.getElementById(allowedId);
+    const winInput = document.getElementById(winId);
+    if (!priceInput) return null;
+
+    let lastParams = null;
+    let calcTimer = null;
+
+    function getIntent() {
+        const intentEl = document.querySelector(intentSelector || '[name="intent_choice"]');
+        if (intentEl) {
+            if (intentEl.tagName === 'SELECT') return intentEl.value;
+            return intentEl.value === '卖出' ? 'S' : 'B';
+        }
+        return 'B';
+    }
+
+    function collectParams() {
+        return {
+            intent: getIntent(),
+            plan_price: parseFloat(priceInput.value) || 0,
+            target_price: parseFloat(targetInput?.value) || 0,
+            stop_price: parseFloat(stopInput?.value) || 0,
+        };
+    }
+
+    function isParamsChanged(params) {
+        if (!lastParams) return true;
+        return JSON.stringify(params) !== JSON.stringify(lastParams);
+    }
+
+    function requestCalc() {
+        const params = collectParams();
+        if (!isParamsChanged(params)) return;
+        lastParams = { ...params };
+
+        fetch('/focus/calc', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
+            },
+            body: JSON.stringify(params),
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) return;
+            if (allowedInput) allowedInput.value = data.allowed_qty;
+            if (winInput) winInput.value = data.win_ratio;
+
+            // 超限检查
+            const planQty = parseInt(document.getElementById('id_plan_qty')?.value) || 0;
+            const allowedQty = parseInt(data.allowed_qty) || 0;
+            if (allowedInput) {
+                if (planQty > allowedQty && allowedQty > 0) {
+                    allowedInput.style.color = '#8B0000';
+                    allowedInput.style.fontWeight = 'bold';
+                } else {
+                    allowedInput.style.color = '';
+                    allowedInput.style.fontWeight = '';
+                }
+            }
+        })
+        .catch(() => {});
+    }
+
+    function scheduleCalc() {
+        if (calcTimer) clearTimeout(calcTimer);
+        calcTimer = setTimeout(requestCalc, 300);
+    }
+
+    // 事件绑定
+    priceInput.addEventListener('input', scheduleCalc);
+    if (targetInput) targetInput.addEventListener('input', scheduleCalc);
+    if (stopInput) stopInput.addEventListener('input', scheduleCalc);
+    const planQtyInput = document.getElementById('id_plan_qty');
+    if (planQtyInput) planQtyInput.addEventListener('input', scheduleCalc);
+    const intentEl = document.querySelector(intentSelector || '[name="intent_choice"]');
+    if (intentEl) intentEl.addEventListener('change', scheduleCalc);
+
+    // 初始计算
+    requestCalc();
+
+    return { requestCalc, scheduleCalc };
+}
+
 // ===================== focus-plus 页面 =====================
 export function initFocusPlus(config) {
     const catSel = document.querySelector('[name="cat_choice"]');
@@ -236,9 +326,6 @@ export function initFocusPlus(config) {
     const codeInput = document.getElementById('id_code_input');
     const nameInput = document.getElementById('id_name_input');
     const priceInput = document.getElementById('id_plan_price');
-    const qtyInput = document.getElementById('id_plan_qty');
-    const targetInput = document.getElementById('id_target_price');
-    const stopInput = document.getElementById('id_stop_price');
     const formErr = document.getElementById('formError');
     const errText = document.getElementById('errorText');
 
@@ -309,32 +396,14 @@ export function initFocusPlus(config) {
         }, 1000);
     }
 
-    // ---- 事件绑定（使用公共函数） ----
-    priceInput?.addEventListener('input', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', config.cash, config.available);
-        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
-    });
-    targetInput?.addEventListener('input', () => {
-        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
-    });
-    stopInput?.addEventListener('input', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', config.cash, config.available);
-        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
-    });
-    qtyInput?.addEventListener('input', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', config.cash, config.available);
-    });
-
-    // 交易方向变化时重新计算
-    const intentSelPlus = document.querySelector('[name="intent_choice"]');
-    intentSelPlus?.addEventListener('change', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', config.cash, config.available);
-        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
-    });
+    // 启动自动计算
+    createFocusCalc('id_plan_price', 'id_target_price', 'id_stop_price', 'id_allowed_qty', 'id_win_ratio');
 
     // cat_choice 变化时动态更新价格字段 step
     catSel?.addEventListener('change', () => {
         const step = catSel.value === 'fund' || catSel.value === 'bond' ? '0.001' : '0.01';
+        const targetInput = document.getElementById('id_target_price');
+        const stopInput = document.getElementById('id_stop_price');
         [priceInput, targetInput, stopInput].forEach(el => {
             if (el) el.step = step;
         });
@@ -343,13 +412,6 @@ export function initFocusPlus(config) {
     });
     marketSel?.addEventListener('change', () => {clearFormErr(); fetchStockInfo()});
     codeInput?.addEventListener('blur', () => {clearFormErr(); fetchStockInfo()});
-    // codeInput?.addEventListener('input', () => {clearFormErr(); fetchStockInfo()});
-
-    // 初始计算
-    if (priceInput) {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', config.cash, config.available);
-        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
-    }
 
     // 若已有代码，自动获取
     if (codeInput && codeInput.value.trim()) {
@@ -362,8 +424,6 @@ export function initFocusView(config) {
     if (!form) return;
 
     const isSummary = config.is_summary !== false;
-    const cash = config.cash || 0;
-    const riskBudget = config.available || 0;
     const initChart = config.initChart || {};
     setPageConfig(initChart);
 
@@ -382,25 +442,9 @@ export function initFocusView(config) {
             el.style.color = '';
         });
     }
-    
-    document.getElementById('id_plan_price')?.addEventListener('input', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
-        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
-    });
-    document.getElementById('id_target_price')?.addEventListener('input', () => {
-        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
-    });
-    document.getElementById('id_stop_price')?.addEventListener('input', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
-        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
-    });
-    document.getElementById('id_plan_qty')?.addEventListener('input', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
-    });
 
-    // 初始计算
-    updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
-    updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    // 启动自动计算
+    createFocusCalc('id_plan_price', 'id_target_price', 'id_stop_price', 'id_allowed_qty', 'id_win_ratio');
 }
 
 // ===================== 编辑关注页面 =====================
@@ -408,8 +452,6 @@ export function initFocusEdit(config) {
     const form = document.getElementById('focusForm');
     if (!form) return;
 
-    const cash = config.cash || 0;
-    const riskBudget = config.available || 0;
     const initChart = config.initChart || {};
     setPageConfig(initChart);
 
@@ -418,100 +460,6 @@ export function initFocusEdit(config) {
         initChartPage();
     }
 
-    // 自动计算
-    document.getElementById('id_plan_price')?.addEventListener('input', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
-        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
-    });
-    document.getElementById('id_target_price')?.addEventListener('input', () => {
-        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
-    });
-    document.getElementById('id_stop_price')?.addEventListener('input', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
-        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
-    });
-    document.getElementById('id_plan_qty')?.addEventListener('input', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
-    });
-
-    // 交易方向变化时重新计算
-    const intentSelEdit = document.querySelector('[name="intent_choice"]');
-    intentSelEdit?.addEventListener('change', () => {
-        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
-        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
-    });
-
-    // 初始计算
-    updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
-    updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    // 启动自动计算
+    createFocusCalc('id_plan_price', 'id_target_price', 'id_stop_price', 'id_allowed_qty', 'id_win_ratio');
 }
-
-/**
- * @param {string} priceId - 计划价格输入框 ID
- * @param {string} targetId - 目标价格输入框 ID
- * @param {string} stopId - 止损价格输入框 ID
- * @param {string} ratioId - 胜率输入框 ID
- */
-/**
- * 获取当前交易方向
- */
-function getIntent() {
-    const intentEl = document.querySelector('[name="intent_choice"]');
-    if (intentEl) {
-        if (intentEl.tagName === 'SELECT') {
-            return intentEl.value;
-        } else {
-            // 只读文本框，根据显示值判断
-            return intentEl.value === '卖出' ? 'S' : 'B';
-        }
-    }
-    return 'B';
-}
-
-function updateWinRatio(priceId, targetId, stopId, ratioId) {
-    const priceEl = document.getElementById(priceId);
-    const targetEl = document.getElementById(targetId);
-    const stopEl = document.getElementById(stopId);
-    const ratioEl = document.getElementById(ratioId);
-    if (!priceEl || !targetEl || !stopEl || !ratioEl) return;
-
-    const buy = parseFloat(priceEl.value) || 0;
-    const target = parseFloat(targetEl.value) || 0;
-    const stop = parseFloat(stopEl.value) || 0;
-    const intent = getIntent();
-
-    const ratio = calcWinRatio(buy, target, stop, intent);
-    ratioEl.value = ratio;
-}
-
-/**
- * 计算允许购买数量（取现金限制和风险额度限制的较小值，按手取整）
- * @param {string} priceId - 计划价格输入框 ID
- * @param {string} allowedId - 允许数量输入框 ID
- * @param {string} stopId - 止损价格输入框 ID
- * @param {number} cash - 可用现金
- * @param {number} riskBudget - 剩余风险额度（allowance - risk）
- */
-function updateAllowedQty(priceId, allowedId, stopId, cash, riskBudget) {
-    const priceEl = document.getElementById(priceId);
-    const allowedEl = document.getElementById(allowedId);
-    const stopEl = document.getElementById(stopId);
-    if (!priceEl || !allowedEl) return;
-
-    const price = parseFloat(priceEl.value) || 0;
-    const stop = parseFloat(stopEl?.value) || 0;
-    const intent = getIntent();
-    const qty = calcAllowedQty(price, stop, cash, riskBudget, intent);
-    allowedEl.value = qty;
-    // 超限检查（计划数量 > 允许数量时高亮）
-    const planQty = parseInt(document.getElementById('id_plan_qty')?.value) || 0;
-    if (planQty > qty && qty > 0) {
-        allowedEl.style.color = '#8B0000';
-        allowedEl.style.fontWeight = 'bold';
-    } else {
-        allowedEl.style.color = '';
-        allowedEl.style.fontWeight = '';
-    }
-}
-
-
