@@ -344,12 +344,13 @@ def _q(value, places='0.01'):
     return Decimal(str(value)).quantize(Decimal(places), rounding=ROUND_HALF_UP)
 
 
-def calc_allowed_qty(plan_price, stop_price=0):
+def calc_allowed_qty(plan_price, stop_price=0, intent='B'):
     """
     计算允许购买数量（按手取整），取现金限制和风险额度限制的较小值
     止损价>=成交价时，仅按现金计算
     :param plan_price: 计划买入价
     :param stop_price: 止损价
+    :param intent: 'B'买入 / 'S'卖出
     :return: int 股数
     """
     config = CashConfig.get_config()
@@ -361,7 +362,12 @@ def calc_allowed_qty(plan_price, stop_price=0):
         by_cash = int(config.cash / price)
     # 风险额度限制
     remaining = config.allowance - config.risk
-    risk_per_share = price - Decimal(str(stop_price or 0))
+    if intent == 'S':
+        # 卖出：风险 = (止损价 - 成交价)
+        risk_per_share = Decimal(str(stop_price or 0)) - price
+    else:
+        # 买入：风险 = (成交价 - 止损价)
+        risk_per_share = price - Decimal(str(stop_price or 0))
     # 止损价>=成交价时，仅按现金计算
     if risk_per_share <= 0:
         return (by_cash // 100) * 100
@@ -417,30 +423,43 @@ def calc_fee(amount, intent, config):
     }
 
 
-def calc_risk_capital(buy_price, stop_price, qty):
+def calc_risk_capital(buy_price, stop_price, qty, intent='B'):
     """
-    风险资金 = (买入价 - 止损价) × 数量
-    买入价低于止损价时返回0
+    风险资金
+    买入：(买入价 - 止损价) × 数量
+    卖出：(止损价 - 卖出价) × 数量
+    风险为负时返回0
     """
-    buy = Decimal(str(buy_price))
+    price = Decimal(str(buy_price))
     stop = Decimal(str(stop_price))
     qty = int(qty)
-    if buy <= stop or qty <= 0:
+    if intent == 'S':
+        risk = (stop - price) * qty
+    else:
+        risk = (price - stop) * qty
+    if risk <= 0 or qty <= 0:
         return Decimal('0')
-    return _q((buy - stop) * qty)
+    return _q(risk)
 
 
-def calc_risk_reward_ratio(buy_price, target_price, stop_price):
+def calc_risk_reward_ratio(buy_price, target_price, stop_price, intent='B'):
     """
-    盈亏比 = (目标价 - 买入价) / (买入价 - 止损价)
+    盈亏比
+    买入：(目标价 - 买入价) / (买入价 - 止损价)
+    卖出：(卖出价 - 目标价) / (止损价 - 卖出价)
     :return: Decimal，无效时返回0
     """
-    buy = Decimal(str(buy_price))
+    price = Decimal(str(buy_price))
     target = Decimal(str(target_price))
     stop = Decimal(str(stop_price))
-    if buy <= 0 or buy <= stop or target <= buy:
-        return Decimal('0')
-    return _q((target - buy) / (buy - stop))
+    if intent == 'S':
+        if price <= 0 or stop <= price or target >= price:
+            return Decimal('0')
+        return _q((price - target) / (stop - price))
+    else:
+        if price <= 0 or price <= stop or target <= price:
+            return Decimal('0')
+        return _q((target - price) / (price - stop))
 
 
 def calc_estimated_profit(sell_price, qty, avg_cost, fee):
@@ -471,19 +490,31 @@ def get_price_decimal(code):
     return 2
 
 
-def calc_win_ratio(buy_price, target_price, stop_price):
-    """计算成功几率（0-99整数）"""
+def calc_win_ratio(buy_price, target_price, stop_price, intent='B'):
+    """计算成功几率（0-99整数）
+    买入：(目标价 - 成交价) / (目标价 - 止损价) × 99
+    卖出：(成交价 - 目标价) / (止损价 - 目标价) × 99
+    """
     try:
-        buy = float(buy_price or 0)
+        price = float(buy_price or 0)
         target = float(target_price or 0)
         stop = float(stop_price or 0)
     except (TypeError, ValueError):
         return 0
-    if buy <= 0:
+    if price <= 0:
         return 0
-    if stop >= buy:
-        return 99
-    if target <= buy:
-        return 0
-    prob = round((target - buy) / (target - stop) * 99)
+    if intent == 'S':
+        # 卖出：止损价 > 成交价 > 目标价
+        if stop <= price:
+            return 99
+        if target >= price:
+            return 0
+        prob = round((price - target) / (stop - target) * 99)
+    else:
+        # 买入：目标价 > 成交价 > 止损价
+        if stop >= price:
+            return 99
+        if target <= price:
+            return 0
+        prob = round((target - price) / (target - stop) * 99)
     return max(0, min(99, prob))

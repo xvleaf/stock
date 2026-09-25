@@ -186,8 +186,8 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
             # 记录卖出前的 profit（用于计算本次收益）
             profit_before = order.profit if order.pk else Decimal('0')
 
-            # 风险资金
-            risk_amount = cash_utils.calc_risk_capital(price, stop_price, qty)
+            # 风险资金（买入）
+            risk_amount = cash_utils.calc_risk_capital(price, stop_price, qty, 'B')
 
             # 创建成交明细
             deal = TransHistory.objects.create(
@@ -216,7 +216,7 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
 
             # 保存该笔交易后的持仓快照
             deal.profit = order.profit
-            deal.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, target_price, stop_price) if order.position_qty > 0 else 0
+            deal.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, target_price, stop_price, 'B') if order.position_qty > 0 else 0
             deal.risk_amount = order.risk_amount
             deal.position_qty = order.position_qty
             deal.avg_cost = order.avg_cost
@@ -305,7 +305,7 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
 
             # 保存该笔交易后的持仓快照
             deal.profit = order.profit
-            deal.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price) if order.position_qty > 0 else 0
+            deal.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price, 'S') if order.position_qty > 0 else 0
             deal.risk_amount = order.risk_amount
             deal.position_qty = order.position_qty
             deal.avg_cost = order.avg_cost
@@ -437,7 +437,7 @@ def get_trans_data_dict(order, history=None):
             'risk_amount': round(float(order.risk_amount), 2),
             'target_price': round(float(order.target_price), deci) if order.target_price else '',
             'stop_price': round(float(order.stop_price), deci) if order.stop_price else '',
-            'win_ratio': cash_utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price) if order.position_qty > 0 else 0,
+            'win_ratio': cash_utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price, order.focus.intent if order.focus else 'B') if order.position_qty > 0 else 0,
             'allowed_qty': 0,
             'comments': comments_text,
         }
@@ -596,11 +596,9 @@ def trans_edit(request, market, code):
             old_risk = order.risk_amount
             order.target_price = Decimal(target_price) if target_price else Decimal('0')
             order.stop_price = Decimal(stop_price) if stop_price else Decimal('0')
-            # 重新计算风险资金
-            if order.position_qty > 0 and order.stop_price and order.avg_cost_no_fee > order.stop_price:
-                order.risk_amount = (order.avg_cost_no_fee - order.stop_price) * order.position_qty
-            else:
-                order.risk_amount = Decimal('0')
+            # 重新计算风险资金（根据交易方向）
+            edit_intent = order.focus.intent if order.focus else 'B'
+            order.risk_amount = cash_utils.calc_risk_capital(order.avg_cost_no_fee, order.stop_price, order.position_qty, edit_intent)
             order.save()
             # 更新 config.risk
             config.risk = config.risk - old_risk + order.risk_amount
@@ -611,7 +609,7 @@ def trans_edit(request, market, code):
             deal = TransHistory.objects.create(
                 order=order,
                 action=TransHistory.ACTION_EDIT,
-                intent='B',
+                intent=edit_intent,
                 date=datetime.datetime.strptime(update_date, '%Y-%m-%d').date() if update_date else timezone.now().date(),
                 target_price=order.target_price,
                 stop_price=order.stop_price,
@@ -619,7 +617,7 @@ def trans_edit(request, market, code):
             )
             # 保存该笔编辑后的持仓快照
             deal.profit = order.profit
-            deal.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price) if order.position_qty > 0 else 0
+            deal.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price, edit_intent) if order.position_qty > 0 else 0
             deal.risk_amount = order.risk_amount
             deal.position_qty = order.position_qty
             deal.avg_cost = order.avg_cost

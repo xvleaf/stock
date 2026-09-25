@@ -325,6 +325,13 @@ export function initFocusPlus(config) {
         updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', config.cash, config.available);
     });
 
+    // 交易方向变化时重新计算
+    const intentSelPlus = document.querySelector('[name="intent_choice"]');
+    intentSelPlus?.addEventListener('change', () => {
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', config.cash, config.available);
+        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    });
+
     // cat_choice 变化时动态更新价格字段 step
     catSel?.addEventListener('change', () => {
         const step = catSel.value === 'fund' || catSel.value === 'bond' ? '0.001' : '0.01';
@@ -427,6 +434,13 @@ export function initFocusEdit(config) {
         updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
     });
 
+    // 交易方向变化时重新计算
+    const intentSelEdit = document.querySelector('[name="intent_choice"]');
+    intentSelEdit?.addEventListener('change', () => {
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
+        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    });
+
     // 初始计算
     updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
     updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
@@ -438,6 +452,22 @@ export function initFocusEdit(config) {
  * @param {string} stopId - 止损价格输入框 ID
  * @param {string} ratioId - 胜率输入框 ID
  */
+/**
+ * 获取当前交易方向
+ */
+function getIntent() {
+    const intentEl = document.querySelector('[name="intent_choice"]');
+    if (intentEl) {
+        if (intentEl.tagName === 'SELECT') {
+            return intentEl.value;
+        } else {
+            // 只读文本框，根据显示值判断
+            return intentEl.value === '卖出' ? 'S' : 'B';
+        }
+    }
+    return 'B';
+}
+
 function updateWinRatio(priceId, targetId, stopId, ratioId) {
     const priceEl = document.getElementById(priceId);
     const targetEl = document.getElementById(targetId);
@@ -448,8 +478,9 @@ function updateWinRatio(priceId, targetId, stopId, ratioId) {
     const buy = parseFloat(priceEl.value) || 0;
     const target = parseFloat(targetEl.value) || 0;
     const stop = parseFloat(stopEl.value) || 0;
+    const intent = getIntent();
 
-    const ratio = calcWinRatio(buy, target, stop);
+    const ratio = calcWinRatio(buy, target, stop, intent);
     ratioEl.value = ratio;
     ratioEl.style.color = (ratio === 0 || ratio === 99) ? '#00008B' : '';
     ratioEl.style.fontWeight = (ratio === 0 || ratio === 99) ? 'bold' : '';
@@ -471,7 +502,8 @@ function updateAllowedQty(priceId, allowedId, stopId, cash, riskBudget) {
 
     const price = parseFloat(priceEl.value) || 0;
     const stop = parseFloat(stopEl?.value) || 0;
-    const qty = calcAllowedQty(price, stop, cash, riskBudget);
+    const intent = getIntent();
+    const qty = calcAllowedQty(price, stop, cash, riskBudget, intent);
     allowedEl.value = qty;
     // 超限检查（计划数量 > 允许数量时高亮）
     const planQty = parseInt(document.getElementById('id_plan_qty')?.value) || 0;

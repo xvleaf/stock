@@ -111,8 +111,8 @@ def focus_plus(request):
                     focus.code = code
                     focus.market = market
                     focus.cat = cat
-                    focus.win_ratio = cash.calc_win_ratio(focus.plan_price, focus.target_price, focus.stop_price)
-                    focus.allowed_qty = cash.calc_allowed_qty(focus.plan_price)
+                    focus.win_ratio = cash.calc_win_ratio(focus.plan_price, focus.target_price, focus.stop_price, focus.intent)
+                    focus.allowed_qty = cash.calc_allowed_qty(focus.plan_price, focus.stop_price, focus.intent)
                     max_sort = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).count()
                     focus.sort_order = max_sort
                     focus.save()
@@ -151,8 +151,9 @@ def focus_view(request, market, code):
         if form.is_valid():
             with transaction.atomic():
                 updated = form.save(commit=False)
-                updated.win_ratio = cash.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price)
-                updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price)
+                updated.intent = form.cleaned_data['intent_choice']
+                updated.win_ratio = cash.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price, updated.intent)
+                updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price, updated.stop_price, updated.intent)
                 updated.updated_at = updated.focus_date 
                 updated.save()
                 updated.save_history(action='edit')
@@ -217,8 +218,8 @@ def focus_edit(request, market, code):
             with transaction.atomic():
                 updated = form.save(commit=False)
                 updated.intent = form.cleaned_data['intent_choice']
-                updated.win_ratio = cash.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price)
-                updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price)
+                updated.win_ratio = cash.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price, updated.intent)
+                updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price, updated.stop_price, updated.intent)
                 updated.updated_at = updated.focus_date
                 updated.save()
                 updated.save_history(action='edit')

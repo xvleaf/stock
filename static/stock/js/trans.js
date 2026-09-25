@@ -114,14 +114,14 @@ export function initTransDeal(opts = {}) {
 
         // 允许数量
         if (intent === 'B') {
-            allowedInput.value = calcAllowedQty(price, stop, cash, available);
+            allowedInput.value = calcAllowedQty(price, stop, cash, available, 'B');
         } else {
             allowedInput.value = positionQty;
         }
 
         // 盈利机会（仅买入时自动计算）
         if (intent === 'B' && !winInput.readOnly) {
-            winInput.value = calcWinRatio(price, target, stop);
+            winInput.value = calcWinRatio(price, target, stop, 'B');
         }
 
         // 成交数量超过允许数量时，成交数量变红加粗
@@ -344,8 +344,8 @@ export function initTransEdit(opts = {}) {
             riskInput.value = '0.00';
         }
 
-        // 盈利机会
-        winInput.value = calcWinRatio(avgCost, target, stop);
+        // 盈利机会（持仓股票默认买入逻辑）
+        winInput.value = calcWinRatio(avgCost, target, stop, 'B');
     }
 
     targetInput.addEventListener('input', updateCalculations);

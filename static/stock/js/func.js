@@ -398,12 +398,19 @@ export function showFormModal({ title, formHtml, confirmText = '确定', cancelT
  * @param {number} riskBudget - 剩余风险额度（allowance - risk）
  * @returns {number} 股数（100的整数倍）
  */
-export function calcAllowedQty(price, stopPrice, cash, riskBudget) {
+export function calcAllowedQty(price, stopPrice, cash, riskBudget, intent='B') {
     const p = parseFloat(price) || 0;
     const s = parseFloat(stopPrice) || 0;
     if (p <= 0) return 0;
     const byCash = cash > 0 ? Math.floor(cash / p) : 0;
-    const riskPerShare = p - s;
+    let riskPerShare;
+    if (intent === 'S') {
+        // 卖出：风险 = (止损价 - 成交价)
+        riskPerShare = s - p;
+    } else {
+        // 买入：风险 = (成交价 - 止损价)
+        riskPerShare = p - s;
+    }
     if (riskPerShare <= 0) return Math.floor(byCash / 100) * 100;
     const byRisk = riskBudget > 0 ? Math.floor(riskBudget / riskPerShare) : 0;
     return Math.floor(Math.min(byCash, byRisk) / 100) * 100;
@@ -411,16 +418,28 @@ export function calcAllowedQty(price, stopPrice, cash, riskBudget) {
 
 /**
  * 通用：计算盈利机会（0-99）
+ * 买入：(目标价 - 成交价) / (目标价 - 止损价) × 99
+ * 卖出：(成交价 - 目标价) / (止损价 - 目标价) × 99
  * @param {number} price - 成交价
  * @param {number} targetPrice - 目标价
  * @param {number} stopPrice - 止损价
+ * @param {string} intent - 'B'买入 / 'S'卖出
  * @returns {number} 盈利机会百分比
  */
-export function calcWinRatio(price, targetPrice, stopPrice) {
+export function calcWinRatio(price, targetPrice, stopPrice, intent='B') {
     const p = parseFloat(price) || 0;
     const t = parseFloat(targetPrice) || 0;
     const s = parseFloat(stopPrice) || 0;
-    if (p <= 0 || t <= p) return 0;
-    if (s >= p) return 99;
-    return Math.max(0, Math.min(99, Math.round((t - p) / (t - s) * 99)));
+    if (p <= 0) return 0;
+    if (intent === 'S') {
+        // 卖出：止损价 > 成交价 > 目标价
+        if (s <= p) return 99;
+        if (t >= p) return 0;
+        return Math.max(0, Math.min(99, Math.round((p - t) / (s - t) * 99)));
+    } else {
+        // 买入：目标价 > 成交价 > 止损价
+        if (t <= p) return 0;
+        if (s >= p) return 99;
+        return Math.max(0, Math.min(99, Math.round((t - p) / (t - s) * 99)));
+    }
 }
