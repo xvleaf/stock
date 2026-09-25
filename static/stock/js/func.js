@@ -171,7 +171,7 @@ export function updateFormData(data) {
         }
     }
 
-    // 历史指示器更新
+    // 历史指示器更新（trans）
     const pilotWrap = document.getElementById('transPilotWrap');
     const pilotIndicator = document.getElementById('transPilotIndicator');
     if (pilotIndicator && data.pilot_idx !== undefined && data.pilot_total !== undefined) {
@@ -190,7 +190,24 @@ export function updateFormData(data) {
         }
     }
 
-    // 历史模式下文字变灰，汇总模式恢复
+    // 历史指示器更新（focus）
+    const focusPilotWrap = document.getElementById('focusPilotWrap');
+    const focusPilotIndicator = document.getElementById('focusPilotIndicator');
+    if (focusPilotIndicator && data.pilot_idx !== undefined && data.pilot_total !== undefined) {
+        const isSummary = data.is_summary === true || data.pilot_idx === -1;
+        if (focusPilotWrap) {
+            if (isSummary) {
+                focusPilotWrap.classList.add('d-none');
+            } else {
+                focusPilotWrap.classList.remove('d-none');
+            }
+        }
+        if (!isSummary) {
+            focusPilotIndicator.textContent = `第 ${data.pilot_idx + 1} / ${data.pilot_total} 笔`;
+        }
+    }
+
+    // 历史模式下文字变灰，汇总模式恢复（trans）
     if (data.is_summary === false || (data.pilot_idx !== undefined && data.pilot_idx >= 0)) {
         document.querySelectorAll('#transViewForm .readonly-field').forEach(el => {
             el.style.color = '#6c757d';
@@ -199,6 +216,39 @@ export function updateFormData(data) {
         document.querySelectorAll('#transViewForm .readonly-field').forEach(el => {
             el.style.color = '';
         });
+    }
+
+    // 历史模式下文字变灰，汇总模式恢复（focus）
+    if (data.is_summary === false || (data.pilot_idx !== undefined && data.pilot_idx >= 0)) {
+        document.querySelectorAll('#focusForm input, #focusForm select, #focusForm textarea').forEach(el => {
+            el.style.color = '#6c757d';
+        });
+    } else {
+        document.querySelectorAll('#focusForm input, #focusForm select, #focusForm textarea').forEach(el => {
+            el.style.color = '';
+        });
+    }
+
+    // 更新 pilot 按钮状态
+    if (data.pilotPrev !== undefined) {
+        const pilotPrevItem = document.getElementById('pilotPrevItem');
+        if (pilotPrevItem) {
+            if (data.pilotPrev) {
+                pilotPrevItem.classList.remove('disabled');
+            } else {
+                pilotPrevItem.classList.add('disabled');
+            }
+        }
+    }
+    if (data.pilotNext !== undefined) {
+        const pilotNextItem = document.getElementById('pilotNextItem');
+        if (pilotNextItem) {
+            if (data.pilotNext) {
+                pilotNextItem.classList.remove('disabled');
+            } else {
+                pilotNextItem.classList.add('disabled');
+            }
+        }
     }
 }
 

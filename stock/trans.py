@@ -485,6 +485,7 @@ def trans_view(request, market, code):
     histories = list(order.histories.all().order_by('date', 'id'))
     # 进入页面时强制重置为汇总模式（pilot_idx=-1）
     func.set_cache(request.session, f'{site}-pilot', -1)
+    func.delete_cache(request.session, f'{site}-navi-data')
     pilot_idx = -1
 
     is_summary = (pilot_idx < 0)

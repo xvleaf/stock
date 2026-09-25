@@ -1,5 +1,5 @@
 {% extends "base-view.html" %}
-{% block title %}添加股票{% endblock %}
+{% block title %}编辑关注{% endblock %}
 {% load static %}
 
 {% block extra_css %}
@@ -20,39 +20,44 @@
     {% endif %}
 
     {# 填写表格 #}
-    <form method="post" id="focusForm" action="{% url 'focus_plus' %}">
+    <form method="post" id="focusForm">
         {% csrf_token %}
+        {# 隐藏字段：确保表单验证通过 #}
+        <input type="hidden" name="cat_choice" value="{{ focus.cat }}">
+        <input type="hidden" name="market_choice" value="{{ focus.market }}">
+        <input type="hidden" name="code" value="{{ focus.code }}">
+        <input type="hidden" name="name" value="{{ focus.name }}">
 
         <div class="row">
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
                     <label class="form-label">股票类型</label>
-                    {{ form.cat_choice }}
+                    <input type="text" class="form-control" value="{{ cat_display }}" readonly>
                 </div>
             </div>
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
                     <label class="form-label">股票市场</label>
-                    {{ form.market_choice }}
+                    <input type="text" class="form-control" value="{{ market_display }}" readonly>
                 </div>
             </div>
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
                     <label class="form-label">股票代码</label>
-                    {{ form.code }}
+                    <input type="text" class="form-control" value="{{ stock_code }}" readonly>
                 </div>
             </div>
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
                     <label class="form-label">股票名称</label>
-                    {{ form.name }}
+                    <input type="text" class="form-control" value="{{ stock_name }}" readonly>
                 </div>
             </div>
         </div>
         <div class="row">
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
-                    <label class="form-label">关注日期</label>
+                    <label class="form-label">更新日期</label>
                     {{ form.focus_date }}
                 </div>
             </div>
@@ -97,13 +102,13 @@
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
                     <label class="form-label">目标价格</label>
-                    {{ form.target_price }}
+                    <input type="text" name="target_price" id="id_target_price" class="form-control" value="{{ form.target_price.value|default_if_none:'' }}">
                 </div>
             </div>
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
                     <label class="form-label">止损价格</label>
-                    {{ form.stop_price }}
+                    <input type="text" name="stop_price" id="id_stop_price" class="form-control" value="{{ form.stop_price.value|default_if_none:'' }}">
                 </div>
             </div>
         </div>
@@ -113,7 +118,7 @@
         </div>
         <div class="d-flex">
             <button type="button" class="btn btn-outline-secondary me-2" onclick="history.back()">取消</button>
-            <button type="submit" class="btn btn-primary ms-auto">关注</button>
+            <button type="submit" class="btn btn-primary ms-auto">保存</button>
         </div>
     </form>
 </div>
@@ -124,10 +129,10 @@
 <script src="{% static 'base/lib/Highcharts/js/highstock.js' %}"></script>
 <script type="module">    
     import { baseInit } from "{% static 'base/js/base.js' %}";
-    import { initFocusPlus } from "{% static 'stock/js/focus.js' %}";
+    import { initFocusEdit } from "{% static 'stock/js/focus.js' %}";
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
-        initFocusPlus({
+        initFocusEdit({
             cash: {{ cash|floatformat:2 }},
             available: {{ available|floatformat:2 }},
             initChart: {{ chart|safe }}

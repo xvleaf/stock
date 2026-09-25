@@ -224,7 +224,8 @@ class FocusStock(models.Model):
         FocusHistory.objects.create(
             focus=self, 
             action=action,
-            edit_date=self.updated_at,
+            edit_date=self.focus_date,
+            intent=self.intent,
             plan_price=self.plan_price,
             plan_qty=self.plan_qty,
             target_price=self.target_price,

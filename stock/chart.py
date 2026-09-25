@@ -176,26 +176,40 @@ def chart_view_api(request):
                 # 将 html 和 chart 配置附加到 detail
                 detail['html'] = html_content
                 detail['chart'] = context
-                # pilot 切换时附加指示器数据
+                # 统一添加 pilot 相关数据
+                detail['pilot_idx'] = navi_data['navi_params']['pilotIndex']
+                detail['pilot_total'] = navi_data['navi_params']['pilotCount']
+                detail['is_summary'] = (navi_data['navi_params']['pilotIndex'] == -1)
+                detail['pilotPrev'] = navi_data.get('navi_params', {}).get('pilotPrev', False)
+                detail['pilotNext'] = navi_data.get('navi_params', {}).get('pilotNext', False)
+                # pilot 切换时附加指示器数据（pilot_date/pilot_action）
                 if param_func == 'pilot':
                     pilot_idx = navi_data['navi_params']['pilotIndex']
-                    pilot_total = navi_data['navi_params']['pilotCount']
                     pilot_list = navi_data.get('pilot_list', [])
                     pilot_date = ''
                     pilot_action = ''
                     is_summary = (pilot_idx == -1)
                     if not is_summary and pilot_list and 0 <= pilot_idx < len(pilot_list):
                         pilot_date = pilot_list[pilot_idx][1].strftime('%Y-%m-%d') if pilot_list[pilot_idx][1] else ''
-                        # 获取操作类型
-                        from .trans import TransHistory
-                        history = TransHistory.objects.filter(id=pilot_list[pilot_idx][0]).first()
-                        if history:
-                            pilot_action = history.get_action_display()
-                    detail['pilot_idx'] = pilot_idx
-                    detail['pilot_total'] = pilot_total
+                        # 仅 trans/view 获取操作类型
+                        if param_site in ['/trans/view', '/review/trans/view']:
+                            from .trans import TransHistory
+                            history = TransHistory.objects.filter(id=pilot_list[pilot_idx][0]).first()
+                            if history:
+                                pilot_action = history.get_action_display()
                     detail['pilot_date'] = pilot_date
                     detail['pilot_action'] = pilot_action
-                    detail['is_summary'] = is_summary
+                    # 汇总模式下，focus/view 返回汇总备注
+                    if is_summary and param_site in ['/focus/view', '/review/focus/view']:
+                        from .models.models import FocusStock
+                        focus_inst = FocusStock.objects.filter(code=code, market=market).first()
+                        if focus_inst:
+                            comments_list = []
+                            for h in focus_inst.histories.all().order_by('edit_date'):
+                                if h.comments:
+                                    date_str = h.edit_date.strftime('%Y-%m-%d') if h.edit_date else ''
+                                    comments_list.append(f'{date_str}：{h.comments}')
+                            detail['comments'] = '\n'.join(comments_list)
                 return JsonResponse(detail)
             else:
                 return JsonResponse({'error': '股票不存在'}, status=404)
@@ -393,8 +407,8 @@ def set_navi_data(session, site, code, market, function, action):
             showPilot = True
             pilot_list = get_pilot_list(site, code, market)
             pilot_total = len(pilot_list)
-            if site in ['/trans/view', '/review/trans/view']:
-                # trans/view: pilot_idx=-1 表示汇总
+            if site in ['/trans/view', '/review/trans/view', '/focus/view', '/review/focus/view']:
+                # trans/view 和 focus/view: pilot_idx=-1 表示汇总
                 pilot_idx = func.get_cache(session, f'{site}-pilot', -1)
                 if pilot_idx >= pilot_total:
                     pilot_idx = pilot_total - 1
@@ -425,9 +439,18 @@ def set_navi_data(session, site, code, market, function, action):
         return {}
     code, market = navi_list[navi_idx]
 
+    # 切换股票后，重新获取新股票的 pilot_list 并重置为汇总模式
+    if function == 'navi' and showPilot:
+        pilot_list = get_pilot_list(site, code, market)
+        pilot_total = len(pilot_list)
+        pilot_idx = -1
+        func.set_cache(session, f'{site}-pilot', -1)
+
     if showPilot and function == 'pilot':
-        if site in ['/trans/view', '/review/trans/view']:
-            # trans/view: up=prev(更早), down=next(更晚/汇总)
+        if pilot_total <= 0:
+            pilot_idx = -1
+        elif site in ['/trans/view', '/review/trans/view', '/focus/view', '/review/focus/view']:
+            # trans/view 和 focus/view: up=prev(更早), down=next(更晚/汇总)
             if action == 'prev':
                 if pilot_idx == -1:
                     pilot_idx = pilot_total - 1  # 汇总 → 最近一笔
@@ -443,7 +466,7 @@ def set_navi_data(session, site, code, market, function, action):
             pilot_idx += shift
 
     # pilot 按钮可用性
-    if site in ['/trans/view', '/review/trans/view']:
+    if site in ['/trans/view', '/review/trans/view', '/focus/view', '/review/focus/view']:
         # up(prev): 汇总时 pilot_total>1 可用；历史时 i>0 可用
         pilotPrev = (pilot_idx == -1 and pilot_total > 1) or (pilot_idx > 0)
         # down(next): 汇总时禁用；历史时始终可用（最近一笔点down回汇总）

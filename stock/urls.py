@@ -26,6 +26,7 @@ urlpatterns = [
     path('focus/plus', focus.focus_plus, name='focus_plus'),
     path('focus/close/<str:market>/<str:code>', focus.focus_close, name='focus_close'),
     path('focus/view/<str:market>/<str:code>', focus.focus_view, name='focus_view'),
+    path('focus/edit/<str:market>/<str:code>', focus.focus_edit, name='focus_edit'),
     # ---- 图表 ----
     path('chart/data', chart.chart_data_api, name='chart_data_api'),
     path('chart/view', chart.chart_view_api, name='chart_view_api'),

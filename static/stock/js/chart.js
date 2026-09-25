@@ -86,9 +86,7 @@ function _renderChartPage(res) {
                         editBtn.dataset.bound = 'true';
                         editBtn.addEventListener('click', (e) => {
                             e.stopPropagation();
-                            const saveBtn = document.getElementById('saveBtn');
-                            const isEditing = !saveBtn?.classList.contains('d-none');
-                            editAction(!isEditing);
+                            window.location.href = `/focus/edit/${pageConfig.market}/${pageConfig.code}`;
                         });
                     } else if (e.detail && e.detail.site === '/trans/view') {
                         const editBtn = document.getElementById('editBtn');
@@ -615,40 +613,6 @@ function hideAction() {
             }
         });
     });
-}
-
-export function editAction(enable) {
-    const form = document.getElementById('focusForm');
-    const editFieldIds = [
-        'id_focus_date', 
-        'id_plan_price', 
-        'id_plan_qty', 
-        'id_target_price', 
-        'id_stop_price',
-        'id_comments'
-    ];
-    const inputs = form.querySelectorAll('input, textarea');
-    const trendParam = document.getElementById('trendParam');
-    const saveBtn = document.getElementById('saveBtn');
-    const cancelBtn = document.getElementById('cancelEditBtn');
-
-    inputs.forEach(input => {
-        if (editFieldIds.includes(input.id)) {
-            input.readOnly = !enable;
-            // 进入编辑模式时，将日期设为今天
-            if (enable && input.id === 'id_focus_date') {
-                const today = new Date().toISOString().split('T')[0];
-                input.value = today;
-            }
-        } else {
-            input.readOnly = true;
-        }
-    }); 
-
-    trendParam?.classList.toggle('d-none', enable);
-    saveBtn?.classList.toggle('d-none', !enable);
-    cancelBtn?.classList.toggle('d-none', !enable);  
-    cancelBtn?.addEventListener('click', () => window.location.reload());
 }
 
 function exitEventListen() {

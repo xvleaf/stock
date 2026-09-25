@@ -165,7 +165,7 @@
                 </div>
                 <div class="mb-2">
                     <label class="form-label small mb-1">金额</label>
-                    <input type="number" id="modalAdjustAmount" class="form-control form-control-sm" placeholder="单位：元" step="0.01" min="0">
+                    <input type="text" id="modalAdjustAmount" class="form-control form-control-sm" placeholder="单位：元">
                 </div>
                 <div class="mb-2">
                     <label class="form-label small mb-1">备注</label>
@@ -190,7 +190,7 @@
             <div class="modal-body pt-0">
                 <div class="mb-2">
                     <label class="form-label small mb-1">金额</label>
-                    <input type="number" id="modalQuotaAmount" class="form-control form-control-sm" placeholder="单位：元" step="0.01" min="0">
+                    <input type="text" id="modalQuotaAmount" class="form-control form-control-sm" placeholder="单位：元">
                 </div>
             </div>
             <div class="modal-footer py-2 justify-content-between border-top-0">
@@ -215,31 +215,31 @@
                 </div>
                 <div class="mb-2">
                     <label class="form-label small mb-1">现金资产</label>
-                    <input type="number" id="modalInitCash" class="form-control form-control-sm" placeholder="单位：元" step="0.01" min="0">
+                    <input type="text" id="modalInitCash" class="form-control form-control-sm" placeholder="单位：元">
                 </div>
                 <div class="mb-2">
                     <label class="form-label small mb-1">股票资产</label>
-                    <input type="number" id="modalInitStock" class="form-control form-control-sm" placeholder="单位：元" step="0.01" min="0">
+                    <input type="text" id="modalInitStock" class="form-control form-control-sm" placeholder="单位：元">
                 </div>
                 <div class="mb-2">
                     <label class="form-label small mb-1">风险额度</label>
-                    <input type="number" id="modalInitAllowance" class="form-control form-control-sm" placeholder="单位：元" step="0.01" min="0">
+                    <input type="text" id="modalInitAllowance" class="form-control form-control-sm" placeholder="单位：元">
                 </div>
                 <div class="mb-2">
                     <label class="form-label small mb-1">佣金费率</label>
-                    <input type="number" id="modalInitCommissionRatio" class="form-control form-control-sm" placeholder="佣金费率" step="0.00001" min="0" value="{{ config.commission_ratio }}">
+                    <input type="text" id="modalInitCommissionRatio" class="form-control form-control-sm" placeholder="佣金费率" value="{{ config.commission_ratio }}">
                 </div>
                 <div class="mb-2">
                     <label class="form-label small mb-1">最低佣金</label>
-                    <input type="number" id="modalInitCommissionMin" class="form-control form-control-sm" placeholder="单位：元" step="0.01" min="0" value="{{ config.commission_min }}">
+                    <input type="text" id="modalInitCommissionMin" class="form-control form-control-sm" placeholder="单位：元" value="{{ config.commission_min }}">
                 </div>
                 <div class="mb-2">
                     <label class="form-label small mb-1">印花税率（买入）</label>
-                    <input type="number" id="modalInitStampBuy" class="form-control form-control-sm" placeholder="买入印花税率" step="0.00001" min="0" value="{{ config.stamp_buy_ratio }}">
+                    <input type="text" id="modalInitStampBuy" class="form-control form-control-sm" placeholder="买入印花税率" value="{{ config.stamp_buy_ratio }}">
                 </div>
                 <div class="mb-0">
                     <label class="form-label small mb-1">印花税率（卖出）</label>
-                    <input type="number" id="modalInitStampSell" class="form-control form-control-sm" placeholder="卖出印花税率" step="0.00001" min="0" value="{{ config.stamp_sell_ratio }}">
+                    <input type="text" id="modalInitStampSell" class="form-control form-control-sm" placeholder="卖出印花税率" value="{{ config.stamp_sell_ratio }}">
                 </div>
             </div>
             <div class="modal-footer py-2 justify-content-between border-top-0">

@@ -70,17 +70,17 @@ class FocusStockForm(forms.ModelForm):
             'name': forms.TextInput(attrs={
                 'class': 'form-control', 'id': 'id_name_input', 'readonly': 'readonly',
             }),
-            'plan_price': forms.NumberInput(attrs={
-                'class': 'form-control','step': '0.01', 'id': 'id_plan_price',
+            'plan_price': forms.TextInput(attrs={
+                'class': 'form-control', 'id': 'id_plan_price',
             }),
             'plan_qty': forms.NumberInput(attrs={
                 'class': 'form-control', 'id': 'id_plan_qty',
             }),
-            'target_price': forms.NumberInput(attrs={
-                'class': 'form-control','step': '0.01', 'id': 'id_target_price',
+            'target_price': forms.TextInput(attrs={
+                'class': 'form-control', 'id': 'id_target_price',
             }),
-            'stop_price': forms.NumberInput(attrs={
-                'class': 'form-control','step': '0.01', 'id': 'id_stop_price',
+            'stop_price': forms.TextInput(attrs={
+                'class': 'form-control', 'id': 'id_stop_price',
             }),
             'allowed_qty': forms.NumberInput(attrs={
                 'class': 'form-control', 'readonly': True, 'id': 'id_allowed_qty',
@@ -100,12 +100,23 @@ class FocusStockForm(forms.ModelForm):
         instance = kwargs.get('instance')
         super().__init__(*args, **kwargs)
 
+        # 根据股票类型设置价格字段精度（无论是否有 instance）
+        cat_val = None
         if instance:
-            # 根据股票类型设置价格字段精度
-            step = '0.001' if instance.cat in ('fund', 'bond') else '0.01'
-            for field_name in ('plan_price', 'target_price', 'stop_price'):
-                if field_name in self.fields:
-                    self.fields[field_name].widget.attrs['step'] = step
+            cat_val = instance.cat
+        elif 'cat_choice' in self.data:
+            cat_val = self.data.get('cat_choice')
+        elif self.initial.get('cat_choice'):
+            cat_val = self.initial.get('cat_choice')
+        step = '0.001' if cat_val in ('fund', 'bond') else '0.01'
+        deci = 3 if cat_val in ('fund', 'bond') else 2
+        for field_name in ('plan_price', 'target_price', 'stop_price'):
+            if field_name in self.fields:
+                self.fields[field_name].widget.attrs['step'] = step
+                # 格式化初始值（仅 GET 请求时生效，POST 时用 request.POST 的值）
+                val = self.initial.get(field_name)
+                if val is not None and val != '':
+                    self.initial[field_name] = f"{float(val):.{deci}f}"
 
         # 处理编辑（非只读）时的初始值
         if instance and not view_mode:

@@ -105,6 +105,7 @@ def focus_plus(request):
             else:
                 with transaction.atomic():
                     focus = form.save(commit=False)
+                    focus.intent = form.cleaned_data['intent_choice']
                     focus.created_at = focus.focus_date
                     focus.updated_at = focus.focus_date
                     focus.code = code
@@ -159,16 +160,26 @@ def focus_view(request, market, code):
         
         return redirect('focus_view', market=market, code=code)
     else:
-        navi_data = func.get_cache(request.session, f'{site}-navi-data', {})
-        if (site, code, market) != navi_data.get('site_code_market', None):
-            navi_data = chart.set_navi_data(request.session, site, code, market, 'pilot', 'init')
+        # 历史记录（所有操作按时间排序）
+        histories = list(focus.histories.all().order_by('edit_date'))
+        # 进入页面时强制重置为汇总模式（pilot_idx=-1）
+        func.set_cache(request.session, f'{site}-pilot', -1)
+        func.delete_cache(request.session, f'{site}-navi-data')
+        pilot_idx = -1
+        is_summary = True
 
-        histories = focus.histories.all().order_by('edit_date') if focus else None
-        pilot_idx = navi_data.get('navi_params', {}).get('pilotIndex', 0)
-        pilot_history = histories[pilot_idx] if histories and pilot_idx < len(histories) else None
-        is_latest = (not histories) or (pilot_idx == len(histories) - 1)
+        navi_data = chart.set_navi_data(request.session, site, code, market, 'focus', 'init')
 
-        initial_data = get_focus_data_dict(focus, pilot_history)
+        # 汇总模式：备注汇总所有历史记录的备注
+        comments_list = []
+        for h in histories:
+            if h.comments:
+                date_str = h.edit_date.strftime('%Y-%m-%d') if h.edit_date else ''
+                comments_list.append(f'{date_str}：{h.comments}')
+        comments_text = '\n'.join(comments_list)
+
+        initial_data = get_focus_data_dict(focus, None)
+        initial_data['comments'] = comments_text
 
         # 因为表单是 ModelForm，同时传入 instance 和 initial，initial 会覆盖显示值
         form = FocusStockForm(instance=focus, initial=initial_data, view_mode=True)
@@ -183,15 +194,78 @@ def focus_view(request, market, code):
             'view': view_mode,
             'backUrl': func.get_view_back(request.session) or '/focus/list',
         }
-        
+
         return render(request, 'focus-view.html', {
             'form': form,
             'chart': json.dumps(chart_init),
-            'edit_mode': False,
-            'is_latest': is_latest,
+            'is_summary': is_summary,
+            'pilot_idx': pilot_idx,
+            'pilot_total': len(histories),
             'cash': CashConfig.get_config().cash,
             'available': CashConfig.get_config().allowance - CashConfig.get_config().risk,
         })
+
+
+def focus_edit(request, market, code):
+    """编辑关注股票页面"""
+    site = '/focus/edit'
+    focus = get_object_or_404(FocusStock, code=code, market=market, status=FocusStock.STATUS_WATCHING)
+
+    if request.method == 'POST':
+        form = FocusStockForm(request.POST, instance=focus)
+        if form.is_valid():
+            with transaction.atomic():
+                updated = form.save(commit=False)
+                updated.intent = form.cleaned_data['intent_choice']
+                updated.win_ratio = cash.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price)
+                updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price)
+                updated.updated_at = updated.focus_date
+                updated.save()
+                updated.save_history(action='edit')
+            func.delete_cache(request.session, '/focus/view-navi-data')
+            return redirect('focus_view', market=market, code=code)
+    else:
+        # 自动填入数据库数据，更新日期默认为今天
+        initial = {
+            'focus_date': timezone.now().date(),
+            'plan_price': focus.plan_price,
+            'plan_qty': focus.plan_qty,
+            'target_price': focus.target_price,
+            'stop_price': focus.stop_price,
+            'win_ratio': focus.win_ratio,
+            'allowed_qty': focus.allowed_qty,
+            'comments': focus.comments,
+            'intent_choice': focus.intent,
+        }
+        form = FocusStockForm(instance=focus, initial=initial)
+
+    cat_display = dict(CAT_CHOICES).get(focus.cat, focus.cat)
+    market_display = dict(MARKET_CHOICES).get(focus.market, focus.market)
+    intent_display = dict(INTENT_CHOICES).get(focus.intent, focus.intent)
+
+    view_mode = func.get_cache(request.session, 'view', 'kline')
+    chart_init = {
+        'site': site,
+        'code': code,
+        'market': market,
+        'name': focus.name,
+        'cat': focus.cat,
+        'view': view_mode,
+        'backUrl': f'/focus/view/{market}/{code}',
+    }
+
+    return render(request, 'focus-edit.html', {
+        'form': form,
+        'focus': focus,
+        'stock_code': focus.code,
+        'stock_name': focus.name,
+        'cat_display': cat_display,
+        'market_display': market_display,
+        'intent_display': intent_display,
+        'cash': CashConfig.get_config().cash,
+        'available': CashConfig.get_config().allowance - CashConfig.get_config().risk,
+        'chart': json.dumps(chart_init),
+    })
 
 
 @require_http_methods(["POST"])

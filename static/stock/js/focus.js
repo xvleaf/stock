@@ -1,4 +1,4 @@
-import { chartPageContainer, initChartPage, destroyChart, editAction, setPageConfig } from './chart.js';
+import { chartPageContainer, initChartPage, destroyChart, setPageConfig } from './chart.js';
 import { postRequest, refreshQuotes, calcAllowedQty, calcWinRatio } from './func.js';
 
 // ===================== focus-list 页面 =====================
@@ -325,7 +325,15 @@ export function initFocusPlus(config) {
         updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', config.cash, config.available);
     });
 
-    // catSel?.addEventListener('change', () => {clearFormErr(); fetchStockInfo()});
+    // cat_choice 变化时动态更新价格字段 step
+    catSel?.addEventListener('change', () => {
+        const step = catSel.value === 'fund' || catSel.value === 'bond' ? '0.001' : '0.01';
+        [priceInput, targetInput, stopInput].forEach(el => {
+            if (el) el.step = step;
+        });
+        clearFormErr();
+        fetchStockInfo();
+    });
     marketSel?.addEventListener('change', () => {clearFormErr(); fetchStockInfo()});
     codeInput?.addEventListener('blur', () => {clearFormErr(); fetchStockInfo()});
     // codeInput?.addEventListener('input', () => {clearFormErr(); fetchStockInfo()});
@@ -346,8 +354,7 @@ export function initFocusView(config) {
     const form = document.getElementById('focusForm');
     if (!form) return;
 
-    const editMode = config.editMode || false;
-    const isLatest = config.is_latest !== false;
+    const isSummary = config.is_summary !== false;
     const cash = config.cash || 0;
     const riskBudget = config.available || 0;
     const initChart = config.initChart || {};
@@ -358,10 +365,14 @@ export function initFocusView(config) {
         initChartPage();
     }
 
-    // 历史模式下文字变灰
-    if (!isLatest) {
+    // 历史模式下文字变灰，汇总模式恢复
+    if (!isSummary) {
         form.querySelectorAll('input, select, textarea').forEach(el => {
             el.style.color = '#6c757d';
+        });
+    } else {
+        form.querySelectorAll('input, select, textarea').forEach(el => {
+            el.style.color = '';
         });
     }
     
@@ -383,9 +394,42 @@ export function initFocusView(config) {
     // 初始计算
     updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
     updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+}
 
-    // 初始状态
-    editAction(editMode);
+// ===================== 编辑关注页面 =====================
+export function initFocusEdit(config) {
+    const form = document.getElementById('focusForm');
+    if (!form) return;
+
+    const cash = config.cash || 0;
+    const riskBudget = config.available || 0;
+    const initChart = config.initChart || {};
+    setPageConfig(initChart);
+
+    if (chartPageContainer) {
+        chartPageContainer.classList.remove('d-none');
+        initChartPage();
+    }
+
+    // 自动计算
+    document.getElementById('id_plan_price')?.addEventListener('input', () => {
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
+        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    });
+    document.getElementById('id_target_price')?.addEventListener('input', () => {
+        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    });
+    document.getElementById('id_stop_price')?.addEventListener('input', () => {
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
+        updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
+    });
+    document.getElementById('id_plan_qty')?.addEventListener('input', () => {
+        updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
+    });
+
+    // 初始计算
+    updateAllowedQty('id_plan_price', 'id_allowed_qty', 'id_stop_price', cash, riskBudget);
+    updateWinRatio('id_plan_price', 'id_target_price', 'id_stop_price', 'id_win_ratio');
 }
 
 /**
