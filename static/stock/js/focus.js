@@ -1,5 +1,5 @@
 import { chartPageContainer, initChartPage, destroyChart, editAction, setPageConfig } from './chart.js';
-import { postRequest, refreshQuotes } from './func.js';
+import { postRequest, refreshQuotes, calcAllowedQty, calcWinRatio } from './func.js';
 
 // ===================== focus-list 页面 =====================
 export function initFocusList(interval) {
@@ -347,6 +347,7 @@ export function initFocusView(config) {
     if (!form) return;
 
     const editMode = config.editMode || false;
+    const isLatest = config.is_latest !== false;
     const cash = config.cash || 0;
     const riskBudget = config.available || 0;
     const initChart = config.initChart || {};
@@ -355,6 +356,13 @@ export function initFocusView(config) {
     if (chartPageContainer) {
         chartPageContainer.classList.remove('d-none');
         initChartPage();
+    }
+
+    // 历史模式下文字变灰
+    if (!isLatest) {
+        form.querySelectorAll('input, select, textarea').forEach(el => {
+            el.style.color = '#6c757d';
+        });
     }
     
     document.getElementById('id_plan_price')?.addEventListener('input', () => {
@@ -397,19 +405,7 @@ function updateWinRatio(priceId, targetId, stopId, ratioId) {
     const target = parseFloat(targetEl.value) || 0;
     const stop = parseFloat(stopEl.value) || 0;
 
-    if (buy <= 0 || target <= buy) {
-        ratioEl.value = 0;
-        ratioEl.style.color = '';
-        ratioEl.style.fontWeight = '';
-        return;
-    } else if (stop >= buy) {
-        ratioEl.value = 99;
-        ratioEl.style.color = '';
-        ratioEl.style.fontWeight = '';
-        return;
-    }
-
-    const ratio = Math.max(0, Math.min(99, Math.round((target - buy) / (target - stop) * 99)));
+    const ratio = calcWinRatio(buy, target, stop);
     ratioEl.value = ratio;
     ratioEl.style.color = (ratio === 0 || ratio === 99) ? '#00008B' : '';
     ratioEl.style.fontWeight = (ratio === 0 || ratio === 99) ? 'bold' : '';
@@ -431,24 +427,7 @@ function updateAllowedQty(priceId, allowedId, stopId, cash, riskBudget) {
 
     const price = parseFloat(priceEl.value) || 0;
     const stop = parseFloat(stopEl?.value) || 0;
-    if (price <= 0) {
-        allowedEl.value = 0;
-        allowedEl.style.color = '';
-        allowedEl.style.fontWeight = '';
-        return;
-    }
-
-    // 现金限制
-    const byCash = (cash > 0) ? Math.floor(cash / price) : 0;
-    // 默认仅受现金限制
-    let maxQty = byCash;
-    // 风险额度限制（仅当止损价 < 计划价且有剩余风险额度时才计算）
-    const riskPerShare = price - stop;
-    if (riskPerShare > 0 && riskBudget > 0) {
-        const byRisk = Math.floor(riskBudget / riskPerShare);
-        maxQty = Math.min(byCash, byRisk);
-    }
-    const qty = Math.floor(maxQty / 100) * 100;
+    const qty = calcAllowedQty(price, stop, cash, riskBudget);
     allowedEl.value = qty;
     // 超限检查（计划数量 > 允许数量时高亮）
     const planQty = parseInt(document.getElementById('id_plan_qty')?.value) || 0;

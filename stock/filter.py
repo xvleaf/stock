@@ -9,6 +9,7 @@ from django.http import JsonResponse, HttpResponseRedirect, Http404
 from django.views.decorators.http import require_http_methods
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
+from django.db import transaction
 from .fetch import quote, tushare
 from . import func, chart, cash
 from .models.models import (StockList, FilterTask, FilterResult, FocusStock,
@@ -710,12 +711,13 @@ def _handle_hide(request, result, task, code, market):
             if prv:
                 resp['prev'] = {'code': prv.code, 'market': prv.market, 'name': prv.name}
     # 隐藏该股票：同步 StockList，以及所有历史结果中的同代码记录
-    StockList.objects.filter(code=code, market=market).update(hide='1')
-    FilterResult.objects.filter(code=code, market=market).update(hide='1')
-    # 更新所有包含该股票的 FilterTask 的 stock_count
-    for t in FilterTask.objects.filter(results__code=code, results__market=market).distinct():
-        t.stock_count = t.results.exclude(hide='1').count()
-        t.save(update_fields=['stock_count'])
+    with transaction.atomic():
+        StockList.objects.filter(code=code, market=market).update(hide='1')
+        FilterResult.objects.filter(code=code, market=market).update(hide='1')
+        # 更新所有包含该股票的 FilterTask 的 stock_count
+        for t in FilterTask.objects.filter(results__code=code, results__market=market).distinct():
+            t.stock_count = t.results.exclude(hide='1').count()
+            t.save(update_fields=['stock_count'])
     # 失效导航缓存
     func.delete_cache(request.session, '/filter/view-navi-data')
     # 更新自定义 navi 列表（对比页进入）：移除被 hide 的股票
@@ -739,11 +741,12 @@ def _do_focus(result, ema_price=None):
     import decimal
     if existing:
         # 取消关注
-        existing.status = FocusStock.STATUS_CLOSED
-        existing.close_reason = FocusStock.CLOSE_REASON_MANUAL
-        existing.close_date = timezone.now().date()
-        existing.comments = '筛选时关闭'
-        existing.save()
+        with transaction.atomic():
+            existing.status = FocusStock.STATUS_CLOSED
+            existing.close_reason = FocusStock.CLOSE_REASON_MANUAL
+            existing.close_date = timezone.now().date()
+            existing.comments = '筛选时关闭'
+            existing.save()
         return JsonResponse({'status': 'success', 'focus': 0, 'msg': '已取消关注'})
 
     if ema_price is None:
@@ -763,16 +766,17 @@ def _do_focus(result, ema_price=None):
     from django.db.models import Max as _Max
     max_order = FocusStock.objects.aggregate(m=_Max('sort_order'))['m'] or 0
 
-    FocusStock.objects.create(
-        code=result.code, name=result.name, market=result.market, cat=result.cat,
-        plan_price=decimal.Decimal(str(round(plan, 3))),
-        plan_qty=qty,
-        target_price=decimal.Decimal(str(target)),
-        stop_price=decimal.Decimal(str(stop)),
-        allowed_qty=qty,
-        comments='筛选时添加',
-        sort_order=max_order + 1,
-    )
+    with transaction.atomic():
+        FocusStock.objects.create(
+            code=result.code, name=result.name, market=result.market, cat=result.cat,
+            plan_price=decimal.Decimal(str(round(plan, 3))),
+            plan_qty=qty,
+            target_price=decimal.Decimal(str(target)),
+            stop_price=decimal.Decimal(str(stop)),
+            allowed_qty=qty,
+            comments='筛选时添加',
+            sort_order=max_order + 1,
+        )
     return JsonResponse({'status': 'success', 'focus': 1,
                          'plan': round(plan, 3), 'target': target, 'stop': stop, 'qty': qty})
 
@@ -814,12 +818,13 @@ def _handle_hide_stocks(request, code, market):
             pstock = StockList.objects.filter(code=pc, market=pm).first()
             resp['prev'] = {'code': pc, 'market': pm, 'name': pstock.name if pstock else ''}
     # 隐藏该股票：同步 StockList，以及所有历史结果中的同代码记录
-    StockList.objects.filter(code=code, market=market).update(hide='1')
-    FilterResult.objects.filter(code=code, market=market).update(hide='1')
-    # 更新所有包含该股票的 FilterTask 的 stock_count
-    for t in FilterTask.objects.filter(results__code=code, results__market=market).distinct():
-        t.stock_count = t.results.exclude(hide='1').count()
-        t.save(update_fields=['stock_count'])
+    with transaction.atomic():
+        StockList.objects.filter(code=code, market=market).update(hide='1')
+        FilterResult.objects.filter(code=code, market=market).update(hide='1')
+        # 更新所有包含该股票的 FilterTask 的 stock_count
+        for t in FilterTask.objects.filter(results__code=code, results__market=market).distinct():
+            t.stock_count = t.results.exclude(hide='1').count()
+            t.save(update_fields=['stock_count'])
     # 失效导航缓存
     func.delete_cache(request.session, '/stocks/view-navi-data')
     # 更新自定义 navi 列表：移除被 hide 的股票
@@ -857,12 +862,13 @@ def _handle_hide_refer(request, code, market):
             pstock = StockList.objects.filter(code=pc, market=pm).first()
             resp['prev'] = {'code': pc, 'market': pm, 'name': pstock.name if pstock else ''}
     # 隐藏该股票：同步 StockList，以及所有历史结果中的同代码记录
-    StockList.objects.filter(code=code, market=market).update(hide='1')
-    FilterResult.objects.filter(code=code, market=market).update(hide='1')
-    # 更新所有包含该股票的 FilterTask 的 stock_count
-    for t in FilterTask.objects.filter(results__code=code, results__market=market).distinct():
-        t.stock_count = t.results.exclude(hide='1').count()
-        t.save(update_fields=['stock_count'])
+    with transaction.atomic():
+        StockList.objects.filter(code=code, market=market).update(hide='1')
+        FilterResult.objects.filter(code=code, market=market).update(hide='1')
+        # 更新所有包含该股票的 FilterTask 的 stock_count
+        for t in FilterTask.objects.filter(results__code=code, results__market=market).distinct():
+            t.stock_count = t.results.exclude(hide='1').count()
+            t.save(update_fields=['stock_count'])
     # 失效导航缓存
     func.delete_cache(request.session, '/refer/view-navi-data')
     # 更新自定义 navi 列表：移除被 hide 的股票

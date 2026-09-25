@@ -146,6 +146,60 @@ export function updateFormData(data) {
         const intentDisplay = data.intent === 'B' ? '买入' : '卖出';
         intentReadonly.value = intentDisplay;
     }
+
+    // 交易详情（trans-view）字段
+    const transFieldMap = {
+        'trans_cat': 'cat_display',
+        'trans_market': 'market_display',
+        'trans_code': 'code',
+        'trans_name': 'name',
+        'trans_price': 'price',
+        'trans_qty': 'qty',
+        'trans_amount': 'amount',
+        'trans_profit': 'profit',
+        'trans_target_price': 'target_price',
+        'trans_stop_price': 'stop_price',
+        'trans_win_ratio': 'win_ratio',
+        'trans_risk_amount': 'risk_amount',
+        'trans_comments': 'comments',
+    };
+
+    for (const [id, key] of Object.entries(transFieldMap)) {
+        const el = document.getElementById(id);
+        if (el && data[key] !== undefined) {
+            el.value = data[key];
+        }
+    }
+
+    // 历史指示器更新
+    const pilotWrap = document.getElementById('transPilotWrap');
+    const pilotIndicator = document.getElementById('transPilotIndicator');
+    if (pilotIndicator && data.pilot_idx !== undefined && data.pilot_total !== undefined) {
+        const isSummary = data.is_summary === true || data.pilot_idx === -1;
+        if (pilotWrap) {
+            if (isSummary) {
+                pilotWrap.classList.add('d-none');
+            } else {
+                pilotWrap.classList.remove('d-none');
+            }
+        }
+        if (!isSummary) {
+            const dateStr = data.pilot_date ? ` [${data.pilot_date}` : '';
+            const actionStr = data.pilot_action ? ` ${data.pilot_action}]` : (data.pilot_date ? ']' : '');
+            pilotIndicator.textContent = `第 ${data.pilot_idx + 1} / ${data.pilot_total} 笔${dateStr}${actionStr}`;
+        }
+    }
+
+    // 历史模式下文字变灰，汇总模式恢复
+    if (data.is_summary === false || (data.pilot_idx !== undefined && data.pilot_idx >= 0)) {
+        document.querySelectorAll('#transViewForm .readonly-field').forEach(el => {
+            el.style.color = '#6c757d';
+        });
+    } else {
+        document.querySelectorAll('#transViewForm .readonly-field').forEach(el => {
+            el.style.color = '';
+        });
+    }
 }
 
 export function initScrollFold() {
@@ -231,9 +285,15 @@ export function showAlert({ title, text, type = 'info', autoClose = 3000 }) {
         info: '<iconify-icon icon="tabler:info-circle" style="color:#0d6efd;font-size:48px;"></iconify-icon>'
     };
     const bodyHtml = `<div class="text-center"><div class="mb-2">${iconHtml[type] || ''}</div><p class="mb-0 fw-bold">${title || ''}</p>${text ? `<p class="mb-0 text-muted small">${text}</p>` : ''}</div>`;
-    const { modal } = _createModal({ title: '', bodyHtml, footerHtml: '' });
+    const { modal, modalEl } = _createModal({ title: '', bodyHtml, footerHtml: '' });
     if (autoClose > 0) {
-        setTimeout(() => modal.hide(), autoClose);
+        setTimeout(() => {
+            // 先 blur 焦点再 hide，避免 aria-hidden 警告
+            if (document.activeElement && modalEl.contains(document.activeElement)) {
+                document.activeElement.blur();
+            }
+            modal.hide();
+        }, autoClose);
     }
 }
 
@@ -277,4 +337,40 @@ export function showFormModal({ title, formHtml, confirmText = '确定', cancelT
         });
         modalEl.addEventListener('hidden.bs.modal', () => resolve(null));
     });
+}
+
+/**
+ * 通用：计算允许买入数量（按手取整）
+ * 止损价>=成交价时仅按现金计算
+ * @param {number} price - 成交价
+ * @param {number} stopPrice - 止损价
+ * @param {number} cash - 可用现金
+ * @param {number} riskBudget - 剩余风险额度（allowance - risk）
+ * @returns {number} 股数（100的整数倍）
+ */
+export function calcAllowedQty(price, stopPrice, cash, riskBudget) {
+    const p = parseFloat(price) || 0;
+    const s = parseFloat(stopPrice) || 0;
+    if (p <= 0) return 0;
+    const byCash = cash > 0 ? Math.floor(cash / p) : 0;
+    const riskPerShare = p - s;
+    if (riskPerShare <= 0) return Math.floor(byCash / 100) * 100;
+    const byRisk = riskBudget > 0 ? Math.floor(riskBudget / riskPerShare) : 0;
+    return Math.floor(Math.min(byCash, byRisk) / 100) * 100;
+}
+
+/**
+ * 通用：计算盈利机会（0-99）
+ * @param {number} price - 成交价
+ * @param {number} targetPrice - 目标价
+ * @param {number} stopPrice - 止损价
+ * @returns {number} 盈利机会百分比
+ */
+export function calcWinRatio(price, targetPrice, stopPrice) {
+    const p = parseFloat(price) || 0;
+    const t = parseFloat(targetPrice) || 0;
+    const s = parseFloat(stopPrice) || 0;
+    if (p <= 0 || t <= p) return 0;
+    if (s >= p) return 99;
+    return Math.max(0, Math.min(99, Math.round((t - p) / (t - s) * 99)));
 }

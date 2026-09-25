@@ -1,0 +1,153 @@
+{% extends "base-view.html" %}
+{% block title %}交易详情{% endblock %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'stock/css/view.css' %}">
+{% endblock %}
+
+{% block content %}
+{# K 线/分时图 #}
+<div class="d-none" id="chartPageContainer"></div>
+
+<div class="form-wrap" id="transViewForm">
+    {# 历史指示器（汇总时隐藏） #}
+    <div class="d-flex justify-content-end align-items-center mb-2 {% if is_summary %}d-none{% endif %}" id="transPilotWrap">
+        <span class="small text-muted" id="transPilotIndicator">第 {{ pilot_idx|add:1 }} / {{ pilot_total }} 笔{% if pilot_date %} [{{ pilot_date }}{% if pilot_action %} {{ pilot_action }}{% endif %}]{% endif %}</span>
+    </div>
+
+    {# 表单（只读） #}
+    <div id="transForm">
+        {# 第1行：股票类型/市场/代码/名称 #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票类型</label>
+                    <input type="text" class="form-control readonly-field" id="trans_cat" value="{{ initial.cat }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票市场</label>
+                    <input type="text" class="form-control readonly-field" id="trans_market" value="{{ initial.market }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票代码</label>
+                    <input type="text" class="form-control readonly-field" id="trans_code" value="{{ initial.code }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票名称</label>
+                    <input type="text" class="form-control readonly-field" id="trans_name" value="{{ initial.name }}" readonly>
+                </div>
+            </div>
+        </div>
+
+        {# 第2行：持仓价格/持仓数量/持仓金额/预计收益 #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">持仓价格</label>
+                    <input type="text" class="form-control readonly-field" id="trans_price" value="{{ initial.price }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">持仓数量</label>
+                    <input type="text" class="form-control readonly-field" id="trans_qty" value="{{ initial.qty }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">持仓金额</label>
+                    <input type="text" class="form-control readonly-field" id="trans_amount" value="{{ initial.amount }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">当前收益</label>
+                    <input type="text" class="form-control readonly-field" id="trans_profit" value="{{ initial.profit }}" readonly>
+                </div>
+            </div>
+        </div>
+
+        {# 第3行：目标价格/止损价格/盈利机会/风险资金 #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">目标价格</label>
+                    <input type="text" class="form-control readonly-field" id="trans_target_price" value="{{ initial.target_price }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">止损价格</label>
+                    <input type="text" class="form-control readonly-field" id="trans_stop_price" value="{{ initial.stop_price }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">盈利机会</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control readonly-field" id="trans_win_ratio" value="{{ initial.win_ratio }}" readonly>
+                        <span class="input-group-text">%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">风险资金</label>
+                    <input type="text" class="form-control readonly-field" id="trans_risk_amount" value="{{ initial.risk_amount }}" readonly>
+                </div>
+            </div>
+        </div>
+
+        {# 备注 #}
+        <div class="mb-3">
+            <label class="form-label">备注</label>
+            <textarea class="form-control readonly-field" rows="3" id="trans_comments" readonly style="resize:none;">{{ initial.comments }}</textarea>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'base/js/jquery-3.7.0.min.js' %}"></script>
+<script src="https://cdn.jsdelivr.net/npm/highcharts@10.3.3/highcharts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highcharts@10.3.3/modules/stock.min.js"></script>
+<script>
+window.addEventListener('error', function(e) {
+    if (e.message?.includes('startTime') && e.error?.stack?.includes('reportAllChanges')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return true;
+    }
+}, true);
+Highcharts.setOptions({
+    accessibility: {
+        enabled: false,
+        announceNewData: { enabled: false },
+        screenReaderSection: { enabled: false },
+        keyboardNavigation: { enabled: false }
+    }
+});
+</script>
+<script type="module">
+    import { baseInit } from "{% static 'base/js/base.js' %}";
+    import { initTransView } from "{% static 'stock/js/trans.js' %}";
+
+    document.addEventListener('DOMContentLoaded', () => {
+        baseInit();
+        initTransView({
+            is_summary: {{ is_summary|yesno:"true,false" }},
+            pilot_idx: {{ pilot_idx }},
+            pilot_total: {{ pilot_total }},
+            initChart: {{ chart|safe }}
+        });
+    });
+</script>
+{% endblock %}

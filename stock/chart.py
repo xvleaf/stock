@@ -11,8 +11,8 @@ from django.utils import timezone
 from .fetch import tushare, kline, trend, quote
 from . import func, focus
 from .models.models import (SectorList, StockList, FocusStock, FocusHistory, TransOrder,
-                            TransDeal, TransReview, FilterTask, FilterResult)
-from .forms.forms import FocusStockForm, TransDealForm, CashConfigForm, ReviewForm, CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES
+                            TransHistory, TransReview, FilterTask, FilterResult)
+from .forms.forms import FocusStockForm, TransHistoryForm, CashConfigForm, ReviewForm, CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES
 
 NAVI_PARAMS_INIT = {
     'showNavi': False,
@@ -161,8 +161,9 @@ def chart_view_api(request):
             if param_func == 'pilot':
                 pilot_idx = navi_data['navi_params']['pilotIndex']
                 pilot_list = navi_data['pilot_list']
+                # pilot_idx=-1 表示汇总，不需要 history_id
                 if pilot_list and 0 <= pilot_idx < len(pilot_list):
-                    history_id = pilot_list[pilot_idx][0] 
+                    history_id = pilot_list[pilot_idx][0]
             detail = _get_stock_detail(param_site, code, market, history_id)
             if detail:
                 view_mode = func.get_cache(request.session, 'view', 'kline')
@@ -175,6 +176,26 @@ def chart_view_api(request):
                 # 将 html 和 chart 配置附加到 detail
                 detail['html'] = html_content
                 detail['chart'] = context
+                # pilot 切换时附加指示器数据
+                if param_func == 'pilot':
+                    pilot_idx = navi_data['navi_params']['pilotIndex']
+                    pilot_total = navi_data['navi_params']['pilotCount']
+                    pilot_list = navi_data.get('pilot_list', [])
+                    pilot_date = ''
+                    pilot_action = ''
+                    is_summary = (pilot_idx == -1)
+                    if not is_summary and pilot_list and 0 <= pilot_idx < len(pilot_list):
+                        pilot_date = pilot_list[pilot_idx][1].strftime('%Y-%m-%d') if pilot_list[pilot_idx][1] else ''
+                        # 获取操作类型
+                        from .trans import TransHistory
+                        history = TransHistory.objects.filter(id=pilot_list[pilot_idx][0]).first()
+                        if history:
+                            pilot_action = history.get_action_display()
+                    detail['pilot_idx'] = pilot_idx
+                    detail['pilot_total'] = pilot_total
+                    detail['pilot_date'] = pilot_date
+                    detail['pilot_action'] = pilot_action
+                    detail['is_summary'] = is_summary
                 return JsonResponse(detail)
             else:
                 return JsonResponse({'error': '股票不存在'}, status=404)
@@ -339,12 +360,29 @@ def set_navi_data(session, site, code, market, function, action):
     if navi_data:
         navi_params = navi_data['navi_params']
         navi_list = navi_data['navi_list']
-        pilot_list = navi_data['pilot_list']
         navi_idx = navi_params['naviIndex']
         navi_total = navi_params['naviCount']
         showPilot = navi_params['showPilot']
-        pilot_idx = navi_params['pilotIndex']
-        pilot_total = navi_params['pilotCount']
+        # 页面初始化时（function != 'pilot'），重新查询 pilot_list，确保数据最新
+        if function != 'pilot' and site in show_pilot_limited:
+            pilot_list = get_pilot_list(site, code, market)
+            pilot_total = len(pilot_list)
+            if site in ['/trans/view', '/review/trans/view']:
+                pilot_idx = func.get_cache(session, f'{site}-pilot', -1)
+                if pilot_idx >= pilot_total:
+                    pilot_idx = pilot_total - 1
+                if pilot_idx < -1:
+                    pilot_idx = -1
+            else:
+                pilot_idx = func.get_cache(session, f'{site}-pilot', pilot_total - 1)
+                if pilot_idx >= pilot_total:
+                    pilot_idx = pilot_total - 1
+                if pilot_idx < 0:
+                    pilot_idx = 0
+        else:
+            pilot_list = navi_data['pilot_list']
+            pilot_total = navi_params['pilotCount']
+            pilot_idx = navi_params['pilotIndex']
     else:
         navi_list = get_navi_list(site, session)
         if not navi_list:
@@ -355,7 +393,19 @@ def set_navi_data(session, site, code, market, function, action):
             showPilot = True
             pilot_list = get_pilot_list(site, code, market)
             pilot_total = len(pilot_list)
-            pilot_idx = pilot_total - 1
+            if site in ['/trans/view', '/review/trans/view']:
+                # trans/view: pilot_idx=-1 表示汇总
+                pilot_idx = func.get_cache(session, f'{site}-pilot', -1)
+                if pilot_idx >= pilot_total:
+                    pilot_idx = pilot_total - 1
+                if pilot_idx < -1:
+                    pilot_idx = -1
+            else:
+                pilot_idx = func.get_cache(session, f'{site}-pilot', pilot_total - 1)
+                if pilot_idx >= pilot_total:
+                    pilot_idx = pilot_total - 1
+                if pilot_idx < 0:
+                    pilot_idx = 0
         else:
             showPilot = False
             pilot_list = {}
@@ -375,20 +425,41 @@ def set_navi_data(session, site, code, market, function, action):
         return {}
     code, market = navi_list[navi_idx]
 
-    if showPilot and function == 'pilot':        
-        shift = 1 if action == 'next' else -1 if action == 'prev' else 0
-        pilot_idx += shift
+    if showPilot and function == 'pilot':
+        if site in ['/trans/view', '/review/trans/view']:
+            # trans/view: up=prev(更早), down=next(更晚/汇总)
+            if action == 'prev':
+                if pilot_idx == -1:
+                    pilot_idx = pilot_total - 1  # 汇总 → 最近一笔
+                else:
+                    pilot_idx -= 1  # 历史 → 更早的历史
+            elif action == 'next':
+                if pilot_idx == pilot_total - 1:
+                    pilot_idx = -1  # 最近一笔 → 汇总
+                else:
+                    pilot_idx += 1  # 历史 → 更晚的历史
+        else:
+            shift = 1 if action == 'next' else -1 if action == 'prev' else 0
+            pilot_idx += shift
 
-    pilotPrev = pilot_idx > 0
-    pilotNext = pilot_idx < pilot_total - 1
+    # pilot 按钮可用性
+    if site in ['/trans/view', '/review/trans/view']:
+        # up(prev): 汇总时 pilot_total>1 可用；历史时 i>0 可用
+        pilotPrev = (pilot_idx == -1 and pilot_total > 1) or (pilot_idx > 0)
+        # down(next): 汇总时禁用；历史时始终可用（最近一笔点down回汇总）
+        pilotNext = (pilot_idx >= 0)
+    else:
+        pilotPrev = pilot_idx > 0
+        pilotNext = pilot_idx < pilot_total - 1
 
-    if (pilotNext):
+    # kline-deadline: 历史模式下设为该笔日期，汇总模式下删除
+    if pilot_idx >= 0 and pilot_list and 0 <= pilot_idx < len(pilot_list):
         pilot_id, pilot_date = pilot_list[pilot_idx]
-        deadline = pilot_date.strftime('%Y%m%d')        
+        deadline = pilot_date.strftime('%Y%m%d')
         func.set_cache(
-            session, 
-            'kline-deadline', 
-            {'site_code_market':(site, code, market), 'deadline': deadline}, 
+            session,
+            'kline-deadline',
+            {'site_code_market':(site, code, market), 'deadline': deadline},
             600
         )
     else:
@@ -416,6 +487,10 @@ def set_navi_data(session, site, code, market, function, action):
     }
 
     func.set_cache(session, f'{site}-navi-data', navi_data, 600)
+
+    # 同步保存 pilot_idx 到 trans_view 使用的 session key
+    if showPilot:
+        func.set_cache(session, f'{site}-pilot', pilot_idx, 600)
 
     navi_data = func.get_cache(session, f'{site}-navi-data', {})
     return navi_data
@@ -501,8 +576,11 @@ def get_pilot_list(site, code, market):
     if site == '/focus/view':
         focus = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).first()
         pilot_list = list(focus.histories.all().order_by('edit_date').values_list('id', 'edit_date')) if focus else []
+    elif site == '/trans/view':
+        order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_OPEN).first()
+        pilot_list = list(order.histories.all().order_by('date', 'id').values_list('id', 'date')) if order else []
     else:
-        pass
+        pilot_list = []
     return pilot_list
 
 
@@ -569,6 +647,15 @@ def _get_stock_detail(site, code, market, history_id=None):
             'name': res.name,
             'cat': res.cat,
         }
+    elif site in ['/trans/view', '/review/trans/view']:
+        from .trans import TransOrder, get_trans_data_dict
+        order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_OPEN).first()
+        if not order:
+            return {}
+        history = None
+        if history_id:
+            history = order.histories.filter(id=history_id).first()
+        return get_trans_data_dict(order, history)
     return {}
 
 

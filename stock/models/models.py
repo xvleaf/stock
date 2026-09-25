@@ -25,7 +25,7 @@ class CashHistory(models.Model):
     stock = models.DecimalField('股票', max_digits=14, decimal_places=2, default=0)
     profit = models.DecimalField('收益', max_digits=14, decimal_places=2, default=0)
     event = models.CharField('事项', max_length=20, choices=EVENT_CHOICES, default=EVENT_DEPOSIT)
-    amount = models.DecimalField('变动', max_digits=14, decimal_places=2, default=0,
+    change = models.DecimalField('变动', max_digits=14, decimal_places=2, default=0,
                                  help_text='正数=增加, 负数=减少')
     remark = models.CharField('备注', max_length=200, blank=True, default='')
     order = models.ForeignKey('TransOrder', on_delete=models.SET_NULL, null=True, blank=True,
@@ -39,26 +39,27 @@ class CashHistory(models.Model):
         ordering = ['-date', '-id']
 
     def __str__(self):
-        return f'{self.date:%Y-%m-%d} {self.get_event_display()} {self.amount:+}'
+        return f'{self.date:%Y-%m-%d} {self.get_event_display()} {self.change:+}'
 
     @classmethod
-    def snapshot(cls, event, amount, remark='', order=None, date=None):
+    def snapshot(cls, event, change, remark='', order=None, date=None, profit=0):
         """
         快照当前资金状态并写入历史记录
         :param event: 变化事项（EVENT_* 常量）
-        :param amount: 变化金额（正增负减）
+        :param change: 变化金额（正增负减）
         :param remark: 备注
         :param order: 关联交易订单
         :param date: 指定变化日期，默认当天
+        :param profit: 本次操作实际收益（正收益负损失），写入CashHistory.profit
         """
         config = CashConfig.get_config()
         cls.objects.create(
             total=config.total,
             cash=config.cash,
             stock=config.stock,
-            profit=config.profit,
+            profit=profit,
             event=event,
-            amount=amount,
+            change=change,
             remark=remark,
             order=order,
             date=date or timezone.now,
@@ -73,10 +74,10 @@ class CashConfig(models.Model):
     allowance = models.DecimalField('风险额度', max_digits=14, decimal_places=2, default=2000)
     risk = models.DecimalField('风险资金', max_digits=14, decimal_places=2, default=0)
     profit = models.DecimalField('投资收益', max_digits=14, decimal_places=2, default=0)
-    commission_ratio = models.DecimalField('佣金费率', max_digits=8, decimal_places=5, default=Decimal('0.000085'))
+    commission_ratio = models.DecimalField('佣金费率', max_digits=8, decimal_places=6, default=Decimal('0.000085'))
     commission_min = models.DecimalField('最低佣金', max_digits=8, decimal_places=2, default=Decimal('0'))
-    stamp_buy_ratio = models.DecimalField('印花税率(买入)', max_digits=8, decimal_places=5, default=Decimal('0'))
-    stamp_sell_ratio = models.DecimalField('印花税率(卖出)', max_digits=8, decimal_places=5, default=Decimal('0.0005'))
+    stamp_buy_ratio = models.DecimalField('印花税率(买入)', max_digits=8, decimal_places=6, default=Decimal('0'))
+    stamp_sell_ratio = models.DecimalField('印花税率(卖出)', max_digits=8, decimal_places=6, default=Decimal('0.0005'))
     updated_at = models.DateField('更新日期', auto_now=True)
 
     class Meta:        
@@ -308,6 +309,7 @@ class TransOrder(models.Model):
     total_fee = models.DecimalField('费用总计', max_digits=10, decimal_places=2, default=0)
     profit = models.DecimalField('盈利金额', max_digits=14, decimal_places=2, default=0)
     risk_amount = models.DecimalField('风险资金占用', max_digits=14, decimal_places=2, default=0)
+    position_cost_no_fee = models.DecimalField('不含手续费持仓成本', max_digits=14, decimal_places=2, default=0)
     comments = models.TextField('备注', blank=True, default='')
     created_at = models.DateField('创建日期', auto_now_add=True)
     updated_at = models.DateField('更新日期', auto_now=True)
@@ -348,6 +350,13 @@ class TransOrder(models.Model):
         return Decimal('0')
 
     @property
+    def avg_cost_no_fee(self):
+        qty = self.position_qty
+        if qty > 0:
+            return self.position_cost_no_fee / qty
+        return Decimal('0')
+
+    @property
     def hold_days(self):
         if self.open_date:
             end = self.close_date or timezone.now()
@@ -362,9 +371,10 @@ class TransOrder(models.Model):
         return Decimal('0')
 
     def recalculate(self):
-        deals = self.deals.all().order_by('date', 'id')
+        histories = self.histories.all().order_by('date', 'id')
         position_qty = 0
-        position_cost = Decimal('0')
+        position_cost = Decimal('0')        # 含手续费，用于avg_cost显示
+        position_cost_no_fee = Decimal('0') # 不含手续费，用于profit计算
         sold_cost = Decimal('0')
         buy_qty = 0
         sell_qty = 0
@@ -375,21 +385,27 @@ class TransOrder(models.Model):
         profit = Decimal('0')
         first_buy_date = None
 
-        for d in deals:
-            if d.intent == TransDeal.INTENT_BUY:
+        for d in histories:
+            if d.action == TransHistory.ACTION_EDIT:
+                continue  # 编辑记录不参与持仓计算
+            if d.intent == TransHistory.INTENT_BUY:
                 if position_qty == 0:
                     first_buy_date = d.date
                 position_qty += d.qty
                 position_cost += d.price * d.qty + d.fee
+                position_cost_no_fee += d.price * d.qty
                 buy_qty += d.qty
                 buy_amount += d.price * d.qty
                 buy_fee += d.fee
+                profit -= d.fee  # 买入手续费计入损失
             else:
                 if position_qty > 0:
-                    avg = position_cost / position_qty
+                    avg = position_cost / position_qty              # 含手续费，用于显示
+                    avg_no_fee = position_cost_no_fee / position_qty # 不含手续费，用于算收益
                     sold_cost += avg * d.qty
-                    profit += d.price * d.qty - d.fee - avg * d.qty
+                    profit += d.price * d.qty - d.fee - avg_no_fee * d.qty
                     position_cost -= avg * d.qty
+                    position_cost_no_fee -= avg_no_fee * d.qty
                 position_qty -= d.qty
                 sell_qty += d.qty
                 sell_amount += d.price * d.qty
@@ -403,6 +419,7 @@ class TransOrder(models.Model):
         self.sell_fee = sell_fee
         self.total_fee = buy_fee + sell_fee
         self.profit = profit.quantize(Decimal('0.01'))
+        self.position_cost_no_fee = position_cost_no_fee.quantize(Decimal('0.01'))
         self._sold_cost = sold_cost
 
         if position_qty == 0 and sell_qty > 0:
@@ -420,107 +437,59 @@ class TransOrder(models.Model):
         return self
 
 
-# ===================== 成交明细 =====================
-class TransDeal(models.Model):
+# ===================== 交易历史（成交+编辑） =====================
+class TransHistory(models.Model):
     INTENT_BUY = 'B'
     INTENT_SELL = 'S'
     INTENT_CHOICES = [
         (INTENT_BUY, '买入'),
         (INTENT_SELL, '卖出'),
     ]
+    ACTION_BUY = 'buy'
+    ACTION_SELL = 'sell'
+    ACTION_EDIT = 'edit'
+    ACTION_CHOICES = [
+        (ACTION_BUY, '买入'),
+        (ACTION_SELL, '卖出'),
+        (ACTION_EDIT, '编辑'),
+    ]
     order = models.ForeignKey(TransOrder, on_delete=models.CASCADE,
-                              related_name='deals', verbose_name='所属交易')
-    intent = models.CharField('交易方向', max_length=1, choices=INTENT_CHOICES, default=INTENT_SELL)
-    date = models.DateField('成交日期', default=timezone.now)
-    price = models.DecimalField('成交价格', max_digits=10, decimal_places=3)
-    qty = models.IntegerField('成交数量')
+                              related_name='histories', verbose_name='所属交易')
+    action = models.CharField('操作类型', max_length=10, choices=ACTION_CHOICES, default=ACTION_BUY)
+    intent = models.CharField('交易方向', max_length=1, choices=INTENT_CHOICES, default=INTENT_BUY)
+    date = models.DateField('操作日期', default=timezone.now)
+    price = models.DecimalField('成交价格', max_digits=10, decimal_places=3, default=0)
+    qty = models.IntegerField('成交数量', default=0)
     amount = models.DecimalField('成交金额', max_digits=14, decimal_places=2, default=0)
-    fee = models.DecimalField('成交费用', max_digits=10, decimal_places=2, default=0)
+    fee = models.DecimalField('交易费用', max_digits=10, decimal_places=2, default=0)
+    target_price = models.DecimalField('目标价格', max_digits=10, decimal_places=3, default=0)
+    stop_price = models.DecimalField('止损价格', max_digits=10, decimal_places=3, default=0)
     comments = models.TextField('备注', blank=True, default='')
     created_at = models.DateField('创建日期', auto_now_add=True)
+    # 该笔交易后的持仓快照
+    profit = models.DecimalField('账面收益', max_digits=14, decimal_places=2, default=0)
+    win_ratio = models.IntegerField('盈利机会', default=0)
+    risk_amount = models.DecimalField('风险资金', max_digits=14, decimal_places=2, default=0)
+    position_qty = models.IntegerField('持仓数量', default=0)
+    avg_cost = models.DecimalField('持仓均价', max_digits=10, decimal_places=3, default=0)
 
     class Meta:
-        # 自定义模型在数据库中的显示名称
-        db_table = 'models_trans_deal'
-        verbose_name = '成交明细'
+        db_table = 'models_trans_history'
+        verbose_name = '交易历史'
         verbose_name_plural = verbose_name
         ordering = ['date', 'id']
 
     def __str__(self):
+        if self.action == self.ACTION_EDIT:
+            return f'编辑 {self.order.code} 目标={self.target_price} 止损={self.stop_price}'
         action = '买入' if self.intent == self.INTENT_BUY else '卖出'
         return f'{action} {self.order.code} {self.qty}@{self.price}'
 
     def save(self, *args, **kwargs):
-        self.amount = (self.price * self.qty).quantize(Decimal('0.01'))
+        if self.action != self.ACTION_EDIT:
+            self.amount = (self.price * self.qty).quantize(Decimal('0.01'))
         super().save(*args, **kwargs)
         self.order.recalculate()
-        # 成交后记录资金变化快照
-        self._record_cash_history()
-
-    def _record_cash_history(self):
-        """成交后更新资金配置并记录历史快照"""
-        config = CashConfig.get_config()
-        qty = Decimal(str(self.qty))
-        amount = self.amount
-        fee = self.fee
-
-        if self.intent == self.INTENT_BUY:
-            # 买入：现金减少，股票持仓成本增加，总资金因费用减少
-            total_change = -fee
-            cash_change = -(amount + fee)
-            stock_change = amount
-            event = CashHistory.EVENT_BUY
-            remark = f'买入 {self.order.code} {self.qty}股@{self.price}'
-        else:
-            # 卖出：现金增加，股票持仓成本减少，总资金变化=盈亏
-            avg_cost = self.order.avg_cost
-            cost_part = (avg_cost * qty).quantize(Decimal('0.01'))
-            total_change = (amount - fee - cost_part).quantize(Decimal('0.01'))
-            cash_change = amount - fee
-            stock_change = -cost_part
-            event = CashHistory.EVENT_SELL
-            remark = f'卖出 {self.order.code} {self.qty}股@{self.price}'
-
-        config.cash = (config.cash + cash_change).quantize(Decimal('0.01'))
-        config.stock = (config.stock + stock_change).quantize(Decimal('0.01'))
-        # 风险资金：买入时累加，卖出时按比例冲抵（清仓时直接归零）
-        if self.intent == self.INTENT_BUY:
-            stop_price = self.order.stop_price or Decimal('0')
-            deal_risk = ((self.price - stop_price) * qty).quantize(Decimal('0.01'))
-            if deal_risk > 0:
-                self.order.risk_amount = (self.order.risk_amount + deal_risk).quantize(Decimal('0.01'))
-                config.risk = (config.risk + deal_risk).quantize(Decimal('0.01'))
-                self.order.save(update_fields=['risk_amount'])
-        else:
-            # 卖出：按卖出数量占卖出前持仓的比例冲抵风险资金
-            position_before = self.order.position_qty + self.qty  # recalculate 已执行，position_qty 是卖出后的
-            if position_before > 0 and self.order.risk_amount > 0:
-                if self.order.position_qty == 0:
-                    # 清仓：全部冲抵
-                    offset_risk = self.order.risk_amount
-                    self.order.risk_amount = Decimal('0')
-                else:
-                    ratio = Decimal(str(self.qty)) / Decimal(str(position_before))
-                    offset_risk = (self.order.risk_amount * ratio).quantize(Decimal('0.01'))
-                    self.order.risk_amount = (self.order.risk_amount - offset_risk).quantize(Decimal('0.01'))
-                config.risk = (config.risk - offset_risk).quantize(Decimal('0.01'))
-                if config.risk < 0:
-                    config.risk = Decimal('0')
-                self.order.save(update_fields=['risk_amount'])
-        # 总资产始终等于现金+股票
-        config.total = (config.cash + config.stock).quantize(Decimal('0.01'))
-        config.save()
-
-        CashHistory.objects.create(
-            total=config.total,
-            cash=config.cash,
-            stock=config.stock,
-            profit=config.profit,
-            event=event,
-            amount=total_change,
-            remark=remark,
-            order=self.order,
-        )
 
     def delete(self, *args, **kwargs):
         order = self.order

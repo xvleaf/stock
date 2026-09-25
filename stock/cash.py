@@ -13,6 +13,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.http import require_http_methods
+from django.db import transaction
 from .models.models import CashConfig, CashHistory
 from .forms.forms import CashConfigForm
 from . import func
@@ -134,7 +135,7 @@ def cash_history_api(request):
         reasons.append({
             'date': date_str,
             'event': h.get_event_display(),
-            'amount': float(h.amount),
+            'change': float(h.change),
             'remark': h.remark,
             'total': float(h.total),
             'cash': float(h.cash),
@@ -178,21 +179,22 @@ def cash_adjust_api(request):
         return JsonResponse({'error': '金额必须大于0'}, status=400)
 
     config = CashConfig.get_config()
-    if action == 'deposit':
-        config.cash += amount
-        change_amount = amount
-        event = CashHistory.EVENT_DEPOSIT
-    else:
-        if amount > config.cash:
-            return JsonResponse({'error': '取出金额超过可用现金'}, status=400)
-        config.cash -= amount
-        change_amount = -amount
-        event = CashHistory.EVENT_WITHDRAW
-    # 总资产始终等于现金+股票
-    config.total = config.cash + config.stock
-    config.save()
-    # 快照写入历史
-    CashHistory.snapshot(event=event, amount=change_amount, remark=remark, date=adjust_date)
+    with transaction.atomic():
+        if action == 'deposit':
+            config.cash += amount
+            change_amount = amount
+            event = CashHistory.EVENT_DEPOSIT
+        else:
+            if amount > config.cash:
+                return JsonResponse({'error': '取出金额超过可用现金'}, status=400)
+            config.cash -= amount
+            change_amount = -amount
+            event = CashHistory.EVENT_WITHDRAW
+        # 总资产始终等于现金+股票
+        config.total = config.cash + config.stock
+        config.save()
+        # 快照写入历史（存入/取出无收益）
+        CashHistory.snapshot(event=event, change=change_amount, profit=0, remark=remark, date=adjust_date)
     return JsonResponse({
         'msg': 'done',
         'total': float(config.total),
@@ -227,16 +229,17 @@ def cash_revoke(request):
         return JsonResponse({'error': '仅可撤回存入/取出记录'}, status=400)
 
     config = CashConfig.get_config()
-    amount = abs(latest.amount)
-    if latest.event == CashHistory.EVENT_DEPOSIT:
-        # 撤回存入：现金减少
-        config.cash -= amount
-    else:
-        # 撤回取出：现金增加
-        config.cash += amount
-    config.total = config.cash + config.stock
-    config.save()
-    latest.delete()
+    amount = abs(latest.change)
+    with transaction.atomic():
+        if latest.event == CashHistory.EVENT_DEPOSIT:
+            # 撤回存入：现金减少
+            config.cash -= amount
+        else:
+            # 撤回取出：现金增加
+            config.cash += amount
+        config.total = config.cash + config.stock
+        config.save()
+        latest.delete()
     return JsonResponse({'msg': 'done'})
 
 
@@ -272,25 +275,27 @@ def cash_init(request):
         return JsonResponse({'error': '金额不能为负'}, status=400)
 
     total_val = cash_val + stock_val
-    config = CashConfig(pk=1)
-    config.total = total_val.quantize(Decimal('0.01'))
-    config.cash = cash_val.quantize(Decimal('0.01'))
-    config.stock = stock_val.quantize(Decimal('0.01'))
-    config.allowance = allowance_val.quantize(Decimal('0.01'))
-    config.risk = Decimal('0')
-    config.profit = Decimal('0')
-    config.commission_ratio = commission_ratio_val
-    config.commission_min = commission_min_val
-    config.stamp_buy_ratio = stamp_buy_val
-    config.stamp_sell_ratio = stamp_sell_val
-    config.save()
-    # 写入初始存入记录
-    CashHistory.snapshot(
-        event=CashHistory.EVENT_DEPOSIT,
-        amount=total_val,
-        remark='初始资金',
-        date=init_date,
-    )
+    with transaction.atomic():
+        config = CashConfig(pk=1)
+        config.total = total_val.quantize(Decimal('0.01'))
+        config.cash = cash_val.quantize(Decimal('0.01'))
+        config.stock = stock_val.quantize(Decimal('0.01'))
+        config.allowance = allowance_val.quantize(Decimal('0.01'))
+        config.risk = Decimal('0')
+        config.profit = Decimal('0')
+        config.commission_ratio = commission_ratio_val
+        config.commission_min = commission_min_val
+        config.stamp_buy_ratio = stamp_buy_val
+        config.stamp_sell_ratio = stamp_sell_val
+        config.save()
+        # 写入初始存入记录（初始化无收益）
+        CashHistory.snapshot(
+            event=CashHistory.EVENT_DEPOSIT,
+            change=total_val,
+            profit=0,
+            remark='初始资金',
+            date=init_date,
+        )
     return JsonResponse({'msg': 'done'})
 
 
@@ -342,6 +347,7 @@ def _q(value, places='0.01'):
 def calc_allowed_qty(plan_price, stop_price=0):
     """
     计算允许购买数量（按手取整），取现金限制和风险额度限制的较小值
+    止损价>=成交价时，仅按现金计算
     :param plan_price: 计划买入价
     :param stop_price: 止损价
     :return: int 股数
@@ -356,10 +362,10 @@ def calc_allowed_qty(plan_price, stop_price=0):
     # 风险额度限制
     remaining = config.allowance - config.risk
     risk_per_share = price - Decimal(str(stop_price or 0))
-    if remaining <= 0 or risk_per_share <= 0:
-        by_risk = 0
-    else:
-        by_risk = int(remaining / risk_per_share)
+    # 止损价>=成交价时，仅按现金计算
+    if risk_per_share <= 0:
+        return (by_cash // 100) * 100
+    by_risk = int(remaining / risk_per_share) if remaining > 0 else 0
     max_qty = min(by_cash, by_risk)
     # 向下取整（1手100股）
     return (max_qty // 100) * 100

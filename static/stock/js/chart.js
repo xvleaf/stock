@@ -90,6 +90,14 @@ function _renderChartPage(res) {
                             const isEditing = !saveBtn?.classList.contains('d-none');
                             editAction(!isEditing);
                         });
+                    } else if (e.detail && e.detail.site === '/trans/view') {
+                        const editBtn = document.getElementById('editBtn');
+                        if (!editBtn || editBtn.dataset.bound) return;
+                        editBtn.dataset.bound = 'true';
+                        editBtn.addEventListener('click', (ev) => {
+                            ev.stopPropagation();
+                            window.location.href = `/trans/edit/${pageConfig.market}/${pageConfig.code}`;
+                        });
                     }
                 });
             }
@@ -100,6 +108,16 @@ function _renderChartPage(res) {
 
         // 重新初始化页面元素（导航按钮事件绑定等）
         initPageElements();
+
+        // 交易按钮绑定
+        const dealBtn = document.getElementById('dealBtn');
+        if (dealBtn && !dealBtn.dataset.bound) {
+            dealBtn.dataset.bound = 'true';
+            dealBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                window.location.href = `/trans/deal/${pageConfig.market}/${pageConfig.code}`;
+            });
+        }
     });
 }
 
@@ -687,8 +705,4 @@ function exitAction(data) {
     .catch(error => {
         showChartError('请求失败：' + error);
     });
-};
-
-window.dealAction = function (marketCode) {
-    window.location.href = `/trans/deal/${marketCode}`;
 };

@@ -1,5 +1,5 @@
 from django.urls import path
-from . import chart, func, sector, focus, cash, filter
+from . import chart, func, sector, focus, cash, filter, trans
 
 urlpatterns = [
     # ---- 板块 ----
@@ -37,6 +37,12 @@ urlpatterns = [
     path('cash/init', cash.cash_init, name='cash_init'),
     path('cash/quota', cash.cash_quota, name='cash_quota'),
     path('cash/setting', cash.cash_setting, name='cash_setting'),
+
+    # ---- 交易 ----
+    path('trans/list', trans.trans_list, name='trans_list'),
+    path('trans/deal/<str:market>/<str:code>', trans.trans_deal, name='trans_deal'),
+    path('trans/view/<str:market>/<str:code>', trans.trans_view, name='trans_view'),
+    path('trans/edit/<str:market>/<str:code>', trans.trans_edit, name='trans_edit'),
 
     path('api/stock-name', func.stock_name_api, name='stock_name_api'),
 ]

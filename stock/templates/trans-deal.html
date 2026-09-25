@@ -1,0 +1,195 @@
+{% extends "base-view.html" %}
+{% block title %}交易{% endblock %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'stock/css/view.css' %}">
+{% endblock %}
+
+{% block content %}
+{# K 线/分时图 #}
+<div class="d-none" id="chartPageContainer"></div>
+
+<div class="form-wrap">
+    {# 错误信息 #}
+    <div id="errorText" class="d-none alert alert-danger"></div>
+
+    {# 表单 #}
+    <form method="post" id="transForm">
+        {% csrf_token %}
+        <input type="hidden" name="intent" id="id_intent" value="{{ initial.intent }}">
+
+        {# 第1行：股票类型/市场/代码/名称（只读） #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票类型</label>
+                    <input type="text" class="form-control" value="{{ cat_display }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票市场</label>
+                    <input type="text" class="form-control" value="{{ market_display }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票代码</label>
+                    <input type="text" class="form-control" value="{{ stock_code }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票名称</label>
+                    <input type="text" class="form-control" value="{{ stock_name }}" readonly>
+                </div>
+            </div>
+        </div>
+
+        {# 第2行：交易日期/交易方向/成交价格/成交数量 #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">交易日期</label>
+                    <input type="date" name="date" id="id_date" class="form-control" value="{{ initial.date }}">
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">交易方向</label>
+                    <input type="text" class="form-control readonly-field" id="id_intent_choice" value="{% if initial.intent == 'B' %}买入{% else %}卖出{% endif %}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">成交价格</label>
+                    <input type="number" name="price" id="id_price" class="form-control" step="0.01" min="0" value="{{ initial.price }}">
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">成交数量</label>
+                    <input type="number" name="qty" id="id_qty" class="form-control" min="0" step="100" value="{{ initial.qty }}">
+                </div>
+            </div>
+        </div>
+
+        {# 第3行：成交金额/交易费用/预计收益/风险资金（自动计算，只读） #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">成交金额</label>
+                    <input type="text" id="id_amount" class="form-control" readonly value="0.00">
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">交易费用</label>
+                    <input type="number" name="fee" id="id_fee" class="form-control" step="0.01" min="0" value="0.00">
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">预计收益</label>
+                    <input type="text" id="id_profit" class="form-control" readonly value="0.00">
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">风险资金</label>
+                    <input type="text" id="id_risk" class="form-control" readonly value="0.00">
+                </div>
+            </div>
+        </div>
+
+        {# 第4行：目标价格/止损价格/盈利机会/允许数量 #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">目标价格</label>
+                    <input type="text" name="target_price" id="id_target_price" class="form-control" value="{{ initial.target_price }}">
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">止损价格</label>
+                    <input type="text" name="stop_price" id="id_stop_price" class="form-control" value="{{ initial.stop_price }}">
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">盈利机会</label>
+                    <div class="input-group">
+                        <input type="text" name="win_ratio" id="id_win_ratio" class="form-control" value="{{ initial.win_ratio }}">
+                        <span class="input-group-text">%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">允许数量</label>
+                    <input type="text" id="id_allowed_qty" class="form-control" readonly value="0">
+                </div>
+            </div>
+        </div>
+
+        {# 备注 #}
+        <div class="mb-3">
+            <label class="form-label">备注</label>
+            <textarea name="comments" id="id_comments" class="form-control" rows="3" style="resize:none;">{{ initial.comments }}</textarea>
+        </div>
+
+        {# 按钮区域 #}
+        <div class="d-flex">
+            <button type="button" class="btn btn-outline-secondary me-2" id="cancelBtn" onclick="history.back()">取消</button>
+            <div class="ms-auto">
+                <button type="submit" class="btn btn-primary" id="submitBtn">交易</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'base/js/jquery-3.7.0.min.js' %}"></script>
+<script src="https://cdn.jsdelivr.net/npm/highcharts@10.3.3/highcharts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highcharts@10.3.3/modules/stock.min.js"></script>
+<script>
+window.addEventListener('error', function(e) {
+    if (e.message?.includes('startTime') && e.error?.stack?.includes('reportAllChanges')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return true;
+    }
+}, true);
+Highcharts.setOptions({
+    accessibility: {
+        enabled: false,
+        announceNewData: { enabled: false },
+        screenReaderSection: { enabled: false },
+        keyboardNavigation: { enabled: false }
+    }
+});
+</script>
+<script type="module">
+    import { baseInit } from "{% static 'base/js/base.js' %}";
+    import { initTransDeal } from "{% static 'stock/js/trans.js' %}";
+
+    document.addEventListener('DOMContentLoaded', () => {
+        baseInit();
+        initTransDeal({
+            cash: {{ cash|floatformat:2 }},
+            available: {{ available|floatformat:2 }},
+            current_risk: {{ current_risk|floatformat:2 }},
+            avg_cost: {{ avg_cost|floatformat:3 }},
+            position_qty: {{ position_qty }},
+            commission_ratio: {{ commission_ratio }},
+            commission_min: {{ commission_min }},
+            stamp_sell_ratio: {{ stamp_sell_ratio }},
+            initChart: {{ chart|safe }}
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends "base-view.html" %}
+{% block title %}交易清单{% endblock %}
+{% block content %}
+<!-- 表格悬浮固定表头 -->
+<div id="fixedHeader">
+    <div class="fixed-header-inner">
+        <div class="fixed-header-row" id="fixedHeaderRow">
+        </div>
+    </div>
+</div>
+
+<div class="table-responsive" id="tableWrap">
+    <table class="table table-stock table-hover" id="stockTable">
+        <thead id="originalThead">
+            <tr>
+                <th style="width: 17.5%;">代码</th>
+                <th style="width: 22.5%;">名称</th>
+                <th style="width: 17.5%;">价格</th>
+                <th style="width: 17.5%;">目标</th>
+                <th style="width: 12.5%;">止损</th>
+                <th style="width: 12.5%;">涨幅</th>
+            </tr>
+        </thead>
+        <tbody id="stockBody">
+            {% for item in list %}
+            <tr data-code="{{ item.code }}.{{ item.market }}">
+                <td style="width: 17.5%;">
+                    <a class="table-code-text" href="/trans/view/{{ item.market }}/{{ item.code }}">{{ item.code }}</a>
+                </td>
+                <td style="width: 22.5%;">
+                    <span>{{ item.name }}</span>
+                </td>
+                <td style="width: 17.5%;">
+                    <span id="close-{{ item.code }}.{{ item.market }}">--</span>
+                </td>
+                <td style="width: 17.5%;">
+                    <span>{{ item.target_price }}</span>
+                </td>
+                <td style="width: 12.5%;">
+                    <span>{{ item.stop_price }}</span>
+                </td>
+                <td style="width: 12.5%;">
+                    <span id="change-{{ item.code }}.{{ item.market }}">--</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% include 'page-navi.html' %}
+{% endblock %}
+
+{% block extra_js %}
+{% load static %}
+<script type="module">
+    import { baseInit} from "{% static 'base/js/base.js' %}";
+    import { tableHeaderInit, initPagination } from "{% static 'stock/js/list.js' %}";
+    import { initTransList } from "{% static 'stock/js/trans.js' %}";
+
+    document.addEventListener('DOMContentLoaded', () => {
+        baseInit();
+        tableHeaderInit();
+        initTransList({{ interval|default:20000 }});
+        initPagination('/trans/list');
+    });
+</script>
+{% endblock %}

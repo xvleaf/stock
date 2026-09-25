@@ -103,18 +103,19 @@ def focus_plus(request):
             if FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).exists():   
                 form.add_error(None, '该股票关注中，不能重复添加')
             else:
-                focus = form.save(commit=False)
-                focus.created_at = focus.focus_date
-                focus.updated_at = focus.focus_date
-                focus.code = code
-                focus.market = market
-                focus.cat = cat
-                focus.win_ratio = cash.calc_win_ratio(focus.plan_price, focus.target_price, focus.stop_price)
-                focus.allowed_qty = cash.calc_allowed_qty(focus.plan_price)
-                max_sort = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).count()
-                focus.sort_order = max_sort
-                focus.save()
-                focus.save_history(action='create')
+                with transaction.atomic():
+                    focus = form.save(commit=False)
+                    focus.created_at = focus.focus_date
+                    focus.updated_at = focus.focus_date
+                    focus.code = code
+                    focus.market = market
+                    focus.cat = cat
+                    focus.win_ratio = cash.calc_win_ratio(focus.plan_price, focus.target_price, focus.stop_price)
+                    focus.allowed_qty = cash.calc_allowed_qty(focus.plan_price)
+                    max_sort = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).count()
+                    focus.sort_order = max_sort
+                    focus.save()
+                    focus.save_history(action='create')
                 return redirect('focus_view', market=focus.market, code=focus.code)
     else:
         initial = {}
@@ -147,12 +148,13 @@ def focus_view(request, market, code):
         form = FocusStockForm(request.POST, instance=focus, view_mode=True)
         
         if form.is_valid():
-            updated = form.save(commit=False)
-            updated.win_ratio = cash.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price)
-            updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price)
-            updated.updated_at = updated.focus_date 
-            updated.save()
-            updated.save_history(action='edit')
+            with transaction.atomic():
+                updated = form.save(commit=False)
+                updated.win_ratio = cash.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price)
+                updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price)
+                updated.updated_at = updated.focus_date 
+                updated.save()
+                updated.save_history(action='edit')
             func.delete_cache(request.session, f'{site}-navi-data')
         
         return redirect('focus_view', market=market, code=code)
@@ -164,6 +166,7 @@ def focus_view(request, market, code):
         histories = focus.histories.all().order_by('edit_date') if focus else None
         pilot_idx = navi_data.get('navi_params', {}).get('pilotIndex', 0)
         pilot_history = histories[pilot_idx] if histories and pilot_idx < len(histories) else None
+        is_latest = (not histories) or (pilot_idx == len(histories) - 1)
 
         initial_data = get_focus_data_dict(focus, pilot_history)
 
@@ -185,6 +188,7 @@ def focus_view(request, market, code):
             'form': form,
             'chart': json.dumps(chart_init),
             'edit_mode': False,
+            'is_latest': is_latest,
             'cash': CashConfig.get_config().cash,
             'available': CashConfig.get_config().allowance - CashConfig.get_config().risk,
         })

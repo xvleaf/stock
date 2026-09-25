@@ -1,6 +1,6 @@
 from django import forms
 from decimal import Decimal, ROUND_HALF_UP
-from stock.models.models import CashConfig, FocusStock, TransDeal, TransReview
+from stock.models.models import CashConfig, FocusStock, TransHistory, TransReview
 from django.utils import timezone
 
 CAT_CHOICES = [
@@ -162,10 +162,10 @@ class FocusStockForm(forms.ModelForm):
             )
 
 
-class TransDealForm(forms.ModelForm):
+class TransHistoryForm(forms.ModelForm):
     """成交填报表单"""
     class Meta:
-        model = TransDeal
+        model = TransHistory
         fields = ['intent', 'date', 'price', 'qty', 'fee', 'comments']
         widgets = {
             'intent': forms.Select(

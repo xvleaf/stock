@@ -204,6 +204,9 @@ function renderChart(data) {
                 this.points.forEach(p => {
                     rows += `<tr><td style="padding:2px 5px"><span style="color:${p.color}">●</span> ${p.series.name}</td><td style="padding:2px 5px">${p.y.toFixed(2)}</td></tr>`;
                 });
+                // 收益（不作为曲线显示，仅在tooltip中展示）
+                const profitVal = data.profit && data.profit[this.x] !== undefined ? data.profit[this.x][1] : 0;
+                rows += `<tr><td style="padding:2px 5px"><span style="color:#16a34a">●</span> 收益</td><td style="padding:2px 5px">${profitVal.toFixed(2)}</td></tr>`;
                 return `<div><table>
                     <tr><td colspan="2" style="padding:2px 5px"><span style="font-weight:bold;">${dateStr}</span></td></tr>
                     ${rows}
