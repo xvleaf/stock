@@ -187,7 +187,8 @@ export function updateFormData(data) {
         if (!isSummary || data.pilot_total === 1) {
             const qtyPriceStr = (data.pilot_qty && data.pilot_price !== '') ? `${data.pilot_qty}股@${data.pilot_price}元` : '';
             const dateStr = data.pilot_date ? ` [${data.pilot_date}` : '';
-            const actionStr = data.pilot_action ? ` ${data.pilot_action}${qtyPriceStr}]` : (data.pilot_date ? ']' : '');
+            const actionDisplay = data.pilot_action === '编辑' ? '调整目标/止损' : data.pilot_action;
+            const actionStr = data.pilot_action ? ` ${actionDisplay}${qtyPriceStr}]` : (data.pilot_date ? ']' : '');
             const idx = isSummary ? 1 : (data.pilot_idx + 1);
             pilotIndicator.textContent = `第 ${idx} / ${data.pilot_total} 笔${dateStr}${actionStr}`;
         }

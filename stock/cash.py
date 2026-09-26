@@ -251,18 +251,14 @@ def cash_revoke(request):
                 return JsonResponse({'error': '调整记录不存在'}, status=400)
             risk_before = order.risk_amount
             deal.delete()
-            # 从剩余最新一笔 history 恢复 target_price / stop_price
+            # 从剩余最新一笔 history 恢复快照（target/stop/risk/win/profit）
             last_deal = order.histories.order_by('-id').first()
             if last_deal:
                 order.target_price = last_deal.target_price
                 order.stop_price = last_deal.stop_price
-            # 重新计算 risk 和 win_ratio
-            if order.position_qty != 0:
-                order.risk_amount = calc_risk_capital(order.avg_cost_no_fee, order.stop_price, abs(order.position_qty), order.intent)
-                order.win_ratio = calc_win_ratio(order.avg_cost, order.target_price, order.stop_price, order.intent)
-            else:
-                order.risk_amount = Decimal('0')
-                order.win_ratio = 0
+                order.risk_amount = last_deal.risk_amount
+                order.win_ratio = last_deal.win_ratio
+                order.profit = last_deal.profit
             order.save()
             risk_after = order.risk_amount
             config.risk -= (risk_before - risk_after)
@@ -302,15 +298,14 @@ def cash_revoke(request):
             else:
                 # 重新计算 order
                 order.recalculate()
-                # 从剩余最新一笔 history 恢复 target_price / stop_price
+                # 从剩余最新一笔 history 恢复快照（target/stop/risk/win/profit）
                 last_deal = order.histories.order_by('-id').first()
                 if last_deal:
                     order.target_price = last_deal.target_price
                     order.stop_price = last_deal.stop_price
-                # 重新计算 risk 和 win_ratio
-                if order.position_qty != 0:
-                    order.risk_amount = calc_risk_capital(order.avg_cost_no_fee, order.stop_price, abs(order.position_qty), order.intent)
-                    order.win_ratio = calc_win_ratio(order.avg_cost, order.target_price, order.stop_price, order.intent)
+                    order.risk_amount = last_deal.risk_amount
+                    order.win_ratio = last_deal.win_ratio
+                    order.profit = last_deal.profit
                 else:
                     order.risk_amount = Decimal('0')
                     order.win_ratio = 0

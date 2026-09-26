@@ -180,7 +180,8 @@ export function initTransView(opts = {}) {
         if (pilotIndicator) {
             const qtyPriceStr = (pilotQty && pilotPrice !== '') ? `${pilotQty}股@${pilotPrice}元` : '';
             const dateStr = pilotDate ? ` [${pilotDate}` : '';
-            const actionStr = pilotAction ? ` ${pilotAction}${qtyPriceStr}]` : (pilotDate ? ']' : '');
+            const actionDisplay = pilotAction === '编辑' ? '调整目标/止损' : pilotAction;
+            const actionStr = pilotAction ? ` ${actionDisplay}${qtyPriceStr}]` : (pilotDate ? ']' : '');
             pilotIndicator.textContent = `第 1 / 1 笔${dateStr}${actionStr}`;
         }
     }
