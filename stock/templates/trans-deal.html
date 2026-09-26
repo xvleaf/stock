@@ -17,7 +17,6 @@
     {# 表单 #}
     <form method="post" id="transForm">
         {% csrf_token %}
-        <input type="hidden" name="intent" id="id_intent" value="{{ initial.intent }}">
 
         {# 第1行：股票类型/市场/代码/名称（只读） #}
         <div class="row">
@@ -58,7 +57,7 @@
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
                     <label class="form-label">交易方向</label>
-                    <select name="intent_choice" id="id_intent_choice" class="form-select">
+                    <select name="intent" id="id_intent" class="form-select">
                         <option value="B" {% if initial.intent == 'B' %}selected{% endif %}>买入</option>
                         <option value="S" {% if initial.intent == 'S' %}selected{% endif %}>卖出</option>
                     </select>
@@ -73,7 +72,7 @@
             <div class="col-md-3 col-sm-6">
                 <div class="mb-3">
                     <label class="form-label">成交数量</label>
-                    <input type="number" name="qty" id="id_qty" class="form-control" min="0" step="100" value="{{ initial.qty }}">
+                    <input type="text" name="qty" id="id_qty" class="form-control" value="{{ initial.qty }}">
                 </div>
             </div>
         </div>

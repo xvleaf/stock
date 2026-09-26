@@ -184,8 +184,9 @@ export function updateFormData(data) {
             }
         }
         if (!isSummary) {
+            const qtyPriceStr = (data.pilot_qty && data.pilot_price !== '') ? `${data.pilot_qty}股@${data.pilot_price}元` : '';
             const dateStr = data.pilot_date ? ` [${data.pilot_date}` : '';
-            const actionStr = data.pilot_action ? ` ${data.pilot_action}]` : (data.pilot_date ? ']' : '');
+            const actionStr = data.pilot_action ? ` ${data.pilot_action}${qtyPriceStr}]` : (data.pilot_date ? ']' : '');
             pilotIndicator.textContent = `第 ${data.pilot_idx + 1} / ${data.pilot_total} 笔${dateStr}${actionStr}`;
         }
     }

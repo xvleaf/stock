@@ -188,24 +188,32 @@ def chart_view_api(request):
                     pilot_list = navi_data.get('pilot_list', [])
                     pilot_date = ''
                     pilot_action = ''
+                    pilot_qty = ''
+                    pilot_price = ''
                     is_summary = (pilot_idx == -1)
                     if not is_summary and pilot_list and 0 <= pilot_idx < len(pilot_list):
                         pilot_date = pilot_list[pilot_idx][1].strftime('%Y-%m-%d') if pilot_list[pilot_idx][1] else ''
-                        # 仅 trans/view 获取操作类型
+                        # 仅 trans/view 获取操作类型、数量、价格
                         if param_site in ['/trans/view', '/review/trans/view']:
                             from .trans import TransHistory
                             history = TransHistory.objects.filter(id=pilot_list[pilot_idx][0]).first()
                             if history:
                                 pilot_action = history.get_action_display()
+                                pilot_qty = history.qty
+                                cat = detail.get('cat', 'stock')
+                                deci = 3 if cat in ('fund', 'bond') else 2
+                                pilot_price = f"{float(history.price):.{deci}f}"
                     detail['pilot_date'] = pilot_date
                     detail['pilot_action'] = pilot_action
+                    detail['pilot_qty'] = pilot_qty
+                    detail['pilot_price'] = pilot_price
                     # 汇总模式下，focus/view 返回汇总备注
                     if is_summary and param_site in ['/focus/view', '/review/focus/view']:
                         from .models.models import FocusStock
-                        focus_inst = FocusStock.objects.filter(code=code, market=market).first()
+                        focus_inst = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).first()
                         if focus_inst:
                             comments_list = []
-                            for h in focus_inst.histories.all().order_by('edit_date'):
+                            for h in focus_inst.histories.all().order_by('-edit_date'):
                                 if h.comments:
                                     date_str = h.edit_date.strftime('%Y-%m-%d') if h.edit_date else ''
                                     comments_list.append(f'{date_str}：{h.comments}')
@@ -621,7 +629,7 @@ def get_cat_from_code(code, market):
 
 def _get_stock_detail(site, code, market, history_id=None):
     if site in ['/focus/view', '/review/focus/view']:
-        focus_inst = FocusStock.objects.filter(code=code, market=market).first()
+        focus_inst = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).first()
         if not focus_inst:
             return {}
         history = None

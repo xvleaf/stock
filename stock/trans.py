@@ -57,6 +57,8 @@ def trans_deal(request, market, code):
 
     # GET：准备页面数据
     config = CashConfig.get_config()
+    # 根据股票类型设置小数位数：基金/债券3位，股票2位
+    deci = 3 if stock_cat in ('fund', 'bond') else 2
 
     # 初始表单数据
     can_choose_intent = not order  # 无持仓时可选择交易方向
@@ -71,7 +73,7 @@ def trans_deal(request, market, code):
         initial = {
             'intent': default_intent,
             'date': timezone.now().strftime('%Y-%m-%d'),
-            'price': float(order.avg_cost) if order.avg_cost > 0 else 0,
+            'price': round(float(order.avg_cost), deci) if order.avg_cost > 0 else 0,
             'qty': abs(order.position_qty),
             'target_price': float(order.target_price) if order.target_price else 0,
             'stop_price': float(order.stop_price) if order.stop_price else 0,
@@ -86,7 +88,7 @@ def trans_deal(request, market, code):
         initial = {
             'intent': focus.intent if focus else 'B',
             'date': timezone.now().strftime('%Y-%m-%d'),
-            'price': float(focus.plan_price) if focus.plan_price else 0,
+            'price': round(float(focus.plan_price), deci) if focus.plan_price else 0,
             'qty': focus.plan_qty,
             'target_price': float(focus.target_price) if focus.target_price else 0,
             'stop_price': float(focus.stop_price) if focus.stop_price else 0,
@@ -124,7 +126,7 @@ def trans_deal(request, market, code):
         'can_choose_intent': can_choose_intent,
         'cash': float(config.cash),
         'available': float(config.allowance - config.risk),
-        'current_risk': float(config.risk),
+        'current_risk': float(order.risk_amount) if order else 0,
         'commission_ratio': float(config.commission_ratio),
         'commission_min': float(config.commission_min),
         'stamp_sell_ratio': float(config.stamp_sell_ratio),
@@ -221,38 +223,30 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
             # 本次收益
             deal_profit = _q(order.profit - profit_before)
 
-            # 风险资金计算
-            if position_qty_before >= 0:
-                # 多头或空仓：买入建仓/加仓，增加风险
-                risk_change = cash_utils.calc_risk_capital(price, stop_price, qty, 'B')
+            # 风险资金（基于交易后持仓重新计算，与trans_calc一致）
+            if order.position_qty != 0:
+                order.risk_amount = cash_utils.calc_risk_capital(order.avg_cost_no_fee, stop_price, abs(order.position_qty), order.intent)
+                # 盈利机会：基于含手续费均价、目标价、止损价、持仓方向计算，保存到order避免重复计算
+                order.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, target_price, stop_price, order.intent)
             else:
-                # 空头持仓：买入平仓（可能反手）
-                short_qty = abs(position_qty_before)
-                if qty <= short_qty:
-                    # 全部空头平仓，按比例减少风险
-                    risk_ratio = Decimal(qty) / Decimal(short_qty)
-                    risk_change = -_q(risk_before * risk_ratio)
-                else:
-                    # 先平空头，再买多建仓（反手做多）
-                    # 空头部分：减少全部风险
-                    risk_reduce_short = risk_before
-                    # 多头部分：增加风险
-                    remain_qty = qty - short_qty
-                    risk_add_long = cash_utils.calc_risk_capital(price, stop_price, remain_qty, 'B')
-                    risk_change = risk_add_long - risk_reduce_short
-
-            order.risk_amount = _q(risk_before + risk_change)
-            if order.risk_amount < 0:
                 order.risk_amount = Decimal('0')
+                order.win_ratio = 0
+            risk_change = order.risk_amount - risk_before
+            # 更新持仓方向
+            if order.position_qty > 0:
+                order.intent = 'B'
+            elif order.position_qty < 0:
+                order.intent = 'S'
             order.save()
 
             # 保存该笔交易后的持仓快照
             deal.profit = order.profit
-            deal.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, target_price, stop_price, order.intent) if order.position_qty != 0 else 0
+            deal.win_ratio = order.win_ratio
             deal.risk_amount = order.risk_amount
             deal.position_qty = order.position_qty
             deal.avg_cost = order.avg_cost
-            deal.save(update_fields=['profit', 'win_ratio', 'risk_amount', 'position_qty', 'avg_cost'])
+            deal.avg_cost_no_fee = order.avg_cost_no_fee
+            deal.save(update_fields=['profit', 'win_ratio', 'risk_amount', 'position_qty', 'avg_cost', 'avg_cost_no_fee'])
             if not order.open_date:
                 order.open_date = deal_date
             order.save()
@@ -342,37 +336,30 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
             # 本次收益
             deal_profit = _q(order.profit - profit_before)
 
-            # 风险资金计算
-            if position_qty_before <= 0:
-                # 空头或空仓：卖出建仓/加仓，增加风险
-                risk_change = cash_utils.calc_risk_capital(price, stop_price, qty, 'S')
+            # 风险资金（基于交易后持仓重新计算，与trans_calc一致）
+            if order.position_qty != 0:
+                order.risk_amount = cash_utils.calc_risk_capital(order.avg_cost_no_fee, stop_price, abs(order.position_qty), order.intent)
+                # 盈利机会：基于含手续费均价、目标价、止损价、持仓方向计算，保存到order避免重复计算
+                order.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, target_price, stop_price, order.intent)
             else:
-                # 多头持仓：卖出平仓（可能反手）
-                if qty <= position_qty_before:
-                    # 全部多头平仓，按比例减少风险
-                    risk_ratio = Decimal(qty) / Decimal(position_qty_before)
-                    risk_change = -_q(risk_before * risk_ratio)
-                else:
-                    # 先平多头，再卖空建仓（反手做空）
-                    # 多头部分：减少全部风险
-                    risk_reduce_long = risk_before
-                    # 空头部分：增加风险
-                    remain_qty = qty - position_qty_before
-                    risk_add_short = cash_utils.calc_risk_capital(price, stop_price, remain_qty, 'S')
-                    risk_change = risk_add_short - risk_reduce_long
-
-            order.risk_amount = _q(risk_before + risk_change)
-            if order.risk_amount < 0:
                 order.risk_amount = Decimal('0')
+                order.win_ratio = 0
+            risk_change = order.risk_amount - risk_before
+            # 更新持仓方向
+            if order.position_qty > 0:
+                order.intent = 'B'
+            elif order.position_qty < 0:
+                order.intent = 'S'
             order.save()
 
             # 保存该笔交易后的持仓快照
             deal.profit = order.profit
-            deal.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, target_price, stop_price, order.intent) if order.position_qty != 0 else 0
+            deal.win_ratio = order.win_ratio
             deal.risk_amount = order.risk_amount
             deal.position_qty = order.position_qty
             deal.avg_cost = order.avg_cost
-            deal.save(update_fields=['profit', 'win_ratio', 'risk_amount', 'position_qty', 'avg_cost'])
+            deal.avg_cost_no_fee = order.avg_cost_no_fee
+            deal.save(update_fields=['profit', 'win_ratio', 'risk_amount', 'position_qty', 'avg_cost', 'avg_cost_no_fee'])
 
             # 更新资金配置
             config.cash += total_income
@@ -487,7 +474,7 @@ def get_trans_data_dict(order, history=None):
         # 当前持仓汇总
         # 收集所有历史记录中的备注
         comments_list = []
-        for h in order.histories.all().order_by('date', 'id'):
+        for h in order.histories.all().order_by('-date', '-id'):
             if h.comments:
                 date_str = h.date.strftime('%Y-%m-%d') if h.date else ''
                 comments_list.append(f'{date_str}：{h.comments}')
@@ -502,15 +489,15 @@ def get_trans_data_dict(order, history=None):
             'market_display': market_display,
             'date': order.open_date.strftime('%Y-%m-%d') if order.open_date else '',
             'intent': '持仓中',
-            'price': round(float(order.avg_cost), deci) if order.position_qty > 0 else 0,
+            'price': round(float(order.avg_cost), deci) if order.position_qty != 0 else 0,
             'qty': order.position_qty,
-            'amount': round(float(order.position_cost), 2),
+            'amount': round(float(abs(order.position_cost_no_fee)), 2),
             'fee': round(float(order.total_fee), 2),
             'profit': round(float(order.profit), 2),
             'risk_amount': round(float(order.risk_amount), 2),
             'target_price': round(float(order.target_price), deci) if order.target_price else '',
             'stop_price': round(float(order.stop_price), deci) if order.stop_price else '',
-            'win_ratio': cash_utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price, order.focus.intent if order.focus else 'B') if order.position_qty > 0 else 0,
+            'win_ratio': order.win_ratio if order.position_qty != 0 else 0,
             'allowed_qty': 0,
             'comments': comments_text,
         }
@@ -527,7 +514,7 @@ def get_trans_data_dict(order, history=None):
             'intent': history.get_action_display(),
             'price': round(float(history.avg_cost), deci) if history.avg_cost else 0,
             'qty': history.position_qty,
-            'amount': round(float(history.position_qty * history.avg_cost), 2) if history.avg_cost else 0,
+            'amount': round(float(abs(history.position_qty * history.avg_cost_no_fee)), 2) if history.avg_cost_no_fee else 0,
             'fee': round(float(history.fee), 2),
             'profit': round(float(history.profit), 2),
             'risk_amount': round(float(history.risk_amount), 2),
@@ -575,9 +562,9 @@ def trans_view(request, market, code):
     market_display = dict(MARKET_CHOICES).get(order.market, order.market)
     if is_summary or pilot is None:
         # 显示当前持仓汇总
-        # 收集所有历史记录中的备注
+        # 收集所有历史记录中的备注（按近期到远期顺序）
         comments_list = []
-        for h in histories:
+        for h in reversed(histories):
             if h.comments:
                 date_str = h.date.strftime('%Y-%m-%d') if h.date else ''
                 comments_list.append(f'{date_str}：{h.comments}')
@@ -590,21 +577,19 @@ def trans_view(request, market, code):
             'name': order.name,
             'date': order.open_date.strftime('%Y-%m-%d') if order.open_date else '',
             'intent': '持仓中',
-            'price': round(float(order.avg_cost), deci) if order.position_qty > 0 else 0,
+            'price': round(float(order.avg_cost), deci) if order.position_qty != 0 else 0,
             'qty': order.position_qty,
-            'amount': round(float(order.position_cost), 2),
+            'amount': round(float(abs(order.position_cost_no_fee)), 2),
             'fee': round(float(order.total_fee), 2),
             'profit': round(float(order.profit), 2),
             'risk_amount': round(float(order.risk_amount), 2),
             'target_price': round(float(order.target_price), deci) if order.target_price else '',
             'stop_price': round(float(order.stop_price), deci) if order.stop_price else '',
-            'win_ratio': cash_utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price) if order.position_qty > 0 else 0,
+            'win_ratio': order.win_ratio if order.position_qty != 0 else 0,
             'allowed_qty': 0,
             'comments': comments_text,
         }
         latest_history = histories[-1] if histories else None
-        pilot_date = latest_history.date.strftime('%Y-%m-%d') if latest_history and latest_history.date else ''
-        pilot_action = ''
     else:
         # 显示历史记录
         h = pilot
@@ -627,8 +612,6 @@ def trans_view(request, market, code):
             'allowed_qty': '',
             'comments': h.comments or '',
         }
-        pilot_date = h.date.strftime('%Y-%m-%d') if h.date else ''
-        pilot_action = h.get_action_display()
 
     view_mode = func.get_cache(request.session, 'view', 'kline')
     chart_init = {
@@ -647,8 +630,6 @@ def trans_view(request, market, code):
         'is_summary': is_summary,
         'pilot_idx': pilot_idx,
         'pilot_total': len(histories),
-        'pilot_date': pilot_date,
-        'pilot_action': pilot_action,
         'chart': json.dumps(chart_init),
         'cash': CashConfig.get_config().cash,
         'available': CashConfig.get_config().allowance - CashConfig.get_config().risk,
@@ -676,6 +657,8 @@ def trans_edit(request, market, code):
             # 重新计算风险资金（根据交易方向）
             edit_intent = order.focus.intent if order.focus else 'B'
             order.risk_amount = cash_utils.calc_risk_capital(order.avg_cost_no_fee, order.stop_price, order.position_qty, edit_intent)
+            # 重新计算盈利机会并保存到order
+            order.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price, edit_intent) if order.position_qty > 0 else 0
             order.save()
             # 更新 config.risk
             config.risk = config.risk - old_risk + order.risk_amount
@@ -694,7 +677,7 @@ def trans_edit(request, market, code):
             )
             # 保存该笔编辑后的持仓快照
             deal.profit = order.profit
-            deal.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price, edit_intent) if order.position_qty > 0 else 0
+            deal.win_ratio = order.win_ratio
             deal.risk_amount = order.risk_amount
             deal.position_qty = order.position_qty
             deal.avg_cost = order.avg_cost
@@ -714,10 +697,9 @@ def trans_edit(request, market, code):
         sell_fee = commission + stamp
         expected_profit = round(sell_amount - sell_fee - float(order.position_cost), 2)
 
-    # 风险资金 = (不含手续费均价 - 止损价) × 数量，止损价>=均价时为0
-    risk_amount = 0
-    if order.position_qty > 0 and order.stop_price and order.avg_cost_no_fee > order.stop_price:
-        risk_amount = round(float(order.avg_cost_no_fee - order.stop_price) * order.position_qty, 2)
+    # 风险资金（基于持仓重新计算，与trans_calc一致）
+    risk_amount = float(cash_utils.calc_risk_capital(order.avg_cost_no_fee, order.stop_price, abs(order.position_qty), order.intent)) if order.position_qty != 0 else 0
+    risk_amount = round(risk_amount, 2)
 
     initial = {
         'cat': cat_display,
@@ -728,7 +710,7 @@ def trans_edit(request, market, code):
         'intent': '持仓中',
         'price': round(float(order.avg_cost), deci) if order.position_qty > 0 else 0,
         'qty': order.position_qty,
-        'amount': round(float(order.position_cost), 2),
+        'amount': round(float(abs(order.position_cost_no_fee)), 2),
         'fee': round(float(order.total_fee), 2),
         'profit': expected_profit,
         'risk_amount': risk_amount,
@@ -759,7 +741,7 @@ def trans_edit(request, market, code):
         'avg_cost': round(float(order.avg_cost), 3) if order.position_qty > 0 else 0,
         'avg_cost_no_fee': round(float(order.avg_cost_no_fee), 3) if order.position_qty > 0 else 0,
         'position_qty': order.position_qty,
-        'position_cost': round(float(order.position_cost), 2),
+        'position_cost': round(float(abs(order.position_cost_no_fee)), 2),
         'commission_ratio': float(config.commission_ratio),
         'commission_min': float(config.commission_min),
         'stamp_sell_ratio': float(config.stamp_sell_ratio),
@@ -793,47 +775,98 @@ def trans_calc(request):
     fee_info = cash_utils.calc_fee(amount, intent, config)
     fee = float(fee_info['total'])
 
-    # 风险资金（考虑平仓/反手）
-    risk_change = Decimal('0')
+    # ===== 1. 计算交易后的持仓状态（方向、数量、均价）=====
+    new_qty = 0
+    new_avg_no_fee = 0
+    new_intent = 'B'
+
     if intent == 'B':
         if position_qty >= 0:
-            # 多头或空仓：买入建仓/加仓
-            risk_change = cash_utils.calc_risk_capital(price, stop_price, qty, 'B')
+            # 多头或空仓：加仓/建仓
+            new_qty = position_qty + qty
+            if new_qty > 0:
+                new_avg_no_fee = (avg_cost_no_fee * position_qty + price * qty) / new_qty
+            new_intent = 'B'
         else:
             # 空头持仓：买入平仓（可能反手）
             short_qty = abs(position_qty)
             if qty <= short_qty:
-                # 全部空头平仓，按比例减少风险
-                risk_ratio = Decimal(qty) / Decimal(short_qty)
-                risk_change = -Decimal(str(current_risk)) * risk_ratio
+                # 部分平仓，仍为空头
+                new_qty = position_qty + qty
+                new_avg_no_fee = avg_cost_no_fee
+                new_intent = 'S'
             else:
-                # 先平空头，再买多建仓
-                risk_reduce_short = Decimal(str(current_risk))
-                remain_qty = qty - short_qty
-                risk_add_long = cash_utils.calc_risk_capital(price, stop_price, remain_qty, 'B')
-                risk_change = risk_add_long - risk_reduce_short
-    else:
+                # 平仓后反手做多
+                new_qty = qty - short_qty
+                new_avg_no_fee = price
+                new_intent = 'B'
+    else:  # intent == 'S'
         if position_qty <= 0:
-            # 空头或空仓：卖出建仓/加仓
-            risk_change = cash_utils.calc_risk_capital(price, stop_price, qty, 'S')
+            # 空头或空仓：加仓/建仓
+            new_qty = position_qty - qty
+            total_qty = abs(position_qty) + qty
+            if total_qty > 0:
+                new_avg_no_fee = (avg_cost_no_fee * abs(position_qty) + price * qty) / total_qty
+            new_intent = 'S'
         else:
             # 多头持仓：卖出平仓（可能反手）
             long_qty = position_qty
             if qty <= long_qty:
-                # 全部多头平仓，按比例减少风险
-                risk_ratio = Decimal(qty) / Decimal(long_qty)
-                risk_change = -Decimal(str(current_risk)) * risk_ratio
+                # 部分平仓，仍为多头
+                new_qty = position_qty - qty
+                new_avg_no_fee = avg_cost_no_fee
+                new_intent = 'B'
             else:
-                # 先平多头，再卖空建仓
-                risk_reduce_long = Decimal(str(current_risk))
-                remain_qty = qty - long_qty
-                risk_add_short = cash_utils.calc_risk_capital(price, stop_price, remain_qty, 'S')
-                risk_change = risk_add_short - risk_reduce_long
+                # 平仓后反手做空
+                new_qty = -(qty - long_qty)
+                new_avg_no_fee = price
+                new_intent = 'S'
 
-    risk_amount = max(0, float(current_risk) + float(risk_change))
+    # ===== 2. 计算已实现收益（平仓部分）=====
+    realized_profit = 0
+    if qty > 0 and price > 0:
+        if intent == 'B' and position_qty < 0:
+            # 买入平仓空头
+            short_qty = abs(position_qty)
+            close_qty = min(qty, short_qty)
+            close_fee = fee * (close_qty / qty) if qty > 0 else 0
+            realized_profit = (avg_cost_no_fee - price) * close_qty - close_fee
+        elif intent == 'S' and position_qty > 0:
+            # 卖出平仓多头
+            long_qty = position_qty
+            close_qty = min(qty, long_qty)
+            close_fee = fee * (close_qty / qty) if qty > 0 else 0
+            realized_profit = (price - avg_cost_no_fee) * close_qty - close_fee
+
+    # ===== 3. 基于交易后持仓计算盈利机会、风险资金、预计收益 =====
+    # 盈利机会
+    if new_qty != 0 and target_price > 0 and stop_price > 0:
+        win_ratio = cash_utils.calc_win_ratio(new_avg_no_fee, target_price, stop_price, new_intent)
+    else:
+        win_ratio = 0
+
+    # 风险资金（基于交易后持仓重新计算）
+    if new_qty != 0:
+        risk_amount = float(cash_utils.calc_risk_capital(new_avg_no_fee, stop_price, abs(new_qty), new_intent))
+    else:
+        risk_amount = 0
     risk_amount = round(risk_amount, 2)
 
-    # 允许数量（考虑反向交易）
+    # 预计收益 = 已实现收益 + 未实现收益（剩余持仓按目标价，扣除交易费用）
+    unrealized_profit = 0
+    if new_qty != 0 and target_price > 0:
+        if new_intent == 'B':
+            sell_amount = target_price * abs(new_qty)
+            sell_fee = float(cash_utils.calc_fee(sell_amount, 'S', config)['total'])
+            unrealized_profit = (target_price - new_avg_no_fee) * abs(new_qty) - sell_fee
+        else:
+            buy_amount = target_price * abs(new_qty)
+            buy_fee = float(cash_utils.calc_fee(buy_amount, 'B', config)['total'])
+            unrealized_profit = (new_avg_no_fee - target_price) * abs(new_qty) - buy_fee
+
+    profit = round(realized_profit + unrealized_profit, 2)
+
+    # 允许数量（考虑反向交易，逻辑不变）
     base_allowed = cash_utils.calc_allowed_qty(price, stop_price, intent) if price > 0 else 0
     if intent == 'B' and position_qty < 0:
         # 买入：空头持仓可平仓 + 可新开仓
@@ -843,81 +876,6 @@ def trans_calc(request):
         allowed_qty = position_qty + base_allowed
     else:
         allowed_qty = base_allowed
-
-    # 盈利机会（0-99）
-    win_ratio = cash_utils.calc_win_ratio(price, target_price, stop_price, intent)
-
-    # 预计收益（根据持仓情况区分）
-    profit = 0
-    if qty > 0 and price > 0:
-        if intent == 'B':
-            # 买入
-            if position_qty >= 0:
-                # 多头或空仓：加仓/建仓，基于新均价计算
-                new_qty = position_qty + qty
-                if new_qty > 0:
-                    new_avg_no_fee = (avg_cost_no_fee * position_qty + price * qty) / new_qty
-                    if target_price > 0:
-                        sell_amount = target_price * new_qty
-                        sell_fee = float(cash_utils.calc_fee(sell_amount, 'S', config)['total'])
-                        profit = round((target_price - new_avg_no_fee) * new_qty - sell_fee, 2)
-            else:
-                # 空头持仓：买入平仓（可能反手）
-                short_qty = abs(position_qty)
-                if qty <= short_qty:
-                    # 全部空头平仓：已实现收益
-                    close_fee = fee * (qty / short_qty) if short_qty > 0 else fee
-                    profit = round((avg_cost_no_fee - price) * qty - close_fee, 2)
-                else:
-                    # 先平空头，再买多建仓
-                    close_qty = short_qty
-                    close_fee = fee * (close_qty / qty) if qty > 0 else 0
-                    # 平仓已实现收益
-                    close_profit = (avg_cost_no_fee - price) * close_qty - close_fee
-                    # 反手做多部分
-                    remain_qty = qty - close_qty
-                    remain_fee = fee - close_fee
-                    if target_price > 0:
-                        sell_amount = target_price * remain_qty
-                        sell_fee = float(cash_utils.calc_fee(sell_amount, 'S', config)['total'])
-                        remain_profit = (target_price - price) * remain_qty - remain_fee - sell_fee
-                    else:
-                        remain_profit = 0
-                    profit = round(close_profit + remain_profit, 2)
-        else:
-            # 卖出
-            if position_qty <= 0:
-                # 空头或空仓：加仓/建仓，基于新均价计算
-                new_qty = abs(position_qty) + qty
-                if new_qty > 0:
-                    new_avg_no_fee = (avg_cost_no_fee * abs(position_qty) + price * qty) / new_qty
-                    if target_price > 0:
-                        buy_amount = target_price * new_qty
-                        buy_fee = float(cash_utils.calc_fee(buy_amount, 'B', config)['total'])
-                        profit = round((new_avg_no_fee - target_price) * new_qty - buy_fee, 2)
-            else:
-                # 多头持仓：卖出平仓（可能反手）
-                long_qty = position_qty
-                if qty <= long_qty:
-                    # 全部多头平仓：已实现收益
-                    close_fee = fee * (qty / long_qty) if long_qty > 0 else fee
-                    profit = round((price - avg_cost_no_fee) * qty - close_fee, 2)
-                else:
-                    # 先平多头，再卖空建仓
-                    close_qty = long_qty
-                    close_fee = fee * (close_qty / qty) if qty > 0 else 0
-                    # 平仓已实现收益
-                    close_profit = (price - avg_cost_no_fee) * close_qty - close_fee
-                    # 反手做空部分
-                    remain_qty = qty - close_qty
-                    remain_fee = fee - close_fee
-                    if target_price > 0:
-                        buy_amount = target_price * remain_qty
-                        buy_fee = float(cash_utils.calc_fee(buy_amount, 'B', config)['total'])
-                        remain_profit = (price - target_price) * remain_qty - remain_fee - buy_fee
-                    else:
-                        remain_profit = 0
-                    profit = round(close_profit + remain_profit, 2)
 
     return JsonResponse({
         'amount': amount,

@@ -316,11 +316,22 @@ class TransOrder(models.Model):
     total_fee = models.DecimalField('费用总计', max_digits=10, decimal_places=2, default=0)
     profit = models.DecimalField('盈利金额', max_digits=14, decimal_places=2, default=0)
     risk_amount = models.DecimalField('风险资金占用', max_digits=14, decimal_places=2, default=0)
+    # 含手续费持仓成本 = 当前持仓的含手续费成本（多头为正，空头为负）
+    # 反手做空时为负数，表示欠股票的含手续费成本
+    # 用于计算 avg_cost（含手续费持仓均价）= abs(position_cost / position_qty)
+    position_cost = models.DecimalField('含手续费持仓成本', max_digits=14, decimal_places=2, default=0)
+    # 不含手续费持仓成本 = 当前持仓的不含手续费成本（多头为正，空头为负）
+    # 用于计算 avg_cost_no_fee（不含手续费持仓均价）和盈利机会
     position_cost_no_fee = models.DecimalField('不含手续费持仓成本', max_digits=14, decimal_places=2, default=0)
+    # 含手续费累计卖出成本 = 每次卖出平仓时按当时含手续费均价 × 平仓数量 的累加
+    # 用于计算 position_cost（含手续费持仓成本）= buy_amount + buy_fee - sold_cost
+    # 进而计算 avg_cost（含手续费持仓均价）= position_cost / position_qty
+    sold_cost = models.DecimalField('含手续费累计卖出成本', max_digits=14, decimal_places=2, default=0)
+    # 盈利机会（0-99整数），每次交易或修改目标价/止损价后重新计算并保存
+    # 计算方式：calc_win_ratio(avg_cost, target_price, stop_price, intent)
+    win_ratio = models.IntegerField('盈利机会', default=0)
     created_at = models.DateField('创建日期', auto_now_add=True)
     updated_at = models.DateField('更新日期', auto_now=True)
-
-    _sold_cost = Decimal('0')
 
     class Meta:
         # 自定义模型在数据库中的显示名称
@@ -328,10 +339,6 @@ class TransOrder(models.Model):
         verbose_name = '交易订单'
         verbose_name_plural = verbose_name
         ordering = ['-created_at']
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._sold_cost = Decimal('0')
 
     def __str__(self):
         return f'{self.name}({self.code})-{self.get_status_display()}'
@@ -343,10 +350,6 @@ class TransOrder(models.Model):
     @property
     def position_qty(self):
         return self.buy_qty - self.sell_qty
-
-    @property
-    def position_cost(self):
-        return self.buy_amount + self.buy_fee - getattr(self, '_sold_cost', Decimal('0'))
 
     @property
     def avg_cost(self):
@@ -411,15 +414,20 @@ class TransOrder(models.Model):
                         # 全部用于空头平仓
                         close_qty = d.qty
                         close_amount = d.price * close_qty
-                        close_fee = d.fee * (close_qty / d.qty) if d.qty > 0 else d.fee
+                        close_fee = d.fee * (Decimal(close_qty) / Decimal(d.qty)) if d.qty > 0 else d.fee
                         profit += short_avg_cost * close_qty - close_amount - close_fee
+                        # 按比例减少 position_cost 和 position_cost_no_fee
+                        avg = position_cost / abs(position_qty)
+                        avg_no_fee = position_cost_no_fee / abs(position_qty)
+                        position_cost -= avg * close_qty
+                        position_cost_no_fee -= avg_no_fee * close_qty
                         position_qty += close_qty
                         # 空头减少，short_avg_cost 不变
                     else:
                         # 先平空头，再买多建仓
                         close_qty = short_qty
                         close_amount = d.price * close_qty
-                        close_fee = d.fee * (close_qty / d.qty)
+                        close_fee = d.fee * (Decimal(close_qty) / Decimal(d.qty))
                         profit += short_avg_cost * close_qty - close_amount - close_fee
                         position_qty += close_qty  # 变为0
                         # 剩余部分买多建仓
@@ -468,7 +476,7 @@ class TransOrder(models.Model):
                         avg = position_cost / position_qty
                         avg_no_fee = position_cost_no_fee / position_qty
                         close_qty = position_qty
-                        close_fee = d.fee * (close_qty / d.qty)
+                        close_fee = d.fee * (Decimal(close_qty) / Decimal(d.qty))
                         sold_cost += avg * close_qty
                         profit += d.price * close_qty - close_fee - avg_no_fee * close_qty
                         position_cost = Decimal('0')
@@ -494,8 +502,11 @@ class TransOrder(models.Model):
         self.sell_fee = sell_fee
         self.total_fee = buy_fee + sell_fee
         self.profit = profit.quantize(Decimal('0.01'))
+        # 保存含手续费持仓成本（多头为正，空头为负），用于从数据库重新获取时正确计算 avg_cost
+        self.position_cost = position_cost.quantize(Decimal('0.01'))
         self.position_cost_no_fee = position_cost_no_fee.quantize(Decimal('0.01'))
-        self._sold_cost = sold_cost
+        # 保存含手续费累计卖出成本
+        self.sold_cost = sold_cost.quantize(Decimal('0.01'))
 
         # 更新 intent
         if position_qty > 0:
@@ -553,6 +564,7 @@ class TransHistory(models.Model):
     risk_amount = models.DecimalField('风险资金', max_digits=14, decimal_places=2, default=0)
     position_qty = models.IntegerField('持仓数量', default=0)
     avg_cost = models.DecimalField('持仓均价', max_digits=10, decimal_places=3, default=0)
+    avg_cost_no_fee = models.DecimalField('不含费持仓均价', max_digits=10, decimal_places=3, default=0)
 
     class Meta:
         db_table = 'models_trans_history'

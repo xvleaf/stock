@@ -18,7 +18,7 @@ export function initTransDeal(opts = {}) {
         initChartPage();
     }
 
-    const intentSelect = document.getElementById('id_intent_choice');
+    const intentSelect = document.getElementById('id_intent');
     const priceInput = document.getElementById('id_price');
     const qtyInput = document.getElementById('id_qty');
     const targetInput = document.getElementById('id_target_price');

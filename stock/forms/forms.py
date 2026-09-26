@@ -80,7 +80,7 @@ class FocusStockForm(forms.ModelForm):
             'plan_price': forms.TextInput(attrs={
                 'class': 'form-control', 'id': 'id_plan_price',
             }),
-            'plan_qty': forms.NumberInput(attrs={
+            'plan_qty': forms.TextInput(attrs={
                 'class': 'form-control', 'id': 'id_plan_qty',
             }),
             'target_price': forms.TextInput(attrs={

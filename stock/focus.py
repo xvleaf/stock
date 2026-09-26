@@ -173,9 +173,9 @@ def focus_view(request, market, code):
 
         navi_data = chart.set_navi_data(request.session, site, code, market, 'focus', 'init')
 
-        # 汇总模式：备注汇总所有历史记录的备注
+        # 汇总模式：备注汇总所有历史记录的备注（按近期到远期顺序）
         comments_list = []
-        for h in histories:
+        for h in reversed(histories):
             if h.comments:
                 date_str = h.edit_date.strftime('%Y-%m-%d') if h.edit_date else ''
                 comments_list.append(f'{date_str}：{h.comments}')
@@ -202,8 +202,6 @@ def focus_view(request, market, code):
             'form': form,
             'chart': json.dumps(chart_init),
             'is_summary': is_summary,
-            'pilot_idx': pilot_idx,
-            'pilot_total': len(histories),
             'cash': CashConfig.get_config().cash,
             'available': CashConfig.get_config().allowance - CashConfig.get_config().risk,
         })

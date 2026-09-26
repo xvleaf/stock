@@ -24,7 +24,7 @@
         {% csrf_token %}
         {# 笔数指示器（汇总时隐藏） #}
         <div class="d-flex justify-content-end align-items-center mb-2 {% if is_summary %}d-none{% endif %}" id="focusPilotWrap">
-            <span class="small text-muted" id="focusPilotIndicator">第 {{ pilot_idx|add:1 }} / {{ pilot_total }} 笔</span>
+            <span class="small text-muted" id="focusPilotIndicator"></span>
         </div>
         <div class="row">
             <div class="col-md-3 col-sm-6">
