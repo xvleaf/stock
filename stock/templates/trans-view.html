@@ -11,8 +11,8 @@
 <div class="d-none" id="chartPageContainer"></div>
 
 <div class="form-wrap" id="transViewForm">
-    {# 历史指示器（汇总时隐藏） #}
-    <div class="d-flex justify-content-end align-items-center mb-2 {% if is_summary %}d-none{% endif %}" id="transPilotWrap">
+    {# 历史指示器（汇总且有多条历史时隐藏） #}
+    <div class="d-flex justify-content-end align-items-center mb-2 {% if is_summary and pilot_total > 1 %}d-none{% endif %}" id="transPilotWrap">
         <span class="small text-muted" id="transPilotIndicator"></span>
     </div>
 
@@ -146,6 +146,10 @@ Highcharts.setOptions({
             is_summary: {{ is_summary|yesno:"true,false" }},
             pilot_idx: {{ pilot_idx }},
             pilot_total: {{ pilot_total }},
+            pilot_date: "{{ pilot_date }}",
+            pilot_action: "{{ pilot_action }}",
+            pilot_qty: "{{ pilot_qty }}",
+            pilot_price: "{{ pilot_price }}",
             initChart: {{ chart|safe }}
         });
     });

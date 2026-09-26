@@ -177,17 +177,19 @@ export function updateFormData(data) {
     if (pilotIndicator && data.pilot_idx !== undefined && data.pilot_total !== undefined) {
         const isSummary = data.is_summary === true || data.pilot_idx === -1;
         if (pilotWrap) {
-            if (isSummary) {
+            // 汇总模式且有多条历史时隐藏；只有一条历史时显示建仓记录
+            if (isSummary && data.pilot_total > 1) {
                 pilotWrap.classList.add('d-none');
             } else {
                 pilotWrap.classList.remove('d-none');
             }
         }
-        if (!isSummary) {
+        if (!isSummary || data.pilot_total === 1) {
             const qtyPriceStr = (data.pilot_qty && data.pilot_price !== '') ? `${data.pilot_qty}股@${data.pilot_price}元` : '';
             const dateStr = data.pilot_date ? ` [${data.pilot_date}` : '';
             const actionStr = data.pilot_action ? ` ${data.pilot_action}${qtyPriceStr}]` : (data.pilot_date ? ']' : '');
-            pilotIndicator.textContent = `第 ${data.pilot_idx + 1} / ${data.pilot_total} 笔${dateStr}${actionStr}`;
+            const idx = isSummary ? 1 : (data.pilot_idx + 1);
+            pilotIndicator.textContent = `第 ${idx} / ${data.pilot_total} 笔${dateStr}${actionStr}`;
         }
     }
 

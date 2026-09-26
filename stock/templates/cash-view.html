@@ -77,7 +77,7 @@
             <div class="card h-100">
                 <div class="card-body py-2">
                     <div class="text-muted small">风险资金</div>
-                    <div class="cash-card-num fw-bold" id="cashRisk">{{ config.risk|floatformat:2 }}</div>
+                    <div class="cash-card-num fw-bold {% if config.risk > config.allowance %}text-danger{% endif %}" id="cashRisk">{{ config.risk|floatformat:2 }}</div>
                 </div>
             </div>
         </div>

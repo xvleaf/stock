@@ -7,6 +7,7 @@ export function initTransDeal(opts = {}) {
     if (!form) return;
 
     const currentRisk = opts.current_risk || 0;
+    const allowance = opts.allowance || 0;
     const avgCost = opts.avg_cost || 0;
     const avgCostNoFee = opts.avg_cost_no_fee || 0;
     const positionQty = opts.position_qty || 0;
@@ -79,15 +80,21 @@ export function initTransDeal(opts = {}) {
             allowedInput.value = data.allowed_qty;
             winInput.value = data.win_ratio;
 
-            // 成交数量超过允许数量时，成交数量变红加粗
+            // 风险资金超过剩余风险额度时，风险资金输入框变红
+            const remainingRisk = allowance - currentRisk;
+            if (data.risk_amount > remainingRisk && remainingRisk > 0) {
+                riskInput.classList.add('text-danger');
+            } else {
+                riskInput.classList.remove('text-danger');
+            }
+
+            // 成交数量超过允许数量时，成交数量变红
             const qty = parseInt(qtyInput.value) || 0;
             const allowedQty = parseInt(allowedInput.value) || 0;
             if (qty > allowedQty && allowedQty > 0) {
-                qtyInput.style.color = '#8B0000';
-                qtyInput.style.fontWeight = 'bold';
+                qtyInput.classList.add('text-danger');
             } else {
-                qtyInput.style.color = '';
-                qtyInput.style.fontWeight = '';
+                qtyInput.classList.remove('text-danger');
             }
         })
         .catch(() => {});
@@ -155,12 +162,27 @@ export function initTransView(opts = {}) {
     const isSummary = opts.is_summary !== false;
     let pilotIdx = opts.pilot_idx !== undefined ? opts.pilot_idx : -1;
     const pilotTotal = opts.pilot_total || 0;
+    const pilotDate = opts.pilot_date || '';
+    const pilotAction = opts.pilot_action || '';
+    const pilotQty = opts.pilot_qty || '';
+    const pilotPrice = opts.pilot_price || '';
     const initChart = opts.initChart || {};
 
     setPageConfig(initChart);
     if (chartPageContainer) {
         chartPageContainer.classList.remove('d-none');
         initChartPage();
+    }
+
+    // 汇总模式且只有一条历史记录时，显示建仓记录指示器
+    if (isSummary && pilotTotal === 1) {
+        const pilotIndicator = document.getElementById('transPilotIndicator');
+        if (pilotIndicator) {
+            const qtyPriceStr = (pilotQty && pilotPrice !== '') ? `${pilotQty}股@${pilotPrice}元` : '';
+            const dateStr = pilotDate ? ` [${pilotDate}` : '';
+            const actionStr = pilotAction ? ` ${pilotAction}${qtyPriceStr}]` : (pilotDate ? ']' : '');
+            pilotIndicator.textContent = `第 1 / 1 笔${dateStr}${actionStr}`;
+        }
     }
 
     // 历史模式下文字变灰
@@ -206,6 +228,9 @@ export function initTransEdit(opts = {}) {
     const positionQty = opts.position_qty || 0;
     const positionCost = opts.position_cost || 0;
     const currentRisk = opts.current_risk || 0;
+    const allowance = opts.allowance || 0;
+    const oldRisk = opts.old_risk || 0;
+    const intent = opts.intent || 'B';
     const initChart = opts.initChart || {};
 
     setPageConfig(initChart);
@@ -226,9 +251,9 @@ export function initTransEdit(opts = {}) {
 
     function collectParams() {
         return {
-            intent: 'B',
+            intent: intent,
             price: avgCostNoFee,
-            qty: positionQty,
+            qty: 0,
             target_price: parseFloat(targetInput.value) || 0,
             stop_price: parseFloat(stopInput.value) || 0,
             position_qty: positionQty,
@@ -262,6 +287,15 @@ export function initTransEdit(opts = {}) {
             profitInput.value = data.profit.toFixed(2);
             riskInput.value = data.risk_amount.toFixed(2);
             winInput.value = data.win_ratio;
+
+            // 风险资金变动部分超过剩余风险额度时，风险资金输入框变红
+            const riskChange = data.risk_amount - oldRisk;
+            const remainingRisk = allowance - currentRisk;
+            if (riskChange > remainingRisk && riskChange > 0) {
+                riskInput.classList.add('text-danger');
+            } else {
+                riskInput.classList.remove('text-danger');
+            }
         })
         .catch(() => {});
     }

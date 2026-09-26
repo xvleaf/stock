@@ -283,16 +283,16 @@ function createFocusCalc(priceId, targetId, stopId, allowedId, winId, intentSele
             if (allowedInput) allowedInput.value = data.allowed_qty;
             if (winInput) winInput.value = data.win_ratio;
 
-            // 超限检查
-            const planQty = parseInt(document.getElementById('id_plan_qty')?.value) || 0;
+            // 超限检查：计划数量超过允许数量时变红
+            const planQtyInput = document.getElementById('id_plan_qty');
+            const planQty = parseInt(planQtyInput?.value) || 0;
             const allowedQty = parseInt(data.allowed_qty) || 0;
-            if (allowedInput) {
-                if (planQty > allowedQty && allowedQty > 0) {
-                    allowedInput.style.color = '#8B0000';
-                    allowedInput.style.fontWeight = 'bold';
+            const overLimit = planQty > allowedQty && allowedQty > 0;
+            if (planQtyInput) {
+                if (overLimit) {
+                    planQtyInput.classList.add('text-danger');
                 } else {
-                    allowedInput.style.color = '';
-                    allowedInput.style.fontWeight = '';
+                    planQtyInput.classList.remove('text-danger');
                 }
             }
         })
@@ -304,12 +304,31 @@ function createFocusCalc(priceId, targetId, stopId, allowedId, winId, intentSele
         calcTimer = setTimeout(requestCalc, 300);
     }
 
+    // 计划数量超限判断（不依赖后端计算）
+    function checkPlanQtyLimit() {
+        const planQtyInput = document.getElementById('id_plan_qty');
+        const allowedInput = document.getElementById(allowedId);
+        if (!planQtyInput || !allowedInput) return;
+        const planQty = parseInt(planQtyInput.value) || 0;
+        const allowedQty = parseInt(allowedInput.value) || 0;
+        if (planQty > allowedQty && allowedQty > 0) {
+            planQtyInput.classList.add('text-danger');
+        } else {
+            planQtyInput.classList.remove('text-danger');
+        }
+    }
+
     // 事件绑定
     priceInput.addEventListener('input', scheduleCalc);
     if (targetInput) targetInput.addEventListener('input', scheduleCalc);
     if (stopInput) stopInput.addEventListener('input', scheduleCalc);
     const planQtyInput = document.getElementById('id_plan_qty');
-    if (planQtyInput) planQtyInput.addEventListener('input', scheduleCalc);
+    if (planQtyInput) {
+        planQtyInput.addEventListener('input', () => {
+            scheduleCalc();
+            checkPlanQtyLimit();
+        });
+    }
     const intentEl = document.querySelector(intentSelector || '[name="intent_choice"]');
     if (intentEl) intentEl.addEventListener('change', scheduleCalc);
 

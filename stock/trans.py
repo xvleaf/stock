@@ -126,7 +126,8 @@ def trans_deal(request, market, code):
         'can_choose_intent': can_choose_intent,
         'cash': float(config.cash),
         'available': float(config.allowance - config.risk),
-        'current_risk': float(order.risk_amount) if order else 0,
+        'current_risk': float(config.risk),
+        'allowance': float(config.allowance),
         'commission_ratio': float(config.commission_ratio),
         'commission_min': float(config.commission_min),
         'stamp_sell_ratio': float(config.stamp_sell_ratio),
@@ -608,12 +609,28 @@ def trans_view(request, market, code):
         'backUrl': '/trans/list',
     }
 
+    # 汇总模式下，只有一条历史记录时，传递建仓记录信息给指示器
+    pilot_date = ''
+    pilot_action = ''
+    pilot_qty = ''
+    pilot_price = ''
+    if is_summary and len(histories) == 1:
+        h0 = histories[0]
+        pilot_date = h0.date.strftime('%Y-%m-%d') if h0.date else ''
+        pilot_action = h0.get_action_display()
+        pilot_qty = h0.qty
+        pilot_price = f"{float(h0.price):.{deci}f}" if h0.price else ''
+
     return render(request, 'trans-view.html', {
         'order': order,
         'initial': initial,
         'is_summary': is_summary,
         'pilot_idx': pilot_idx,
         'pilot_total': len(histories),
+        'pilot_date': pilot_date,
+        'pilot_action': pilot_action,
+        'pilot_qty': pilot_qty,
+        'pilot_price': pilot_price,
         'chart': json.dumps(chart_init),
         'cash': CashConfig.get_config().cash,
         'available': CashConfig.get_config().allowance - CashConfig.get_config().risk,
@@ -731,6 +748,8 @@ def trans_edit(request, market, code):
         'chart': json.dumps(chart_init),
         'cash': config.cash,
         'available': config.allowance - config.risk,
+        'current_risk': float(config.risk),
+        'allowance': float(config.allowance),
         'avg_cost': round(float(order.avg_cost), 3) if order.position_qty > 0 else 0,
         'avg_cost_no_fee': round(float(order.avg_cost_no_fee), 3) if order.position_qty > 0 else 0,
         'position_qty': order.position_qty,
