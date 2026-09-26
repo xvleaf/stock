@@ -666,6 +666,15 @@ def trans_edit(request, market, code):
             deal.position_qty = order.position_qty
             deal.avg_cost = order.avg_cost
             deal.save(update_fields=['profit', 'win_ratio', 'risk_amount', 'position_qty', 'avg_cost'])
+            # 写入资金历史（调整计划，无金额变动）
+            CashHistory.snapshot(
+                event=CashHistory.EVENT_ADJUST,
+                change=Decimal('0'),
+                current_profit=Decimal('0'),
+                remark=f'调整{order.name}目标/止损',
+                order=order,
+                date=deal.date,
+            )
         return redirect('trans_view', market=market, code=code)
 
     deci = 3 if order.cat in ('fund', 'bond') else 2

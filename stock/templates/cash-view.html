@@ -120,9 +120,9 @@
                         <th>日期</th>
                         <th>事项</th>
                         <th>变动</th>
-                        <th>资产</th>
                         <th>现金</th>
                         <th>股票</th>
+                        <th>风险</th>
                         <th>收益</th>
                         <th>备注</th>
                     </tr>
@@ -135,9 +135,9 @@
                         <td class="{% if h.change > 0 %}text-success{% elif h.change < 0 %}text-danger{% endif %}">
                             {{ h.change|floatformat:2 }}
                         </td>
-                        <td>{{ h.total|floatformat:2 }}</td>
                         <td>{{ h.cash|floatformat:2 }}</td>
                         <td>{{ h.stock|floatformat:2 }}</td>
+                        <td>{{ h.risk|floatformat:2 }}</td>
                         <td>{{ h.current_profit|floatformat:2 }}</td>
                         <td>{{ h.remark|default:"-" }}</td>
                     </tr>

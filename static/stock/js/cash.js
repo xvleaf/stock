@@ -204,6 +204,10 @@ function renderChart(data) {
                 this.points.forEach(p => {
                     rows += `<tr><td style="padding:2px 5px"><span style="color:${p.color}">●</span> ${p.series.name}</td><td style="padding:2px 5px">${p.y.toFixed(2)}</td></tr>`;
                 });
+                // 风险（不作为曲线显示，仅在tooltip中展示）
+                const reasonItem = data.reasons && data.reasons[this.x] ? data.reasons[this.x] : null;
+                const riskVal = reasonItem ? reasonItem.risk : 0;
+                rows += `<tr><td style="padding:2px 5px"><span style="color:#8b5cf6">●</span> 风险</td><td style="padding:2px 5px">${riskVal.toFixed(2)}</td></tr>`;
                 // 收益（不作为曲线显示，仅在tooltip中展示）
                 const profitVal = data.profit && data.profit[this.x] !== undefined ? data.profit[this.x][1] : 0;
                 rows += `<tr><td style="padding:2px 5px"><span style="color:#16a34a">●</span> 收益</td><td style="padding:2px 5px">${profitVal.toFixed(2)}</td></tr>`;

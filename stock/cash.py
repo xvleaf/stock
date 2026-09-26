@@ -14,7 +14,7 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.http import require_http_methods
 from django.db import transaction
-from .models.models import CashConfig, CashHistory
+from .models.models import CashConfig, CashHistory, TransOrder, TransHistory, FocusStock
 from .forms.forms import CashConfigForm
 from . import func
 
@@ -26,8 +26,12 @@ def cash_view(request):
     config = CashConfig.get_config()
     # 最近一条历史记录用于展示
     latest_history = CashHistory.objects.first()
-    # 可撤回的记录ID：仅当最新一条为存入/取出时
-    revocable_id = latest_history.id if latest_history and latest_history.event in (CashHistory.EVENT_DEPOSIT, CashHistory.EVENT_WITHDRAW) else None
+    # 可撤回的记录ID：最新一条为存入/取出/买入/卖出/调整计划时
+    revocable_id = latest_history.id if latest_history and latest_history.event in (
+        CashHistory.EVENT_DEPOSIT, CashHistory.EVENT_WITHDRAW,
+        CashHistory.EVENT_BUY, CashHistory.EVENT_SELL,
+        CashHistory.EVENT_ADJUST
+    ) else None
     # 分页 / 每页数量 / 日期范围（POST 提交时更新 session）
     if request.method == 'POST':
         try:
@@ -131,6 +135,7 @@ def cash_history_api(request):
             'total': float(h.total),
             'cash': float(h.cash),
             'stock': float(h.stock),
+            'risk': float(h.risk),
             'current_profit': float(h.current_profit),
             'total_profit': float(h.total_profit),
         })
@@ -202,7 +207,7 @@ def cash_adjust_api(request):
 @require_http_methods(["POST"])
 def cash_revoke(request):
     """
-    撤回最近一笔存入/取出记录（仅当该记录是最新一条且为存入/取出时允许）
+    撤回最近一笔记录（存入/取出/买入/卖出）
     POST JSON: {history_id: 123}
     """
     try:
@@ -217,21 +222,118 @@ def cash_revoke(request):
     latest = CashHistory.objects.order_by('-id').first()
     if not latest or latest.id != int(history_id):
         return JsonResponse({'error': '仅可撤回最新一笔记录'}, status=400)
-    if latest.event not in (CashHistory.EVENT_DEPOSIT, CashHistory.EVENT_WITHDRAW):
-        return JsonResponse({'error': '仅可撤回存入/取出记录'}, status=400)
+    if latest.event not in (CashHistory.EVENT_DEPOSIT, CashHistory.EVENT_WITHDRAW,
+                            CashHistory.EVENT_BUY, CashHistory.EVENT_SELL,
+                            CashHistory.EVENT_ADJUST):
+        return JsonResponse({'error': '该记录不可撤回'}, status=400)
 
     config = CashConfig.get_config()
-    amount = abs(latest.change)
+
     with transaction.atomic():
-        if latest.event == CashHistory.EVENT_DEPOSIT:
-            # 撤回存入：现金减少
-            config.cash -= amount
+        if latest.event in (CashHistory.EVENT_DEPOSIT, CashHistory.EVENT_WITHDRAW):
+            # 撤回存入/取出
+            amount = abs(latest.change)
+            if latest.event == CashHistory.EVENT_DEPOSIT:
+                config.cash -= amount
+            else:
+                config.cash += amount
+            config.total = config.cash + config.stock
+            config.save()
+            latest.delete()
+        elif latest.event == CashHistory.EVENT_ADJUST:
+            # 撤回调整计划（修改目标/止损）
+            order = latest.order
+            if not order:
+                return JsonResponse({'error': '关联交易订单不存在'}, status=400)
+            # 获取最新的 edit 类型 TransHistory
+            deal = order.histories.filter(action=TransHistory.ACTION_EDIT).order_by('-id').first()
+            if not deal:
+                return JsonResponse({'error': '调整记录不存在'}, status=400)
+            risk_before = order.risk_amount
+            deal.delete()
+            # 从剩余最新一笔 history 恢复 target_price / stop_price
+            last_deal = order.histories.order_by('-id').first()
+            if last_deal:
+                order.target_price = last_deal.target_price
+                order.stop_price = last_deal.stop_price
+            # 重新计算 risk 和 win_ratio
+            if order.position_qty != 0:
+                order.risk_amount = calc_risk_capital(order.avg_cost_no_fee, order.stop_price, abs(order.position_qty), order.intent)
+                order.win_ratio = calc_win_ratio(order.avg_cost, order.target_price, order.stop_price, order.intent)
+            else:
+                order.risk_amount = Decimal('0')
+                order.win_ratio = 0
+            order.save()
+            risk_after = order.risk_amount
+            config.risk -= (risk_before - risk_after)
+            if config.risk < 0:
+                config.risk = Decimal('0')
+            config.save()
+            latest.delete()
         else:
-            # 撤回取出：现金增加
-            config.cash += amount
-        config.total = config.cash + config.stock
-        config.save()
-        latest.delete()
+            # 撤回买入/卖出交易
+            order = latest.order
+            if not order:
+                return JsonResponse({'error': '关联交易订单不存在'}, status=400)
+
+            # 获取要删除的 TransHistory（该 order 最新一笔非 edit 记录）
+            deal = order.histories.exclude(action=TransHistory.ACTION_EDIT).order_by('-id').first()
+            if not deal:
+                return JsonResponse({'error': '交易记录不存在'}, status=400)
+
+            # 记录删除前的 risk
+            risk_before = order.risk_amount
+
+            # 删除该笔交易记录
+            deal.delete()
+
+            remaining = order.histories.exclude(action=TransHistory.ACTION_EDIT).count()
+            if remaining == 0:
+                # 首次交易被撤回：恢复 focus 状态，删除 order（同时删除所有 edit 记录）
+                focus = order.focus
+                if focus and focus.status == FocusStock.STATUS_CLOSED and focus.close_reason == FocusStock.CLOSE_REASON_BOUGHT:
+                    focus.status = FocusStock.STATUS_WATCHING
+                    focus.close_reason = ''
+                    focus.close_date = None
+                    focus.save()
+                order.delete()
+                config.stock = Decimal('0')
+                risk_after = Decimal('0')
+            else:
+                # 重新计算 order
+                order.recalculate()
+                # 从剩余最新一笔 history 恢复 target_price / stop_price
+                last_deal = order.histories.order_by('-id').first()
+                if last_deal:
+                    order.target_price = last_deal.target_price
+                    order.stop_price = last_deal.stop_price
+                # 重新计算 risk 和 win_ratio
+                if order.position_qty != 0:
+                    order.risk_amount = calc_risk_capital(order.avg_cost_no_fee, order.stop_price, abs(order.position_qty), order.intent)
+                    order.win_ratio = calc_win_ratio(order.avg_cost, order.target_price, order.stop_price, order.intent)
+                else:
+                    order.risk_amount = Decimal('0')
+                    order.win_ratio = 0
+                order.save()
+                config.stock = order.position_cost_no_fee
+                risk_after = order.risk_amount
+
+            # 恢复 CashConfig
+            if latest.event == CashHistory.EVENT_BUY:
+                config.cash += abs(latest.change)
+            else:
+                config.cash -= latest.change
+            config.total = config.cash + config.stock
+            risk_change = risk_before - risk_after
+            config.risk -= risk_change
+            if config.risk < 0:
+                config.risk = Decimal('0')
+            config.profit -= latest.current_profit
+            config.save()
+
+            # 删除资金历史记录
+            latest.delete()
+
     return JsonResponse({'msg': 'done'})
 
 

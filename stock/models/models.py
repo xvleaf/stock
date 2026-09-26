@@ -51,17 +51,20 @@ class CashHistory(models.Model):
     EVENT_BUY = 'buy'               # 买入股票
     EVENT_SELL = 'sell'             # 卖出股票
     EVENT_DIVIDEND = 'dividend'     # 分红
+    EVENT_ADJUST = 'adjust'         # 调整计划（修改目标/止损）
     EVENT_CHOICES = [
         (EVENT_DEPOSIT, '存入资金'),
         (EVENT_WITHDRAW, '取出资金'),
         (EVENT_BUY, '买入股票'),
         (EVENT_SELL, '卖出股票'),
         (EVENT_DIVIDEND, '分红'),
+        (EVENT_ADJUST, '调整计划'),
     ]
     date = models.DateField('变化日期', default=timezone.now, db_index=True)
     total = models.DecimalField('资产', max_digits=14, decimal_places=2, default=0)
     cash = models.DecimalField('现金', max_digits=14, decimal_places=2, default=0)
     stock = models.DecimalField('股票', max_digits=14, decimal_places=2, default=0)
+    risk = models.DecimalField('风险资金', max_digits=14, decimal_places=2, default=0)
     current_profit = models.DecimalField('本次收益', max_digits=14, decimal_places=2, default=0)
     total_profit = models.DecimalField('累计收益', max_digits=14, decimal_places=2, default=0)
     event = models.CharField('事项', max_length=20, choices=EVENT_CHOICES, default=EVENT_DEPOSIT)
@@ -97,6 +100,7 @@ class CashHistory(models.Model):
             total=config.total,
             cash=config.cash,
             stock=config.stock,
+            risk=config.risk,
             current_profit=current_profit,
             total_profit=config.profit,
             event=event,
