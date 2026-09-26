@@ -62,7 +62,8 @@ class CashHistory(models.Model):
     total = models.DecimalField('资产', max_digits=14, decimal_places=2, default=0)
     cash = models.DecimalField('现金', max_digits=14, decimal_places=2, default=0)
     stock = models.DecimalField('股票', max_digits=14, decimal_places=2, default=0)
-    profit = models.DecimalField('收益', max_digits=14, decimal_places=2, default=0)
+    current_profit = models.DecimalField('本次收益', max_digits=14, decimal_places=2, default=0)
+    total_profit = models.DecimalField('累计收益', max_digits=14, decimal_places=2, default=0)
     event = models.CharField('事项', max_length=20, choices=EVENT_CHOICES, default=EVENT_DEPOSIT)
     change = models.DecimalField('变动', max_digits=14, decimal_places=2, default=0,
                                  help_text='正数=增加, 负数=减少')
@@ -81,7 +82,7 @@ class CashHistory(models.Model):
         return f'{self.date:%Y-%m-%d} {self.get_event_display()} {self.change:+}'
 
     @classmethod
-    def snapshot(cls, event, change, remark='', order=None, date=None, profit=0):
+    def snapshot(cls, event, change, remark='', order=None, date=None, current_profit=0):
         """
         快照当前资金状态并写入历史记录
         :param event: 变化事项（EVENT_* 常量）
@@ -89,14 +90,15 @@ class CashHistory(models.Model):
         :param remark: 备注
         :param order: 关联交易订单
         :param date: 指定变化日期，默认当天
-        :param profit: 本次操作实际收益（正收益负损失），写入CashHistory.profit
+        :param current_profit: 本次操作实际收益（正收益负损失）
         """
         config = CashConfig.get_config()
         cls.objects.create(
             total=config.total,
             cash=config.cash,
             stock=config.stock,
-            profit=profit,
+            current_profit=current_profit,
+            total_profit=config.profit,
             event=event,
             change=change,
             remark=remark,

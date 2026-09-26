@@ -80,16 +80,7 @@ def cash_view(request):
     history_qs = CashHistory.objects.filter(date__gte=start_date, date__lte=end_date).order_by('-date', '-id')
     cash_per_page = int(func.get_cache(request.session, 'cash-per-page', str(func.DEFAULT_PAGE_SIZE)))
     pg = func.paginate_queryset(request, history_qs, 'cash-history-page', per_page=cash_per_page)
-    # 计算每条记录的本次收益 = 当前profit - 前一条profit（按正序计算，第一条为None）
     items = list(pg['items'])
-    items_asc = sorted(items, key=lambda h: (h.date, h.id))
-    prev_profit = None
-    for h in items_asc:
-        if prev_profit is None:
-            h.current_profit = None
-        else:
-            h.current_profit = h.profit - prev_profit
-        prev_profit = h.profit
     return render(request, 'cash-view.html', {
         'config': config,
         'initialized': initialized,
@@ -131,7 +122,7 @@ def cash_history_api(request):
         total_series.append([date_str, float(h.total)])
         cash_series.append([date_str, float(h.cash)])
         stock_series.append([date_str, float(h.stock)])
-        profit_series.append([date_str, float(h.profit)])
+        profit_series.append([date_str, float(h.total_profit)])
         reasons.append({
             'date': date_str,
             'event': h.get_event_display(),
@@ -140,7 +131,8 @@ def cash_history_api(request):
             'total': float(h.total),
             'cash': float(h.cash),
             'stock': float(h.stock),
-            'profit': float(h.profit),
+            'current_profit': float(h.current_profit),
+            'total_profit': float(h.total_profit),
         })
     return JsonResponse({
         'total': total_series,
@@ -194,7 +186,7 @@ def cash_adjust_api(request):
         config.total = config.cash + config.stock
         config.save()
         # 快照写入历史（存入/取出无收益）
-        CashHistory.snapshot(event=event, change=change_amount, profit=0, remark=remark, date=adjust_date)
+        CashHistory.snapshot(event=event, change=change_amount, current_profit=0, remark=remark, date=adjust_date)
     return JsonResponse({
         'msg': 'done',
         'total': float(config.total),
@@ -292,7 +284,7 @@ def cash_init(request):
         CashHistory.snapshot(
             event=CashHistory.EVENT_DEPOSIT,
             change=total_val,
-            profit=0,
+            current_profit=0,
             remark='初始资金',
             date=init_date,
         )

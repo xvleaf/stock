@@ -138,7 +138,7 @@
                         <td>{{ h.total|floatformat:2 }}</td>
                         <td>{{ h.cash|floatformat:2 }}</td>
                         <td>{{ h.stock|floatformat:2 }}</td>
-                        <td>{% if h.current_profit is not None %}{{ h.current_profit|floatformat:2 }}{% else %}-{% endif %}</td>
+                        <td>{{ h.current_profit|floatformat:2 }}</td>
                         <td>{{ h.remark|default:"-" }}</td>
                     </tr>
                     {% empty %}

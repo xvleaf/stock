@@ -142,6 +142,7 @@ def trans_deal(request, market, code):
 
 def _handle_trans_post(request, market, code, order, focus, stock_name, stock_cat):
     """处理买入/卖出提交"""
+    deci = 3 if stock_cat in ('fund', 'bond') else 2
     try:
         params = request.POST
         intent = params.get('intent', 'B')
@@ -253,18 +254,9 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
 
             # 更新资金配置
             config.cash -= total_cost
-            # stock 更新：多头建仓增加，空头平仓减少（欠股票减少）
-            if position_qty_before >= 0:
-                config.stock += amount
-            else:
-                short_qty = abs(position_qty_before)
-                if qty <= short_qty:
-                    config.stock += amount  # 空头平仓，欠股票减少
-                else:
-                    # 反手：先平空头，再买多
-                    close_amount = price * short_qty
-                    remain_amount = price * (qty - short_qty)
-                    config.stock += close_amount + remain_amount
+            # stock 直接根据当前持仓设置（多头为正，空头为负，平仓为0）
+            # 避免增量计算在反手交易时产生误差
+            config.stock = order.position_cost_no_fee
             config.total = config.cash + config.stock
             config.risk += risk_change
             if config.risk < 0:
@@ -276,8 +268,8 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
             CashHistory.snapshot(
                 event=CashHistory.EVENT_BUY,
                 change=-total_cost,
-                profit=deal_profit,
-                remark=f'买入{stock_name}{qty}股@{price}',
+                current_profit=deal_profit,
+                remark=f'买入{stock_name}{qty}股@{float(price):.{deci}f}',
                 order=order,
                 date=deal_date,
             )
@@ -363,17 +355,9 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
 
             # 更新资金配置
             config.cash += total_income
-            # stock 更新：卖空建仓减少（欠股票），多头平仓减少
-            if position_qty_before <= 0:
-                config.stock -= amount  # 卖空建仓/加仓，欠股票增加
-            else:
-                if qty <= position_qty_before:
-                    config.stock -= amount  # 多头平仓
-                else:
-                    # 反手：先平多头，再卖空
-                    close_amount = price * position_qty_before
-                    remain_amount = price * (qty - position_qty_before)
-                    config.stock -= close_amount + remain_amount
+            # stock 直接根据当前持仓设置（多头为正，空头为负，平仓为0）
+            # 避免增量计算在反手交易时产生误差
+            config.stock = order.position_cost_no_fee
             config.total = config.cash + config.stock
             config.risk += risk_change
             if config.risk < 0:
@@ -385,8 +369,8 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
             CashHistory.snapshot(
                 event=CashHistory.EVENT_SELL,
                 change=total_income,
-                profit=deal_profit,
-                remark=f'卖出{stock_name}{qty}股@{price}',
+                current_profit=deal_profit,
+                remark=f'卖出{stock_name}{qty}股@{float(price):.{deci}f}',
                 order=order,
                 date=deal_date,
             )
