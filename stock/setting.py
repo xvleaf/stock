@@ -71,12 +71,24 @@ def _apply_setting_change(request, field):
         'density_max', 'density_std', 'density_min'
     }
 
+    # 需要清除 MA/MV 缓存的字段
+    KLINE_DATA_FIELDS = {
+        'kline_start_date_day', 'kline_start_date_week', 'kline_start_date_month',
+        'kline_ma_day', 'kline_ma_week', 'kline_ma_month',
+        'kline_mv_day', 'kline_mv_week', 'kline_mv_month'
+    }
+
     # 交易时间字段
     TRADE_TIME_FIELDS = {'trade_am_start', 'trade_am_end', 'trade_pm_start', 'trade_pm_end'}
 
     if field in KLINE_PARAM_FIELDS:
-        # 只清除 kline_params，不清除 kline-deadline
-        func.set_cache(request.session, 'kline_params', None)
+        # 真正删除缓存键，不能用 set_cache(None)（Django cache 会存储 None，get 时返回 None 而非默认值）
+        func.delete_cache(request.session, 'kline_params')
+
+    if field in KLINE_DATA_FIELDS:
+        # 清除 MA/MV 模块缓存
+        from .fetch.config import clear_kline_param_cache
+        clear_kline_param_cache()
 
     if field in TRADE_TIME_FIELDS:
         # 清除交易时间模块缓存
@@ -87,7 +99,7 @@ def _apply_setting_change(request, field):
         # 清除所有列表的分页数量缓存
         for key in ('cash-per-page', 'focus-per-page', 'filter-per-page',
                     'refer-per-page', 'sector-per-page', 'trans-per-page'):
-            func.set_cache(request.session, key, None)
+            func.delete_cache(request.session, key)
 
 
 def web_setting(request):

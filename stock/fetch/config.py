@@ -4,23 +4,22 @@ fetch 模块统一配置获取
 从 WebSetting 数据库读取交易时间、K线参数、行情刷新间隔等
 """
 
-# 交易时间模块级缓存
+# 交易时间模块级缓存（永久缓存，修改时主动清除）
 _trade_times_cache = None
-_trade_times_cache_time = 0
-TRADE_TIMES_CACHE_DURATION = 3600  # 缓存1小时
+
+# MA/MV/起始日期 模块级缓存（永久缓存，修改时主动清除）
+_kline_ma_cache = {}
+_kline_mv_cache = {}
+_kline_start_date_cache = {}
 
 
 def get_trade_times():
-    """获取交易时间段（秒，从零点开始），带缓存"""
-    global _trade_times_cache, _trade_times_cache_time
-    import time
-    now = time.time()
+    """获取交易时间段（秒，从零点开始），带模块级缓存"""
+    global _trade_times_cache
 
-    # 缓存有效则直接返回
-    if _trade_times_cache and (now - _trade_times_cache_time) < TRADE_TIMES_CACHE_DURATION:
+    if _trade_times_cache:
         return _trade_times_cache
 
-    # 缓存失效，重新查询数据库
     try:
         from ..models.models import WebSetting
         s = WebSetting.get_setting()
@@ -38,17 +37,14 @@ def get_trade_times():
             'pm_end': 54000,     # 15:00
         }
 
-    # 更新缓存
     _trade_times_cache = result
-    _trade_times_cache_time = now
     return result
 
 
 def clear_trade_times_cache():
     """清除交易时间缓存"""
-    global _trade_times_cache, _trade_times_cache_time
+    global _trade_times_cache
     _trade_times_cache = None
-    _trade_times_cache_time = 0
 
 
 def get_quote_interval():
@@ -61,45 +57,80 @@ def get_quote_interval():
 
 
 def get_kline_start_date(freq='D'):
-    """获取K线起始日期"""
+    """获取K线起始日期，带模块级缓存"""
+    global _kline_start_date_cache
+
+    if freq in _kline_start_date_cache:
+        return _kline_start_date_cache[freq]
+
     try:
         from ..models.models import WebSetting
         s = WebSetting.get_setting()
         if freq == 'W':
-            return s.kline_start_date_week
+            result = s.kline_start_date_week
         elif freq == 'M':
-            return s.kline_start_date_month
-        return s.kline_start_date_day
+            result = s.kline_start_date_month
+        else:
+            result = s.kline_start_date_day
     except Exception:
-        return '19801020'
+        result = '19801020'
+
+    _kline_start_date_cache[freq] = result
+    return result
 
 
 def get_kline_ma_period(freq='D'):
-    """获取MA周期"""
+    """获取MA周期，带模块级缓存"""
+    global _kline_ma_cache
+
+    if freq in _kline_ma_cache:
+        return _kline_ma_cache[freq]
+
     try:
         from ..models.models import WebSetting
         s = WebSetting.get_setting()
         if freq == 'W':
-            return int(s.kline_ma_week)
+            result = int(s.kline_ma_week)
         elif freq == 'M':
-            return int(s.kline_ma_month)
-        return int(s.kline_ma_day)
+            result = int(s.kline_ma_month)
+        else:
+            result = int(s.kline_ma_day)
     except Exception:
-        return {'D': 200, 'W': 60, 'M': 30}.get(freq, 200)
+        result = {'D': 200, 'W': 60, 'M': 30}.get(freq, 200)
+
+    _kline_ma_cache[freq] = result
+    return result
 
 
 def get_kline_mv_period(freq='D'):
-    """获取MV周期"""
+    """获取MV周期，带模块级缓存"""
+    global _kline_mv_cache
+
+    if freq in _kline_mv_cache:
+        return _kline_mv_cache[freq]
+
     try:
         from ..models.models import WebSetting
         s = WebSetting.get_setting()
         if freq == 'W':
-            return int(s.kline_mv_week)
+            result = int(s.kline_mv_week)
         elif freq == 'M':
-            return int(s.kline_mv_month)
-        return int(s.kline_mv_day)
+            result = int(s.kline_mv_month)
+        else:
+            result = int(s.kline_mv_day)
     except Exception:
-        return {'D': 60, 'W': 30, 'M': 30}.get(freq, 60)
+        result = {'D': 60, 'W': 30, 'M': 30}.get(freq, 60)
+
+    _kline_mv_cache[freq] = result
+    return result
+
+
+def clear_kline_param_cache():
+    """清除MA/MV/起始日期缓存"""
+    global _kline_ma_cache, _kline_mv_cache, _kline_start_date_cache
+    _kline_ma_cache = {}
+    _kline_mv_cache = {}
+    _kline_start_date_cache = {}
 
 
 def get_kline_ema_k(freq='D'):
