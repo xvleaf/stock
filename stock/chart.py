@@ -140,6 +140,10 @@ def chart_view_api(request):
         kline.set_kline_params(request.session, param_func, param_value)
     elif param_func == 'freq':
         kline.set_kline_params(request.session, param_func, param_value)
+        # 切换周期时，同步更新对应周期的 EMA-K 和 EMA-D 值
+        from .fetch.config import get_kline_ema_k, get_kline_ema_d
+        kline.set_kline_params(request.session, 'k', get_kline_ema_k(param_value))
+        kline.set_kline_params(request.session, 'd', get_kline_ema_d(param_value))
         deadline_params = func.get_cache(request.session, 'kline-deadline')
         if deadline_params and (param_site, param_code, param_market) == deadline_params.get('site_code_market', None):
             kline.set_kline_params(request.session, 'deadline', deadline_params.get('deadline', -1))
