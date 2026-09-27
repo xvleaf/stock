@@ -319,12 +319,12 @@ function createFocusCalc(priceId, targetId, stopId, allowedId, winId, intentSele
     }
 
     // 事件绑定
-    priceInput.addEventListener('input', scheduleCalc);
-    if (targetInput) targetInput.addEventListener('input', scheduleCalc);
-    if (stopInput) stopInput.addEventListener('input', scheduleCalc);
+    priceInput.addEventListener('blur', scheduleCalc);
+    if (targetInput) targetInput.addEventListener('blur', scheduleCalc);
+    if (stopInput) stopInput.addEventListener('blur', scheduleCalc);
     const planQtyInput = document.getElementById('id_plan_qty');
     if (planQtyInput) {
-        planQtyInput.addEventListener('input', () => {
+        planQtyInput.addEventListener('blur', () => {
             scheduleCalc();
             checkPlanQtyLimit();
         });

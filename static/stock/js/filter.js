@@ -263,7 +263,7 @@ export function initFilterRun({ parentId, lastConditions, runningState }) {
         const del = e.target.closest('.del-cond');
         if (del) { del.closest('.cond-card').remove(); scheduleAutoName(); }
     });
-    list.addEventListener('input', () => scheduleAutoName());
+    list.addEventListener('blur', () => scheduleAutoName(), true);
     list.addEventListener('change', () => scheduleAutoName());
 
     // ===== 运行中状态展示 =====

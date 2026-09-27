@@ -133,7 +133,7 @@ export function initTransDeal(opts = {}) {
         setTimeout(checkDividendTax, 100);
     }
     if (intentSelect) intentSelect.addEventListener('change', onIntentOrQtyChange);
-    qtyInput.addEventListener('input', onIntentOrQtyChange);
+    qtyInput.addEventListener('blur', onIntentOrQtyChange);
 
     // 收集当前参数
     function collectParams() {
@@ -209,11 +209,11 @@ export function initTransDeal(opts = {}) {
 
     // 事件绑定
     if (intentSelect) intentSelect.addEventListener('change', scheduleCalc);
-    priceInput.addEventListener('input', scheduleCalc);
-    qtyInput.addEventListener('input', scheduleCalc);
-    targetInput.addEventListener('input', scheduleCalc);
-    stopInput.addEventListener('input', scheduleCalc);
-    feeInput.addEventListener('input', scheduleCalc);
+    priceInput.addEventListener('blur', scheduleCalc);
+    qtyInput.addEventListener('blur', scheduleCalc);
+    targetInput.addEventListener('blur', scheduleCalc);
+    stopInput.addEventListener('blur', scheduleCalc);
+    feeInput.addEventListener('blur', scheduleCalc);
 
     // 表单提交：AJAX 方式，失败时弹窗报错，成功时跳转
     form.addEventListener('submit', (e) => {
@@ -482,8 +482,8 @@ export function initTransEdit(opts = {}) {
         calcTimer = setTimeout(requestCalc, 300);
     }
 
-    targetInput.addEventListener('input', scheduleCalc);
-    stopInput.addEventListener('input', scheduleCalc);
+    targetInput.addEventListener('blur', scheduleCalc);
+    stopInput.addEventListener('blur', scheduleCalc);
 
     // 初始化计算
     requestCalc();

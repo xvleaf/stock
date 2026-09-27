@@ -134,14 +134,12 @@
         baseInit();
         initFilterConfig();
 
-        // 通用设置自动保存
+        // 通用设置自动保存（失焦触发）
         const autoSaveInputs = document.querySelectorAll('.auto-save-input');
         const initialValues = {};
         autoSaveInputs.forEach(input => {
             initialValues[input.id] = input.value;
         });
-
-        let saveTimer = null;
 
         function validateAndSave() {
             const filterTimeout = document.getElementById('filterTimeoutInput').value.trim();
@@ -195,10 +193,7 @@
         }
 
         autoSaveInputs.forEach(input => {
-            input.addEventListener('input', () => {
-                clearTimeout(saveTimer);
-                saveTimer = setTimeout(validateAndSave, 500);
-            });
+            input.addEventListener('blur', validateAndSave);
         });
 
         // 刷新板块关联按钮
