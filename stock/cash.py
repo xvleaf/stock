@@ -462,6 +462,7 @@ def cash_setting(request):
 def web_setting(request):
     """全站参数设置页面：佣金、印花税、分红税"""
     setting = WebSetting.get_setting()
+    saved = False
     if request.method == 'POST':
         # 比率字段：前端显示百分比，保存时除以100
         setting.commission_ratio = Decimal(request.POST.get('commission_ratio', '0')) / 100
@@ -472,13 +473,14 @@ def web_setting(request):
         setting.dividend_tax_mid = Decimal(request.POST.get('dividend_tax_mid', '0')) / 100
         setting.dividend_tax_short = Decimal(request.POST.get('dividend_tax_short', '0')) / 100
         setting.save()
-        return redirect('web_setting')
+        saved = True
     # GET：比率字段乘以100，以百分比形式显示；值为0时显示整数
     def _fmt_pct(val):
         v = float(val) * 100
         return int(v) if v == 0 else v
     context = {
         'setting': setting,
+        'saved': saved,
         'commission_ratio_pct': _fmt_pct(setting.commission_ratio),
         'stamp_buy_ratio_pct': _fmt_pct(setting.stamp_buy_ratio),
         'stamp_sell_ratio_pct': _fmt_pct(setting.stamp_sell_ratio),
