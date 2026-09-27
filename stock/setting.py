@@ -81,12 +81,27 @@ def _apply_setting_change(request, field):
     # 交易时间字段
     TRADE_TIME_FIELDS = {'trade_am_start', 'trade_am_end', 'trade_pm_start', 'trade_pm_end'}
 
+    # 行情刷新间隔
+    QUOTE_INTERVAL_FIELD = 'quote_interval'
+
+    # 界面配置字段（导航栏/内容布局/图表布局）
+    UI_CONFIG_FIELDS = {
+        'nav_locked', 'screen_height_threshold', 'nav_height', 'nav_height_mobile',
+        'gap_height', 'navi_bar_height', 'mobile_breakpoint',
+        'w1', 'bp1', 'w2', 'bp2', 'w3', 'bp3', 'w4',
+        'h1', 'h2', 'h3', 'h4', 'cash_chart_height',
+        'chart_placeholder_height', 'trend_main_ratio', 'kline_main_ratio'
+    }
+
     if field in KLINE_PARAM_FIELDS:
         # 真正删除缓存键，不能用 set_cache(None)（Django cache 会存储 None，get 时返回 None 而非默认值）
         func.delete_cache(request.session, 'kline_params')
+        # 清除密度/EMA 模块级缓存
+        from .fetch.config import clear_kline_density_ema_cache
+        clear_kline_density_ema_cache()
 
     if field in KLINE_DATA_FIELDS:
-        # 清除 MA/MV 模块缓存
+        # 清除 MA/MV/起始日期 模块缓存
         from .fetch.config import clear_kline_param_cache
         clear_kline_param_cache()
 
@@ -95,9 +110,19 @@ def _apply_setting_change(request, field):
         from .fetch.config import clear_trade_times_cache
         clear_trade_times_cache()
 
+    if field == QUOTE_INTERVAL_FIELD:
+        # 清除行情刷新间隔缓存
+        from .fetch.config import clear_quote_interval_cache
+        clear_quote_interval_cache()
+
+    if field in UI_CONFIG_FIELDS:
+        # 清除界面配置模块缓存
+        from .fetch.config import clear_ui_config_cache
+        clear_ui_config_cache()
+
     if field == 'default_page_size':
-        # 清除所有列表的分页数量缓存
-        for key in ('cash-per-page', 'focus-per-page', 'filter-per-page',
+        # 清除所有列表的分页数量缓存（包括全局共用键）
+        for key in ('global-per-page', 'cash-per-page', 'focus-per-page', 'filter-per-page',
                     'refer-per-page', 'sector-per-page', 'trans-per-page'):
             func.delete_cache(request.session, key)
 
@@ -167,7 +192,16 @@ def setting_save(request):
                   'kline_mv_day', 'kline_mv_week', 'kline_mv_month',
                   'kline_ema_k_day', 'kline_ema_k_week', 'kline_ema_k_month',
                   'kline_ema_d_day', 'kline_ema_d_week', 'kline_ema_d_month',
-                  'density_max', 'density_std', 'density_min'}
+                  'density_max', 'density_std', 'density_min',
+                  # 界面配置 - 导航栏
+                  'screen_height_threshold', 'nav_height', 'nav_height_mobile',
+                  'gap_height', 'navi_bar_height',
+                  # 界面配置 - 内容布局
+                  'mobile_breakpoint', 'w1', 'bp1', 'w2', 'bp2', 'w3', 'bp3', 'w4',
+                  # 界面配置 - 图表布局
+                  'h1', 'h2', 'h3', 'h4', 'cash_chart_height',
+                  'chart_placeholder_height', 'trend_main_ratio', 'kline_main_ratio'}
+    BOOL_FIELDS = {'nav_locked'}
     TEXT_FIELDS = {'icp_number', 'icp_website',
                    'kline_start_date_day', 'kline_start_date_week', 'kline_start_date_month'}
 
@@ -193,6 +227,8 @@ def setting_save(request):
             if not value.isdigit():
                 return JsonResponse({'success': False, 'error': '请输入整数'})
             setattr(setting, field, int(value))
+        elif field in BOOL_FIELDS:
+            setattr(setting, field, value.lower() in ('true', '1', '是'))
         elif field in TEXT_FIELDS:
             setattr(setting, field, value)
         else:
@@ -206,3 +242,9 @@ def setting_save(request):
         return JsonResponse({'success': True})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
+
+
+def ui_config(request):
+    """模板上下文处理器：注入界面配置到所有页面"""
+    from .fetch.config import get_ui_config
+    return {'ui_config': get_ui_config()}

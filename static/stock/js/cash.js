@@ -32,7 +32,8 @@ export function initCashChart() {
             }
             if (placeholder) placeholder.style.display = 'none';
             if (chartEl) chartEl.style.display = 'block';
-            if (chartWrap) chartWrap.style.height = '400px';
+            const chartHeight = window.UI_CONFIG ? window.UI_CONFIG.cash_chart_height : 400;
+            if (chartWrap) chartWrap.style.height = chartHeight + 'px';
             renderChart(data);
         })
         .catch(err => {
@@ -134,9 +135,10 @@ function renderChart(data) {
         }
     }
 
+    const chartHeight = window.UI_CONFIG ? window.UI_CONFIG.cash_chart_height : 400;
     chartInstance = Highcharts.chart(chartEl, {
         chart: {
-            height: 400,
+            height: chartHeight,
             spacing: [10, 5, 10, 2],
             borderWidth: 0,
             events: {

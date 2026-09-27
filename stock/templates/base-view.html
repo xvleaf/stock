@@ -16,6 +16,167 @@
     <script src="{% static 'base/icon/iconify-icon.min.js' %}"></script>
     <link rel="stylesheet" href="{% static 'base/css/main.css' %}"/>
 
+    {# 界面配置注入：CSS 变量 + 移动端样式 #}
+    <style>
+    :root {
+        --nav-height: {{ ui_config.nav_height }}px;
+        --gap-height: {{ ui_config.gap_height }}px;
+        --navi-bar-height: {{ ui_config.navi_bar_height }}px;
+        --bp1: {{ ui_config.bp1 }};
+        --bp2: {{ ui_config.bp2 }};
+        --bp3: {{ ui_config.bp3 }};
+        --w1: {{ ui_config.w1 }}%;
+        --w2: {{ ui_config.w2 }}%;
+        --w3: {{ ui_config.w3 }}%;
+        --w4: {{ ui_config.w4 }}%;
+        --h1: {{ ui_config.h1 }}vh;
+        --h2: {{ ui_config.h2 }}vh;
+        --h3: {{ ui_config.h3 }}vh;
+        --h4: {{ ui_config.h4 }}vh;
+        --chart-placeholder-height: {{ ui_config.chart_placeholder_height }}px;
+        --cash-chart-height: {{ ui_config.cash_chart_height }}px;
+    }
+    @media (max-width: {{ ui_config.mobile_breakpoint }}px) {
+        :root {
+            --nav-height: {{ ui_config.nav_height_mobile }}px;
+            --gap-height: {{ ui_config.gap_height }}px;
+            --padding-page-left-right: 5;
+        }
+        #mainNav {
+            flex-wrap: wrap !important;
+            justify-content: space-between !important;
+        }
+        #mainNav .navbar-collapse {
+            display: none !important;
+            background: var(--color-bg-body);
+            border-radius: var(--menu-radius-default);
+            margin-top: 8px;
+            padding: 8px 0;
+            position: absolute;
+            top: var(--nav-height);
+            left: 0;
+            right: 0;
+            z-index: var(--z-nav);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        #mainNav .navbar-collapse.show {
+            display: block !important;
+        }
+        #mainNav .navbar-toggler {
+            display: block;
+        }
+        #mainNav .navbar-nav .nav-link {
+            border-bottom: none;
+            border-left: 3px solid transparent;
+            padding: 10px calc((var(--padding-page-left-right) + 8) * 1px);
+        }
+        #mainNav .navbar-nav .nav-link.active {
+            border-left-color: var(--color-active);
+            background: rgba(22, 119, 255, 0.05);
+        }
+        .dropdown-submenu .dropdown-menu {
+            position: static !important;
+            float: none;
+            box-shadow: none;
+            background: transparent;
+            padding-left: 20px;
+            border-radius: 0;
+            margin: 0;
+        }
+        .dropdown-submenu .dropdown-menu .dropdown-item {
+            padding-left: 30px;
+        }
+        .dropdown-submenu .dropdown-toggle::after {
+            float: right;
+        }
+        .dropdown-submenu.show .dropdown-menu {
+            display: block;
+        }
+        .page-content {
+            padding: 12px calc(var(--padding-page-left-right)*1px) 12px;
+        }
+        .table-responsive::-webkit-scrollbar {
+            height: 3px;
+        }
+        .table-responsive::-webkit-scrollbar-thumb {
+            border-radius: 1.5px;
+        }
+        #fixedHeader .fixed-header-inner {
+            padding: 0 calc(var(--padding-page-left-right)*1px);
+        }
+        .table-stock th,
+        .table-stock td {
+            padding: 10px 8px;
+            font-size: var(--font-size-sm);
+        }
+        .two-line-menu {
+            width: 20px;
+            height: 12px;
+            position: relative;
+            display: inline-block;
+            padding-left: 0;
+        }
+        .two-line-menu::before,
+        .two-line-menu::after {
+            content: '';
+            width: 100%;
+            height: 2px;
+            background-color: var(--color-nav-item);
+            border-radius: 2px;
+            position: absolute;
+        }
+        .two-line-menu::before {
+            top: 0;
+        }
+        .two-line-menu::after {
+            bottom: 0;
+        }
+        .navbar-toggler {
+            border: none;
+            padding: 6px calc((var(--padding-page-left-right)) * 1px);
+        }
+        .navbar-toggler:focus {
+            box-shadow: none;
+        }
+        .navbar-logo-mobile {
+            display: inline-flex;
+            color: var(--color-nav-item);
+            font-size: calc(var(--nav-height) * 0.5);
+            padding: 6px calc((var(--padding-page-left-right) + 8) * 1px);
+            transition: color 0.2s;
+            margin-left: auto;
+        }
+    }
+    @media (min-width: {{ ui_config.mobile_breakpoint_plus_1 }}px) {
+        #mainNav {
+            flex-wrap: nowrap;
+        }
+        #mainNav .navbar-collapse {
+            display: flex !important;
+            flex-basis: auto;
+        }
+        #mainNav .navbar-nav {
+            flex-direction: row;
+        }
+        #mainNav .navbar-toggler {
+            display: none !important;
+        }
+        .navbar-logo-mobile {
+            display: none !important;
+        }
+        #mainNav .dropdown {
+            position: relative;
+        }
+        #mainNav .navbar-nav > .nav-item > .dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+        }
+    }
+    </style>
+
     {% block extra_css %}{% endblock %}
 
     <link rel="icon" type="image/svg+xml" href="{% static 'base/icon/favicon.svg' %}">
@@ -36,6 +197,18 @@
     <div class="page-content" id="pageContent">
         {% block content %}{% endblock %}
     </div>
+
+    {# 界面配置注入：JS 常量 #}
+    <script>
+    window.UI_CONFIG = {
+        mobile_breakpoint: {{ ui_config.mobile_breakpoint }},
+        screen_height_threshold: {{ ui_config.screen_height_threshold }},
+        nav_locked: {% if ui_config.nav_locked %}true{% else %}false{% endif %},
+        trend_main_ratio: {{ ui_config.trend_main_ratio }},
+        kline_main_ratio: {{ ui_config.kline_main_ratio }},
+        cash_chart_height: {{ ui_config.cash_chart_height }},
+    };
+    </script>
 
     <!-- 不采用全局引入base.js，否则全局脚本与ES Module冲突，造成重复监听、状态隔离；全部页面改用import模块导入 -->
     {% block extra_js %}{% endblock %}    

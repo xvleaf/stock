@@ -51,6 +51,31 @@ class WebSetting(models.Model):
     density_max = models.IntegerField('K线最大密度', default=20)
     density_std = models.IntegerField('K线标准密度', default=13)
     density_min = models.IntegerField('K线最小密度', default=5)
+    # 界面配置 - 导航栏
+    nav_locked = models.BooleanField('锁定导航栏', default=False)
+    screen_height_threshold = models.IntegerField('高度阈值', default=800)
+    nav_height = models.IntegerField('导航高度（桌面）', default=50)
+    nav_height_mobile = models.IntegerField('导航高度（移动）', default=40)
+    gap_height = models.IntegerField('导航间隔', default=2)
+    navi_bar_height = models.IntegerField('底部导航高度', default=25)
+    # 界面配置 - 内容布局
+    mobile_breakpoint = models.IntegerField('移动断点', default=992)
+    w1 = models.IntegerField('页面宽度一', default=100)
+    bp1 = models.IntegerField('断点一', default=1200)
+    w2 = models.IntegerField('页面宽度二', default=85)
+    bp2 = models.IntegerField('断点二', default=1440)
+    w3 = models.IntegerField('页面宽度三', default=70)
+    bp3 = models.IntegerField('断点三', default=1920)
+    w4 = models.IntegerField('页面宽度四', default=60)
+    # 界面配置 - 图表布局
+    h1 = models.IntegerField('高度一', default=100)
+    h2 = models.IntegerField('高度二', default=90)
+    h3 = models.IntegerField('高度三', default=80)
+    h4 = models.IntegerField('高度四', default=75)
+    cash_chart_height = models.IntegerField('资金曲线高度', default=400)
+    chart_placeholder_height = models.IntegerField('图表最小高度', default=400)
+    trend_main_ratio = models.IntegerField('分时主图比例', default=75)
+    kline_main_ratio = models.IntegerField('K线主图比例', default=80)
     updated_at = models.DateField('更新日期', auto_now=True)
 
     class Meta:

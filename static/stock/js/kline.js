@@ -111,6 +111,8 @@ function renderklineData() {
     const finalOhlc = showResult.ohlc;
     const finalVolume = showResult.volume;
     setPriceDecimal(deci);
+    const mainRatio = window.UI_CONFIG ? window.UI_CONFIG.kline_main_ratio : 80;
+    const subRatio = 100 - mainRatio;
     Highcharts.setOptions({
         lang: { rangeSelectorZoom: '' },
         global: { useUTC: false, timezone: 'Asia/Shanghai' },
@@ -156,8 +158,8 @@ function renderklineData() {
             }
         },
         yAxis: [
-            { height: '80%', resize: { enabled: true }, labels: { align: 'right', x: -3 } },
-            { top: '80%', height: '20%', offset: 0, labels: { align: 'right', x: -3 } }
+            { height: mainRatio + '%', resize: { enabled: true }, labels: { align: 'right', x: -3 } },
+            { top: mainRatio + '%', height: subRatio + '%', offset: 0, labels: { align: 'right', x: -3 } }
         ],
         tooltip: {
             shared: true,

@@ -44,6 +44,31 @@ const FIELD_LABELS = {
     'density_max': 'K线最大密度',
     'density_std': 'K线标准密度',
     'density_min': 'K线最小密度',
+    // 界面配置 - 导航栏
+    'nav_locked': '锁定导航栏',
+    'screen_height_threshold': '高度阈值',
+    'nav_height': '导航高度（桌面）',
+    'nav_height_mobile': '导航高度（移动）',
+    'gap_height': '导航间隔',
+    'navi_bar_height': '底部导航高度',
+    // 界面配置 - 内容布局
+    'mobile_breakpoint': '移动断点',
+    'w1': '页面宽度一',
+    'bp1': '断点一',
+    'w2': '页面宽度二',
+    'bp2': '断点二',
+    'w3': '页面宽度三',
+    'bp3': '断点三',
+    'w4': '页面宽度四',
+    // 界面配置 - 图表布局
+    'h1': '高度一',
+    'h2': '高度二',
+    'h3': '高度三',
+    'h4': '高度四',
+    'cash_chart_height': '资金曲线高度',
+    'chart_placeholder_height': '图表最小高度',
+    'trend_main_ratio': '分时主图比例',
+    'kline_main_ratio': 'K线主图比例',
 };
 
 function getFieldLabel(fieldName) {
@@ -64,7 +89,24 @@ export function initSetting(saved = false, error = false) {
         const form = document.getElementById('settingForm');
         if (!form) return;
 
-        const inputs = form.querySelectorAll('input[name]');
+        const inputs = form.querySelectorAll('input[name], select[name]');
+
+        // 锁定导航栏与高度阈值联动
+        const navLockedSelect = form.querySelector('select[name="nav_locked"]');
+        const heightThresholdInput = document.getElementById('id_screen_height_threshold');
+        const updateHeightThresholdState = () => {
+            if (navLockedSelect && heightThresholdInput) {
+                const locked = navLockedSelect.value === 'true';
+                heightThresholdInput.disabled = locked;
+                if (locked) {
+                    heightThresholdInput.dataset.original = heightThresholdInput.value;
+                }
+            }
+        };
+        updateHeightThresholdState();
+        if (navLockedSelect) {
+            navLockedSelect.addEventListener('change', updateHeightThresholdState);
+        }
 
         // 记录每个输入框的原始值
         inputs.forEach(input => {
@@ -74,6 +116,9 @@ export function initSetting(saved = false, error = false) {
         // 失焦处理
         inputs.forEach(input => {
             input.addEventListener('blur', async () => {
+                // 禁用状态不处理
+                if (input.disabled) return;
+
                 const fieldName = input.name;
                 const oldValue = input.dataset.original;
                 const newValue = input.value.trim();
@@ -83,10 +128,15 @@ export function initSetting(saved = false, error = false) {
 
                 const label = getFieldLabel(fieldName);
 
+                // bool 字段值转换为中文显示
+                const BOOL_FIELDS = {'nav_locked': true};
+                const displayOld = BOOL_FIELDS[fieldName] ? (oldValue === 'true' ? '是' : '否') : oldValue;
+                const displayNew = BOOL_FIELDS[fieldName] ? (newValue === 'true' ? '是' : '否') : newValue;
+
                 // 弹出确认对话框
                 const confirmed = await showConfirm({
                     title: '确认修改',
-                    text: `确认「${label}」由"${oldValue}"改为"${newValue}"吗？`,
+                    text: `确认「${label}」由"${displayOld}"改为"${displayNew}"吗？`,
                     confirmText: '确认',
                     cancelText: '取消',
                 });
@@ -94,6 +144,10 @@ export function initSetting(saved = false, error = false) {
                 if (!confirmed) {
                     // 用户取消，还原输入框
                     input.value = oldValue;
+                    // 恢复联动状态（如锁定导航栏取消后恢复高度阈值可用）
+                    if (fieldName === 'nav_locked') {
+                        updateHeightThresholdState();
+                    }
                     return;
                 }
 

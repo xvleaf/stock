@@ -126,6 +126,8 @@ function renderTrendChart() {
     const container = document.getElementById('chartContainer');
     const priceLen = preClosePrice.toFixed(priceDecimal).length;
     const paddingLeft = priceLen >= 5 ? 45 : 30;
+    const mainRatio = window.UI_CONFIG ? window.UI_CONFIG.trend_main_ratio : 75;
+    const subRatio = 100 - mainRatio;
     Highcharts.setOptions({
         global: { useUTC: false, timezone: 'Asia/Shanghai' },
         accessibility: { enabled: false } // 禁用无障碍模块
@@ -152,7 +154,7 @@ function renderTrendChart() {
         },
         yAxis: [
             {
-                height: '75%',
+                height: mainRatio + '%',
                 min: tickMin,
                 max: tickMax,
                 tickItv: tickItv,
@@ -168,7 +170,7 @@ function renderTrendChart() {
                 }
             },
             {
-                height: '75%',
+                height: mainRatio + '%',
                 linkedTo: 0,
                 opposite: false,
                 labels: {
@@ -178,7 +180,7 @@ function renderTrendChart() {
                     }
                 }
             },
-            { top: '75%', height: '25%', offset: 0, labels: { x: -2 } }
+            { top: mainRatio + '%', height: subRatio + '%', offset: 0, labels: { x: -2 } }
         ],
         tooltip: {
             shared: true,

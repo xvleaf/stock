@@ -1,12 +1,7 @@
-// 需与 main.css 一起修改
-export const BREAKPOINT_MD = 992;
-// 屏幕高度阈值：视口高度小于该值才允许滚动自动隐藏导航栏，大于等于始终显示
-export const SCREEN_HEIGHT_THRESHOLD = 800;
+// 界面配置从 window.UI_CONFIG 读取（由模板注入）
 export const RESIZE_DELAY_LAYOUT = 150;
 // 初始化保护时长
 const INIT_PROTECT_DELAY = 500;
-// 用于外部控制导航锁定状态，false 为不锁定
-const NAV_LOCKED = false;
 let nav = null;
 let pageContent = null;
 let gapEl = null;
@@ -41,11 +36,12 @@ export function getMainNavHeight() {
 }
 /** 导出屏幕高度阈值供外部读取 */
 export function getScreenHeightThreshold() {
-    return SCREEN_HEIGHT_THRESHOLD;
+    return window.UI_CONFIG ? window.UI_CONFIG.screen_height_threshold : 800;
 }
 // ====================== 工具纯函数 ======================
 export function isMobileSize() {
-    return window.innerWidth < BREAKPOINT_MD;
+    const bp = window.UI_CONFIG ? window.UI_CONFIG.mobile_breakpoint : 992;
+    return window.innerWidth < bp;
 }
 export function debounceLayout(cb, delay) {
     clearTimeout(layoutResizeTimer);
@@ -163,7 +159,8 @@ export function toggleNavVisible() {
     if (!nav) return;
     // true = 强制锁定导航永久显示，禁用自动隐藏逻辑
     // false = 取消锁定，交给滚动自动控制显隐，不会主动隐藏导航
-    if (NAV_LOCKED) {
+    const navLocked = window.UI_CONFIG ? window.UI_CONFIG.nav_locked : false;
+    if (navLocked) {
         nav.classList.remove('hidden');
         isNavVisible = true;
         disableNavAutoHide = true;
@@ -221,7 +218,8 @@ function handleWindowScrollFrame() {
         return;
     }
     // 上滑（滚动变大）→ 检查是否允许隐藏
-    if (viewHeight >= SCREEN_HEIGHT_THRESHOLD) {
+    const heightThreshold = window.UI_CONFIG ? window.UI_CONFIG.screen_height_threshold : 800;
+    if (viewHeight >= heightThreshold) {
         lastScrollY = scrollY;
         frameTicking = false;
         return;

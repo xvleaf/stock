@@ -1,6 +1,37 @@
 {% extends "base-view.html" %}
 {% load static %}
 {% block title %}参数设置{% endblock %}
+{% block extra_css %}
+<style>
+/* 自定义无边框 tooltip */
+.form-label[data-tooltip] {
+    position: relative;
+}
+.form-label[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: #f8f9fa;
+    color: #333;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: normal;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s;
+    z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    pointer-events: none;
+}
+.form-label[data-tooltip]:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+</style>
+{% endblock %}
 {% block content %}
 <div class="form-wrap">
     <h6 class="mb-3">参数设置</h6>
@@ -237,6 +268,187 @@
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">K线最小密度</label>
                         <input type="text" name="density_min" class="form-control form-control-sm" value="{{ setting.density_min }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 界面设置 - 导航栏 -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="mb-3">界面设置 - 导航栏</h6>
+                <div class="row g-3">
+                    <div class="col-md-4 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="导航栏固定显示，不随滚动隐藏">锁定导航栏</label>
+                        <select name="nav_locked" class="form-select form-select-sm">
+                            <option value="true" {% if setting.nav_locked %}selected{% endif %}>是</option>
+                            <option value="false" {% if not setting.nav_locked %}selected{% endif %}>否</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="视口高于此值时导航栏始终显示">高度阈值</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="screen_height_threshold" id="id_screen_height_threshold" class="form-control" value="{{ setting.screen_height_threshold }}">
+                            <span class="input-group-text">px</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="桌面端顶部导航栏高度">导航高度（桌面）</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="nav_height" class="form-control" value="{{ setting.nav_height }}">
+                            <span class="input-group-text">px</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="移动端顶部导航栏高度">导航高度（移动）</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="nav_height_mobile" class="form-control" value="{{ setting.nav_height_mobile }}">
+                            <span class="input-group-text">px</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="导航栏与页面内容间的间隔高度">导航间隔</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="gap_height" class="form-control" value="{{ setting.gap_height }}">
+                            <span class="input-group-text">px</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="股票详情页底部导航栏高度">底部导航高度</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="navi_bar_height" class="form-control" value="{{ setting.navi_bar_height }}">
+                            <span class="input-group-text">px</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 界面设置 - 内容布局 -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="mb-3">界面设置 - 内容布局</h6>
+                <div class="row g-3">
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="视口宽度低于此值为移动端布局">移动断点</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="mobile_breakpoint" class="form-control" value="{{ setting.mobile_breakpoint }}">
+                            <span class="input-group-text">px</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="视口小于第一断点时的页面宽度">页面宽度一</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="w1" class="form-control" value="{{ setting.w1 }}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="响应式布局第一断点宽度">断点一</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="bp1" class="form-control" value="{{ setting.bp1 }}">
+                            <span class="input-group-text">px</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="第一至第二断点间的页面宽度">页面宽度二</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="w2" class="form-control" value="{{ setting.w2 }}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="响应式布局第二断点宽度">断点二</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="bp2" class="form-control" value="{{ setting.bp2 }}">
+                            <span class="input-group-text">px</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="第二至第三断点间的页面宽度">页面宽度三</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="w3" class="form-control" value="{{ setting.w3 }}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="响应式布局第三断点宽度">断点三</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="bp3" class="form-control" value="{{ setting.bp3 }}">
+                            <span class="input-group-text">px</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="视口大于第三断点时的页面宽度">页面宽度四</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="w4" class="form-control" value="{{ setting.w4 }}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 界面设置 - 图表布局 -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="mb-3">界面设置 - 图表布局</h6>
+                <div class="row g-3">
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="视口小于第一断点时的图表高度">高度一</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="h1" class="form-control" value="{{ setting.h1 }}">
+                            <span class="input-group-text">vh</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="第一至第二断点间的图表高度">高度二</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="h2" class="form-control" value="{{ setting.h2 }}">
+                            <span class="input-group-text">vh</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="第二至第三断点间的图表高度">高度三</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="h3" class="form-control" value="{{ setting.h3 }}">
+                            <span class="input-group-text">vh</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="视口大于第三断点时的图表高度">高度四</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="h4" class="form-control" value="{{ setting.h4 }}">
+                            <span class="input-group-text">vh</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="资金页面图表默认高度">资金曲线高度</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="cash_chart_height" class="form-control" value="{{ setting.cash_chart_height }}">
+                            <span class="input-group-text">px</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="图表加载前占位区域最小高度">图表最小高度</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="chart_placeholder_height" class="form-control" value="{{ setting.chart_placeholder_height }}">
+                            <span class="input-group-text">px</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="分时图主图占总高度的百分比">分时主图比例</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="trend_main_ratio" class="form-control" value="{{ setting.trend_main_ratio }}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" data-tooltip="K线图主图占总高度的百分比">K线主图比例</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="kline_main_ratio" class="form-control" value="{{ setting.kline_main_ratio }}">
+                            <span class="input-group-text">%</span>
+                        </div>
                     </div>
                 </div>
             </div>

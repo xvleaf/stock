@@ -92,11 +92,11 @@
     </div>
 
     {# ===== 资金变化图表 ===== #}
-    <div class="cash-chart-wrap">
-        <div class="chart-placeholder" id="cashPlaceholder" style="display:none;">
+    <div class="cash-chart-wrap" {% if not pg.total_count %}style="height:25px;"{% endif %}>
+        <div class="chart-placeholder" id="cashPlaceholder" style="{% if pg.total_count %}display:none;{% else %}display:flex;{% endif %}">
             <div class="chart-placeholder-text">暂无资金历史数据</div>
         </div>
-        <div id="cashChart" class="cash-chart"></div>
+        <div id="cashChart" class="cash-chart" style="{% if not pg.total_count %}display:none;{% endif %}"></div>
     </div>
 
     {# ===== 历史记录表格 ===== #}

@@ -1,9 +1,4 @@
 /* ========== 根容器 ========== */
-:root {
-    /* 底部导航栏默认高度 */
-    --navi-bar-height: 25px;
-}
-
 .chart-page {
     position: relative;
     width: 100%;
@@ -47,7 +42,7 @@
 /* ========== 资金页面图表容器 ========== */
 .cash-chart-wrap {
     position: relative;
-    height: 400px;
+    height: var(--cash-chart-height, 400px);
     margin: 8px 0;
 }
 
@@ -146,10 +141,13 @@
     --switch3: clamp(0px, (100vw - var(--bp3) * 1px) * 9999, 9999px);
 
     /* ---- 高度 ---- */
-    height: calc(0.9 * max(
-        var(--h4), 
-        max(var(--h3), max(var(--h2), var(--h1) - var(--switch1)) - var(--switch2)) - var(--switch3)
-    )) !important;
+    height: max(
+        calc(0.9 * max(
+            var(--h4), 
+            max(var(--h3), max(var(--h2), var(--h1) - var(--switch1)) - var(--switch2)) - var(--switch3)
+        )),
+        var(--chart-placeholder-height)
+    ) !important;
 }
 
 .chart-kline-header {
