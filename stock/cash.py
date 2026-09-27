@@ -459,38 +459,6 @@ def cash_setting(request):
 
 
 # ===================== 全站参数设置 =====================
-def web_setting(request):
-    """全站参数设置页面：佣金、印花税、分红税"""
-    setting = WebSetting.get_setting()
-    saved = False
-    if request.method == 'POST':
-        # 比率字段：前端显示百分比，保存时除以100
-        setting.commission_ratio = Decimal(request.POST.get('commission_ratio', '0')) / 100
-        setting.commission_min = Decimal(request.POST.get('commission_min', '0'))
-        setting.stamp_buy_ratio = Decimal(request.POST.get('stamp_buy_ratio', '0')) / 100
-        setting.stamp_sell_ratio = Decimal(request.POST.get('stamp_sell_ratio', '0')) / 100
-        setting.dividend_tax_long = Decimal(request.POST.get('dividend_tax_long', '0')) / 100
-        setting.dividend_tax_mid = Decimal(request.POST.get('dividend_tax_mid', '0')) / 100
-        setting.dividend_tax_short = Decimal(request.POST.get('dividend_tax_short', '0')) / 100
-        setting.save()
-        saved = True
-    # GET：比率字段乘以100，以百分比形式显示；值为0时显示整数
-    def _fmt_pct(val):
-        v = float(val) * 100
-        return int(v) if v == 0 else v
-    context = {
-        'setting': setting,
-        'saved': saved,
-        'commission_ratio_pct': _fmt_pct(setting.commission_ratio),
-        'stamp_buy_ratio_pct': _fmt_pct(setting.stamp_buy_ratio),
-        'stamp_sell_ratio_pct': _fmt_pct(setting.stamp_sell_ratio),
-        'dividend_tax_long_pct': _fmt_pct(setting.dividend_tax_long),
-        'dividend_tax_mid_pct': _fmt_pct(setting.dividend_tax_mid),
-        'dividend_tax_short_pct': _fmt_pct(setting.dividend_tax_short),
-    }
-    return render(request, 'web-setting.html', context)
-
-
 # ===================== 计算工具函数 =====================
 def _q(value, places='0.01'):
     """统一四舍五入到两位小数"""
@@ -555,13 +523,14 @@ def calc_stamp_tax(amount, stamp_tax_rate):
     return _q(Decimal(str(amount)) * Decimal(str(stamp_tax_rate)))
 
 
-def calc_fee(amount, intent, config=None):
+def calc_fee(amount, intent, market='SH', config=None):
     """
     计算交易费用
     :param amount: 成交金额
     :param intent: 'B'买入 / 'S'卖出
+    :param market: 'SH'沪市 / 'SZ'深市 / 'BJ'北交所
     :param config: 保留参数（兼容旧调用），实际从 WebSetting 读取
-    :return: dict {commission, stamp_tax, total}
+    :return: dict {commission, stamp_tax, transfer_fee, total}
     """
     from .models.models import WebSetting
     setting = WebSetting.get_setting()
@@ -570,10 +539,14 @@ def calc_fee(amount, intent, config=None):
     stamp_tax = Decimal('0')
     if intent == 'S':
         stamp_tax = calc_stamp_tax(amount, setting.stamp_sell_ratio)
-    total = _q(commission + stamp_tax)
+    # 过户费：买卖双向收取，按市场选择费率
+    transfer_rate = getattr(setting, f'transfer_fee_{market.lower()}', Decimal('0'))
+    transfer_fee = _q(amount * transfer_rate)
+    total = _q(commission + stamp_tax + transfer_fee)
     return {
         'commission': _q(commission),
         'stamp_tax': stamp_tax,
+        'transfer_fee': transfer_fee,
         'total': total,
     }
 

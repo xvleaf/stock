@@ -169,7 +169,7 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
     if fee_str:
         fee = _q(fee_str)
     else:
-        fee_info = cash_utils.calc_fee(amount, intent, config)
+        fee_info = cash_utils.calc_fee(amount, intent, market, config)
         fee = fee_info['total']
 
     with transaction.atomic():
@@ -775,6 +775,7 @@ def trans_calc(request):
         return JsonResponse({'error': '无效的JSON'}, status=400)
 
     intent = data.get('intent', 'B')
+    market = data.get('market', 'SH')
     price = float(data.get('price', 0) or 0)
     qty = int(data.get('qty', 0) or 0)
     target_price = float(data.get('target_price', 0) or 0)
@@ -790,7 +791,7 @@ def trans_calc(request):
     amount = round(price * qty, 2) if price > 0 and qty > 0 else 0
 
     # 交易费用
-    fee_info = cash_utils.calc_fee(amount, intent, config)
+    fee_info = cash_utils.calc_fee(amount, intent, market, config)
     fee = float(fee_info['total'])
 
     # ===== 1. 计算交易后的持仓状态（方向、数量、均价）=====
@@ -875,11 +876,11 @@ def trans_calc(request):
     if new_qty != 0 and target_price > 0:
         if new_intent == 'B':
             sell_amount = target_price * abs(new_qty)
-            sell_fee = float(cash_utils.calc_fee(sell_amount, 'S', config)['total'])
+            sell_fee = float(cash_utils.calc_fee(sell_amount, 'S', market, config)['total'])
             unrealized_profit = (target_price - new_avg_no_fee) * abs(new_qty) - sell_fee
         else:
             buy_amount = target_price * abs(new_qty)
-            buy_fee = float(cash_utils.calc_fee(buy_amount, 'B', config)['total'])
+            buy_fee = float(cash_utils.calc_fee(buy_amount, 'B', market, config)['total'])
             unrealized_profit = (new_avg_no_fee - target_price) * abs(new_qty) - buy_fee
 
     profit = round(realized_profit + unrealized_profit, 2)

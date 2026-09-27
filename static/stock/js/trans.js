@@ -139,6 +139,7 @@ export function initTransDeal(opts = {}) {
     function collectParams() {
         return {
             intent: intentSelect ? intentSelect.value : 'B',
+            market: initChart.market || 'SH',
             price: parseFloat(priceInput.value) || 0,
             qty: parseInt(qtyInput.value) || 0,
             target_price: parseFloat(targetInput.value) || 0,
@@ -427,6 +428,7 @@ export function initTransEdit(opts = {}) {
     function collectParams() {
         return {
             intent: intent,
+            market: initChart.market || 'SH',
             price: avgCostNoFee,
             qty: 0,
             target_price: parseFloat(targetInput.value) || 0,
