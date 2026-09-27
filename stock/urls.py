@@ -41,6 +41,7 @@ urlpatterns = [
     path('cash/quota', cash.cash_quota, name='cash_quota'),
     path('cash/setting', cash.cash_setting, name='cash_setting'),
     path('setting', setting.web_setting, name='web_setting'),
+    path('setting/save', setting.setting_save, name='setting_save'),
 
     # ---- 交易 ----
     path('trans/list', trans.trans_list, name='trans_list'),

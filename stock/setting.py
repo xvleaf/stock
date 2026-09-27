@@ -113,7 +113,7 @@ def web_setting(request):
         setting.dividend_tax_short = Decimal(request.POST['dividend_tax_short']) / 100
         # 通用设置
         setting.default_page_size = int(request.POST['default_page_size'])
-        setting.quote_interval = int(request.POST['quote_interval'])
+        setting.quote_interval = int(request.POST['quote_interval']) * 1000  # 秒转毫秒
         setting.icp_number = request.POST.get('icp_number', '').strip()
         setting.icp_website = request.POST.get('icp_website', '').strip()
         # 交易时间（HH:MM 转秒）
@@ -155,6 +155,9 @@ def web_setting(request):
     error = request.session.pop('setting_error', False)
     setting = WebSetting.get_setting()
 
+    # 行情刷新间隔：毫秒转秒显示（数据库存毫秒，页面显示秒）
+    setting.quote_interval = int(setting.quote_interval) // 1000
+
     # 比率字段乘以100，以百分比形式显示；值为0时显示整数
     def _fmt_pct(val):
         v = float(val) * 100
@@ -186,3 +189,67 @@ def web_setting(request):
         'trade_pm_end_fmt': _seconds_to_hms(setting.trade_pm_end),
     }
     return render(request, 'web-setting.html', context)
+
+
+def setting_save(request):
+    """AJAX单字段保存接口"""
+    from django.http import JsonResponse
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': '方法不允许'}, status=405)
+
+    field = request.POST.get('field', '').strip()
+    value = request.POST.get('value', '').strip()
+
+    if not field:
+        return JsonResponse({'success': False, 'error': '字段名不能为空'})
+
+    # 字段类型映射
+    PCT_FIELDS = {'commission_ratio', 'stamp_buy_ratio', 'stamp_sell_ratio',
+                  'transfer_fee_sh', 'transfer_fee_sz', 'transfer_fee_bj',
+                  'dividend_tax_long', 'dividend_tax_mid', 'dividend_tax_short'}
+    TIME_FIELDS = {'trade_am_start', 'trade_am_end', 'trade_pm_start', 'trade_pm_end'}
+    INT_FIELDS = {'default_page_size', 'quote_interval',
+                  'kline_ma_day', 'kline_ma_week', 'kline_ma_month',
+                  'kline_mv_day', 'kline_mv_week', 'kline_mv_month',
+                  'kline_ema_k_day', 'kline_ema_k_week', 'kline_ema_k_month',
+                  'kline_ema_d_day', 'kline_ema_d_week', 'kline_ema_d_month'}
+    TEXT_FIELDS = {'icp_number', 'icp_website',
+                   'kline_start_date_day', 'kline_start_date_week', 'kline_start_date_month'}
+
+    try:
+        setting = WebSetting.get_setting()
+
+        if field in PCT_FIELDS:
+            # 百分比转小数
+            if not _is_valid_number(value):
+                return JsonResponse({'success': False, 'error': '请输入有效数字'})
+            setattr(setting, field, Decimal(value) / 100)
+        elif field in TIME_FIELDS:
+            # HH:MM 转秒
+            if not re.match(r'^\d{2}:\d{2}$', value):
+                return JsonResponse({'success': False, 'error': '请输入HH:MM格式'})
+            setattr(setting, field, _hms_to_seconds(value))
+        elif field == 'quote_interval':
+            # 秒转毫秒
+            if not value.isdigit():
+                return JsonResponse({'success': False, 'error': '请输入整数'})
+            setting.quote_interval = int(value) * 1000
+        elif field in INT_FIELDS:
+            if not value.isdigit():
+                return JsonResponse({'success': False, 'error': '请输入整数'})
+            setattr(setting, field, int(value))
+        elif field in TEXT_FIELDS:
+            setattr(setting, field, value)
+        else:
+            return JsonResponse({'success': False, 'error': f'未知字段: {field}'})
+
+        setting.save()
+
+        # K线参数修改后清除缓存
+        if field.startswith('kline_'):
+            from django.core.cache import cache
+            cache.clear()
+
+        return JsonResponse({'success': True})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})

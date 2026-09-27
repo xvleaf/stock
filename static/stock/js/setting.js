@@ -1,106 +1,54 @@
 /**
  * 全站参数设置页面 JS
+ * - 失焦自动确认保存
+ * - 单字段AJAX提交
  */
 import { baseInit } from "/static/base/js/base.js";
-import { showAlert } from "/static/stock/js/func.js";
+import { showAlert, showConfirm, getCsrfToken } from "/static/stock/js/func.js";
 
-// 需要验证的字段配置
-const FIELDS = [
-    // 通用设置
-    { name: 'icp_number', label: '备案编号', type: 'text' },
-    { name: 'icp_website', label: '备案官网', type: 'text' },
-    { name: 'default_page_size', label: '分页默认数量', type: 'int' },
-    { name: 'quote_interval', label: '行情刷新间隔', type: 'int' },
-    // 交易费用
-    { name: 'commission_ratio', label: '佣金费率', type: 'num' },
-    { name: 'commission_min', label: '最低佣金', type: 'num' },
-    { name: 'stamp_buy_ratio', label: '印花税率（买入）', type: 'num' },
-    { name: 'stamp_sell_ratio', label: '印花税率（卖出）', type: 'num' },
-    // 过户费用
-    { name: 'transfer_fee_sh', label: '过户费（沪市）', type: 'num' },
-    { name: 'transfer_fee_sz', label: '过户费（深市）', type: 'num' },
-    { name: 'transfer_fee_bj', label: '过户费（北交所）', type: 'num' },
-    // 分红税率
-    { name: 'dividend_tax_long', label: '分红税（持股 > 1年）', type: 'num' },
-    { name: 'dividend_tax_mid', label: '分红税（持股 ≥ 1月）', type: 'num' },
-    { name: 'dividend_tax_short', label: '分红税（持股 < 1月）', type: 'num' },
-    // 交易时间
-    { name: 'trade_am_start', label: '上午开始时间', type: 'time' },
-    { name: 'trade_am_end', label: '上午结束时间', type: 'time' },
-    { name: 'trade_pm_start', label: '下午开始时间', type: 'time' },
-    { name: 'trade_pm_end', label: '下午结束时间', type: 'time' },
-    // K线起始日期
-    { name: 'kline_start_date_day', label: '日线起始日期', type: 'date' },
-    { name: 'kline_start_date_week', label: '周线起始日期', type: 'date' },
-    { name: 'kline_start_date_month', label: '月线起始日期', type: 'date' },
-    // K线MA周期
-    { name: 'kline_ma_day', label: '日线MA周期', type: 'int' },
-    { name: 'kline_ma_week', label: '周线MA周期', type: 'int' },
-    { name: 'kline_ma_month', label: '月线MA周期', type: 'int' },
-    // K线MV周期
-    { name: 'kline_mv_day', label: '日线MV周期', type: 'int' },
-    { name: 'kline_mv_week', label: '周线MV周期', type: 'int' },
-    { name: 'kline_mv_month', label: '月线MV周期', type: 'int' },
-    // K线EMA-K值
-    { name: 'kline_ema_k_day', label: '日线EMA-K值', type: 'int' },
-    { name: 'kline_ema_k_week', label: '周线EMA-K值', type: 'int' },
-    { name: 'kline_ema_k_month', label: '月线EMA-K值', type: 'int' },
-    // K线EMA-D值
-    { name: 'kline_ema_d_day', label: '日线EMA-D值', type: 'int' },
-    { name: 'kline_ema_d_week', label: '周线EMA-D值', type: 'int' },
-    { name: 'kline_ema_d_month', label: '月线EMA-D值', type: 'int' },
-];
+// 字段中文名映射
+const FIELD_LABELS = {
+    'icp_number': '备案编号',
+    'icp_website': '备案官网',
+    'default_page_size': '分页默认数量',
+    'quote_interval': '行情刷新间隔',
+    'commission_ratio': '佣金费率',
+    'commission_min': '最低佣金',
+    'stamp_buy_ratio': '印花税率（买入）',
+    'stamp_sell_ratio': '印花税率（卖出）',
+    'transfer_fee_sh': '过户费（沪市）',
+    'transfer_fee_sz': '过户费（深市）',
+    'transfer_fee_bj': '过户费（北交所）',
+    'dividend_tax_long': '分红税（持股 > 1年）',
+    'dividend_tax_mid': '分红税（持股 ≥ 1月）',
+    'dividend_tax_short': '分红税（持股 < 1月）',
+    'trade_am_start': '上午开始时间',
+    'trade_am_end': '上午结束时间',
+    'trade_pm_start': '下午开始时间',
+    'trade_pm_end': '下午结束时间',
+    'kline_start_date_day': '日线起始日期',
+    'kline_start_date_week': '周线起始日期',
+    'kline_start_date_month': '月线起始日期',
+    'kline_ma_day': '日线MA周期',
+    'kline_ma_week': '周线MA周期',
+    'kline_ma_month': '月线MA周期',
+    'kline_mv_day': '日线MV周期',
+    'kline_mv_week': '周线MV周期',
+    'kline_mv_month': '月线MV周期',
+    'kline_ema_k_day': '日线EMA-K值',
+    'kline_ema_k_week': '周线EMA-K值',
+    'kline_ema_k_month': '月线EMA-K值',
+    'kline_ema_d_day': '日线EMA-D值',
+    'kline_ema_d_week': '周线EMA-D值',
+    'kline_ema_d_month': '月线EMA-D值',
+};
 
-function validateForm(form) {
-    const errors = [];
-    const numRegex = /^\d+(\.\d+)?$/;
-    const intRegex = /^\d+$/;
-    const dateRegex = /^\d{8}$/;
-    const timeRegex = /^\d{2}:\d{2}$/;
-
-    for (const field of FIELDS) {
-        const input = form.querySelector(`[name="${field.name}"]`);
-        if (!input) continue;
-        const value = input.value.trim();
-        // text 类型允许为空
-        if (field.type === 'text') {
-            input.classList.remove('is-invalid');
-            continue;
-        }
-        // 检查是否为空
-        if (value === '') {
-            errors.push(`${field.label}不能为空`);
-            input.classList.add('is-invalid');
-            continue;
-        }
-        // 按类型校验
-        let valid = false;
-        let errorMsg = '格式错误';
-        if (field.type === 'num') {
-            valid = numRegex.test(value);
-            errorMsg = '请输入数字';
-        } else if (field.type === 'int') {
-            valid = intRegex.test(value);
-            errorMsg = '请输入整数';
-        } else if (field.type === 'date') {
-            valid = dateRegex.test(value);
-            errorMsg = '请输入YYYYMMDD格式';
-        } else if (field.type === 'time') {
-            valid = timeRegex.test(value);
-            errorMsg = '请输入HH:MM格式';
-        }
-        if (!valid) {
-            errors.push(`${field.label}${errorMsg}`);
-            input.classList.add('is-invalid');
-            continue;
-        }
-        input.classList.remove('is-invalid');
-    }
-    return errors;
+function getFieldLabel(fieldName) {
+    return FIELD_LABELS[fieldName] || fieldName;
 }
 
 export function initSetting(saved = false, error = false) {
-    document.addEventListener('DOMContentLoaded', () => {
+    const init = () => {
         baseInit();
         if (saved) {
             showAlert({ text: '参数设置已保存。', type: 'success' });
@@ -109,26 +57,96 @@ export function initSetting(saved = false, error = false) {
             showAlert({ text: '数据输入有误。', type: 'error' });
         }
 
-        const form = document.querySelector('form');
-        if (form) {
-            form.addEventListener('submit', (e) => {
-                const errors = validateForm(form);
-                if (errors.length > 0) {
-                    e.preventDefault();
-                    showAlert({
-                        title: '请检查以下内容',
-                        text: errors.join('；'),
-                        type: 'warning'
+        // 通过 id 选择表单，避免选错其他 form
+        const form = document.getElementById('settingForm');
+        if (!form) return;
+
+        const inputs = form.querySelectorAll('input[name]');
+
+        // 记录每个输入框的原始值
+        inputs.forEach(input => {
+            input.dataset.original = input.value;
+        });
+
+        // 失焦处理
+        inputs.forEach(input => {
+            input.addEventListener('blur', async () => {
+                const fieldName = input.name;
+                const oldValue = input.dataset.original;
+                const newValue = input.value.trim();
+
+                // 值未变化，不处理
+                if (newValue === oldValue) return;
+
+                const label = getFieldLabel(fieldName);
+
+                // 弹出确认对话框
+                const confirmed = await showConfirm({
+                    title: '确认修改',
+                    text: `确认「${label}」由"${oldValue}"改为"${newValue}"吗？`,
+                    confirmText: '确认',
+                    cancelText: '取消',
+                });
+
+                if (!confirmed) {
+                    // 用户取消，还原输入框
+                    input.value = oldValue;
+                    return;
+                }
+
+                // 确认后，AJAX提交
+                try {
+                    const formData = new FormData();
+                    formData.append('field', fieldName);
+                    formData.append('value', newValue);
+                    formData.append('csrfmiddlewaretoken', getCsrfToken());
+
+                    const response = await fetch('/setting/save', {
+                        method: 'POST',
+                        body: formData,
                     });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        input.dataset.original = newValue;
+                        showAlert({ text: `${label}已保存。`, type: 'success' });
+                    } else {
+                        input.value = oldValue;
+                        showAlert({ text: result.error || '保存失败', type: 'error' });
+                    }
+                } catch (e) {
+                    input.value = oldValue;
+                    showAlert({ text: '网络请求失败', type: 'error' });
                 }
             });
 
             // 输入时清除错误状态
-            form.querySelectorAll('input').forEach(input => {
-                input.addEventListener('input', () => {
-                    input.classList.remove('is-invalid');
-                });
+            input.addEventListener('input', () => {
+                input.classList.remove('is-invalid');
             });
+        });
+
+        // 恢复滚动位置
+        const savedScroll = sessionStorage.getItem('setting-scroll');
+        if (savedScroll) {
+            window.scrollTo(0, parseInt(savedScroll, 10));
+            sessionStorage.removeItem('setting-scroll');
         }
-    });
+
+        // 滚动时保存位置
+        let scrollTimer = null;
+        window.addEventListener('scroll', () => {
+            clearTimeout(scrollTimer);
+            scrollTimer = setTimeout(() => {
+                sessionStorage.setItem('setting-scroll', window.scrollY.toString());
+            }, 100);
+        });
+    };
+
+    // 模块脚本可能在 DOMContentLoaded 之后执行，需要检查 readyState
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 }
