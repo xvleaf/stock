@@ -1,5 +1,5 @@
 import { chartPageContainer, initChartPage, setPageConfig } from './chart.js';
-import { postRequest, getCsrfToken, showRadioModal, showConfirm } from './func.js';
+import { postRequest, getCsrfToken, showRadioModal, showConfirm, showAlert, showFormModal } from './func.js';
 
 // ===================== filter-list 结果清单 =====================
 export function initFilterList(opts = {}) {
@@ -387,48 +387,6 @@ export function initFilterRun({ parentId, lastConditions, runningState }) {
 
 
 // ===================== filter-refer 对比 =====================
-export function initFilterRefer() {
-    const tbody = document.getElementById('stockBody');
-    const regionFilter = document.getElementById('regionFilter');
-
-    // 应用归属筛选
-    function applyRegionFilter() {
-        const val = regionFilter ? regionFilter.value : '';
-        tbody.querySelectorAll('tr[data-mark]').forEach(tr => {
-            tr.style.display = (!val || tr.dataset.mark === val) ? '' : 'none';
-        });
-    }
-    regionFilter?.addEventListener('change', applyRegionFilter);
-
-    document.getElementById('referBtn').addEventListener('click', async () => {
-        const a = document.getElementById('taskA').value;
-        const b = document.getElementById('taskB').value;
-        const res = await postRequest('/refer/list', { task_a: a, task_b: b });
-        if (!res || res.error) return;
-
-        document.getElementById('referSummary').innerHTML =
-            `A(${res.label_a}) ${res.count_a} 只 ｜ B(${res.label_b}) ${res.count_b} 只 ｜ 共有 <b>${res.count_both}</b> 只`;
-
-        tbody.innerHTML = '';
-        res.rows.forEach((r, i) => {
-            const tr = document.createElement('tr');
-            const regionText = { both: '共有', only_a: '仅A', only_b: '仅B' }[r.region];
-            tr.dataset.mark = r.region;
-            if (r.region === 'only_a') tr.classList.add('row-only-a');
-            if (r.region === 'only_b') tr.classList.add('row-only-b');
-            tr.innerHTML = `
-                <td>${i + 1}</td>
-                <td><a class="table-code-text" href="/filter/view/${r.market}/${r.code}">${r.code}</a></td>
-                <td>${r.name}</td>
-                <td><span class="badge bg-${r.region === 'both' ? 'secondary' : (r.region === 'only_a' ? 'primary' : 'danger')}">${regionText}</span></td>
-            `;
-            tbody.appendChild(tr);
-        });
-        applyRegionFilter();
-    });
-}
-
-
 // ===================== filter-config 历史管理 =====================
 export function initFilterConfig() {
     document.addEventListener('click', async (e) => {
@@ -467,5 +425,216 @@ export function initFilterConfig() {
     }
     document.querySelectorAll('.board-check, #excludeStCheck').forEach(el => {
         el.addEventListener('change', saveBoardsNow);
+    });
+
+    // 通用设置自动保存（失焦触发）
+    const autoSaveInputs = document.querySelectorAll('.auto-save-input');
+    if (autoSaveInputs.length) {
+        const initialValues = {};
+        autoSaveInputs.forEach(input => {
+            initialValues[input.id] = input.value;
+        });
+
+        function validateAndSave() {
+            const filterTimeout = document.getElementById('filterTimeoutInput').value.trim();
+            const targetProfit = document.getElementById('targetProfitInput').value.trim();
+            const stopLoss = document.getElementById('stopLossInput').value.trim();
+
+            // 校验
+            if (!/^\d+$/.test(filterTimeout)) {
+                showAlert({ type: 'error', text: '筛选超时时间请输入整数' });
+                return;
+            }
+            if (!/^\d+(\.\d+)?$/.test(targetProfit)) {
+                showAlert({ type: 'error', text: '添加关注目标价请输入数字' });
+                return;
+            }
+            if (!/^\d+(\.\d+)?$/.test(stopLoss)) {
+                showAlert({ type: 'error', text: '添加关注止损价请输入数字' });
+                return;
+            }
+
+            // 检查是否有变化
+            let hasChange = false;
+            autoSaveInputs.forEach(input => {
+                if (input.value !== initialValues[input.id]) {
+                    hasChange = true;
+                }
+            });
+            if (!hasChange) return;
+
+            fetch('/filter/config/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+                body: JSON.stringify({
+                    filter_timeout: parseInt(filterTimeout),
+                    target_profit_ratio: parseFloat(targetProfit),
+                    stop_loss_ratio: parseFloat(stopLoss),
+                }),
+            }).then(res => res.json()).then(data => {
+                if (data.status === 'success') {
+                    autoSaveInputs.forEach(input => {
+                        initialValues[input.id] = input.value;
+                    });
+                    showAlert({ type: 'success', text: '保存成功' });
+                } else {
+                    showAlert({ type: 'error', text: data.message || '保存失败' });
+                }
+            }).catch(() => {
+                showAlert({ type: 'error', text: '请求失败，请重试' });
+            });
+        }
+
+        autoSaveInputs.forEach(input => {
+            input.addEventListener('blur', validateAndSave);
+        });
+    }
+
+    // 刷新板块关联按钮
+    const rebuildBtn = document.getElementById('rebuildSectorBtn');
+    if (rebuildBtn) {
+        rebuildBtn.addEventListener('click', () => {
+            showConfirm({
+                title: '刷新板块关联',
+                text: '确定要重建板块关联吗？',
+            }).then((confirmed) => {
+                if (!confirmed) return;
+                rebuildBtn.disabled = true;
+                rebuildBtn.textContent = '正在刷新...';
+                fetch('/sector/rebuild', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+                    body: JSON.stringify({}),
+                }).then(res => res.json()).then(data => {
+                    if (data.status === 'success') {
+                        showAlert({ type: 'success', text: '刷新已开始，完成后自动生效' });
+                    } else {
+                        showAlert({ type: 'error', text: data.message || '刷新失败' });
+                        rebuildBtn.disabled = false;
+                        rebuildBtn.textContent = '刷新板块关联';
+                    }
+                }).catch(() => {
+                    showAlert({ type: 'error', text: '请求失败，请重试' });
+                    rebuildBtn.disabled = false;
+                    rebuildBtn.textContent = '刷新板块关联';
+                });
+            });
+        });
+    }
+}
+
+// ===================== filter-refer 对比页面 =====================
+export function initFilterRefer(opts = {}) {
+    const { tasks = [], hasSelection = false, defaultA = null, defaultB = null, scope = 'all' } = opts;
+
+    // HTML 转义
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str == null ? '' : String(str);
+        return div.innerHTML;
+    }
+
+    // 保存并刷新
+    function saveAndReload(patch) {
+        fetch('/refer/list', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+            body: JSON.stringify(patch),
+        }).then(() => { window.location.reload(); });
+    }
+
+    // 从对比列表进入 view
+    function goReferView(market, code) {
+        fetch('/refer/list', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+            body: JSON.stringify({ from_view: '1' }),
+        }).then(() => { window.location.href = `/refer/view/${market}/${code}`; });
+    }
+
+    // 任务A变化时，联动更新任务B
+    function syncTaskB(aId) {
+        const aNum = Number(aId);
+        let bId = null;
+        // 1. 任务A是否有子任务
+        const children = tasks.filter(t => t.parent_id === aNum).sort((x, y) => y.id - x.id);
+        if (children.length) {
+            bId = children[0].id;
+        } else {
+            // 2. 任务A是否有父任务
+            const taskA = tasks.find(t => t.id === aNum);
+            if (taskA && taskA.parent_id) {
+                bId = taskA.parent_id;
+            } else {
+                // 3. 无关联任务：取最近任务，若A是最近则取第二近
+                const sorted = [...tasks].sort((x, y) => y.id - x.id);
+                if (sorted.length) {
+                    bId = sorted[0].id !== aNum ? sorted[0].id : (sorted[1] ? sorted[1].id : null);
+                }
+            }
+        }
+        const selB = document.getElementById('bsTaskB');
+        if (selB && bId !== null) selB.value = bId;
+    }
+
+    // 显示任务选择弹窗
+    function showTaskPicker() {
+        const effectiveB = defaultB || (tasks.filter(t => t.id !== defaultA).sort((x, y) => y.id - x.id)[0]?.id) || defaultA;
+        const optsA = tasks.map(t => `<option value="${t.id}" ${defaultA && t.id === defaultA ? 'selected' : ''}>#${t.id} ${escapeHtml(t.name)}（${t.stock_count}）</option>`).join('');
+        const optsB = tasks.map(t => `<option value="${t.id}" ${effectiveB && t.id === effectiveB ? 'selected' : ''}>#${t.id} ${escapeHtml(t.name)}（${t.stock_count}）</option>`).join('');
+        const formHtml = `
+            <div class="text-start">
+                <div class="mb-2">
+                    <label class="form-label mb-1">任务 A</label>
+                    <select id="bsTaskA" class="form-select form-select-sm">${optsA}</select>
+                </div>
+                <div>
+                    <label class="form-label mb-1">任务 B</label>
+                    <select id="bsTaskB" class="form-select form-select-sm">${optsB}</select>
+                </div>
+            </div>`;
+        showFormModal({
+            title: '选择对比任务',
+            formHtml,
+            confirmText: '确定',
+            cancelText: '取消',
+            onShow: (modalEl) => {
+                modalEl.querySelector('#bsTaskA').addEventListener('change', (e) => syncTaskB(e.target.value));
+            },
+            onConfirm: (modalEl) => {
+                const a = modalEl.querySelector('#bsTaskA').value;
+                const b = modalEl.querySelector('#bsTaskB').value;
+                return { task_a: a, task_b: b };
+            },
+        }).then((result) => {
+            if (result) {
+                saveAndReload({ task_a: result.task_a, task_b: result.task_b, page: 1, from_view: '1' });
+            }
+        });
+    }
+
+    // 股票链接点击
+    document.querySelectorAll('.refer-view-link').forEach(link => {
+        link.addEventListener('click', () => goReferView(link.dataset.market, link.dataset.code));
+    });
+
+    // 未选择任务时弹窗
+    if (!hasSelection) {
+        showTaskPicker();
+    }
+
+    // 表头"归属"按钮
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.scope-filter-btn');
+        if (!btn) return;
+        showRadioModal({
+            title: '归属筛选',
+            options: [['all', '全部'], ['both', '共有'], ['only_a', '仅A'], ['only_b', '仅B']],
+            defaultValue: scope,
+        }).then((value) => {
+            if (value !== null) {
+                saveAndReload({ scope: value, page: 1 });
+            }
+        });
     });
 }

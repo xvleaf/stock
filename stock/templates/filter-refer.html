@@ -49,126 +49,19 @@
 {% load static %}
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
-    import { tableHeaderInit, initPagination, getCsrfToken } from "{% static 'stock/js/list.js' %}";
-    import { showFormModal, showRadioModal } from "{% static 'stock/js/func.js' %}";
-
-    const tasks = {{ tasks_json|safe }};
-    const hasSelection = {{ has_selection|yesno:"true,false" }};
-    const defaultA = {{ default_a|default:"null" }};
-    const defaultB = {{ default_b|default:"null" }};
-
-    // HTML 转义，避免任务名称中的 > < & 被解析为标签
-    function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str == null ? '' : String(str);
-        return div.innerHTML;
-    }
-
-    function saveAndReload(patch) {
-        fetch('/refer/list', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
-            body: JSON.stringify(patch),
-        }).then(() => { window.location.reload(); });
-    }
-
-    // 从对比列表进入 view：先设置 from_view 标记（对比页返回时保留选择），再跳转
-    function goReferView(market, code) {
-        fetch('/refer/list', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
-            body: JSON.stringify({ from_view: '1' }),
-        }).then(() => { window.location.href = `/refer/view/${market}/${code}`; });
-    }
-
-    // 任务A变化时，联动更新任务B：子任务→父任务→最近任务（排除A）
-    function syncTaskB(aId) {
-        const aNum = Number(aId);
-        let bId = null;
-        // 1. 任务A是否有子任务（其他任务parent_id=任务A），取最新子任务
-        const children = tasks.filter(t => t.parent_id === aNum).sort((x, y) => y.id - x.id);
-        if (children.length) {
-            bId = children[0].id;
-        } else {
-            // 2. 任务A是否有父任务
-            const taskA = tasks.find(t => t.id === aNum);
-            if (taskA && taskA.parent_id) {
-                bId = taskA.parent_id;
-            } else {
-                // 3. 无关联任务：取最近任务，若A是最近则取第二近
-                const sorted = [...tasks].sort((x, y) => y.id - x.id);
-                if (sorted.length) {
-                    bId = sorted[0].id !== aNum ? sorted[0].id : (sorted[1] ? sorted[1].id : null);
-                }
-            }
-        }
-        const selB = document.getElementById('bsTaskB');
-        if (selB && bId !== null) selB.value = bId;
-    }
-
-    function showTaskPicker() {
-        // 双重保险：若 defaultB 为空，取排除A后 id 最大的任务
-        const effectiveB = defaultB || (tasks.filter(t => t.id !== defaultA).sort((x, y) => y.id - x.id)[0]?.id) || defaultA;
-        const optsA = tasks.map(t => `<option value="${t.id}" ${defaultA && t.id === defaultA ? 'selected' : ''}>#${t.id} ${escapeHtml(t.name)}（${t.stock_count}）</option>`).join('');
-        const optsB = tasks.map(t => `<option value="${t.id}" ${effectiveB && t.id === effectiveB ? 'selected' : ''}>#${t.id} ${escapeHtml(t.name)}（${t.stock_count}）</option>`).join('');
-        const formHtml = `
-            <div class="text-start">
-                <div class="mb-2">
-                    <label class="form-label mb-1">任务 A</label>
-                    <select id="bsTaskA" class="form-select form-select-sm">${optsA}</select>
-                </div>
-                <div>
-                    <label class="form-label mb-1">任务 B</label>
-                    <select id="bsTaskB" class="form-select form-select-sm">${optsB}</select>
-                </div>
-            </div>`;
-        showFormModal({
-            title: '选择对比任务',
-            formHtml,
-            confirmText: '确定',
-            cancelText: '取消',
-            onShow: (modalEl) => {
-                modalEl.querySelector('#bsTaskA').addEventListener('change', (e) => syncTaskB(e.target.value));
-            },
-            onConfirm: (modalEl) => {
-                const a = modalEl.querySelector('#bsTaskA').value;
-                const b = modalEl.querySelector('#bsTaskB').value;
-                return { task_a: a, task_b: b };
-            },
-        }).then((result) => {
-            if (result) {
-                saveAndReload({ task_a: result.task_a, task_b: result.task_b, page: 1, from_view: '1' });
-            }
-        });
-    }
+    import { tableHeaderInit, initPagination } from "{% static 'stock/js/list.js' %}";
+    import { initFilterRefer } from "{% static 'stock/js/filter.js' %}";
 
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         tableHeaderInit();
         initPagination('/refer/list');
-
-        // 股票链接点击：先设置标记再跳转
-        document.querySelectorAll('.refer-view-link').forEach(link => {
-            link.addEventListener('click', () => goReferView(link.dataset.market, link.dataset.code));
-        });
-
-        if (!hasSelection) {
-            showTaskPicker();
-        }
-
-        // 表头"归属"按钮：事件委托兼容固定表头克隆
-        document.addEventListener('click', (e) => {
-            const btn = e.target.closest('.scope-filter-btn');
-            if (!btn) return;
-            showRadioModal({
-                title: '归属筛选',
-                options: [['all', '全部'], ['both', '共有'], ['only_a', '仅A'], ['only_b', '仅B']],
-                defaultValue: '{{ scope }}',
-            }).then((value) => {
-                if (value !== null) {
-                    saveAndReload({ scope: value, page: 1 });
-                }
-            });
+        initFilterRefer({
+            tasks: {{ tasks_json|safe }},
+            hasSelection: {{ has_selection|yesno:"true,false" }},
+            defaultA: {{ default_a|default:"null" }},
+            defaultB: {{ default_b|default:"null" }},
+            scope: '{{ scope }}',
         });
     });
 </script>

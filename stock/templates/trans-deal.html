@@ -196,23 +196,6 @@
 <script src="{% static 'base/js/jquery-3.7.0.min.js' %}"></script>
 <script src="https://cdn.jsdelivr.net/npm/highcharts@10.3.3/highcharts.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/highcharts@10.3.3/modules/stock.min.js"></script>
-<script>
-window.addEventListener('error', function(e) {
-    if (e.message?.includes('startTime') && e.error?.stack?.includes('reportAllChanges')) {
-        e.preventDefault();
-        e.stopPropagation();
-        return true;
-    }
-}, true);
-Highcharts.setOptions({
-    accessibility: {
-        enabled: false,
-        announceNewData: { enabled: false },
-        screenReaderSection: { enabled: false },
-        keyboardNavigation: { enabled: false }
-    }
-});
-</script>
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
     import { initTransDeal } from "{% static 'stock/js/trans.js' %}";

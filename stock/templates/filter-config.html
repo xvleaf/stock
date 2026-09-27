@@ -127,106 +127,10 @@
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
     import { initFilterConfig } from "{% static 'stock/js/filter.js' %}";
-    import { showConfirm, showAlert } from "{% static 'stock/js/func.js' %}";
-    import { getCsrfToken } from "{% static 'stock/js/list.js' %}";
 
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         initFilterConfig();
-
-        // 通用设置自动保存（失焦触发）
-        const autoSaveInputs = document.querySelectorAll('.auto-save-input');
-        const initialValues = {};
-        autoSaveInputs.forEach(input => {
-            initialValues[input.id] = input.value;
-        });
-
-        function validateAndSave() {
-            const filterTimeout = document.getElementById('filterTimeoutInput').value.trim();
-            const targetProfit = document.getElementById('targetProfitInput').value.trim();
-            const stopLoss = document.getElementById('stopLossInput').value.trim();
-
-            // 校验
-            if (!/^\d+$/.test(filterTimeout)) {
-                showAlert({ type: 'error', text: '筛选超时时间请输入整数' });
-                return;
-            }
-            if (!/^\d+(\.\d+)?$/.test(targetProfit)) {
-                showAlert({ type: 'error', text: '添加关注目标价请输入数字' });
-                return;
-            }
-            if (!/^\d+(\.\d+)?$/.test(stopLoss)) {
-                showAlert({ type: 'error', text: '添加关注止损价请输入数字' });
-                return;
-            }
-
-            // 检查是否有变化
-            let hasChange = false;
-            autoSaveInputs.forEach(input => {
-                if (input.value !== initialValues[input.id]) {
-                    hasChange = true;
-                }
-            });
-            if (!hasChange) return;
-
-            fetch('/filter/config/save', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
-                body: JSON.stringify({
-                    filter_timeout: parseInt(filterTimeout),
-                    target_profit_ratio: parseFloat(targetProfit),
-                    stop_loss_ratio: parseFloat(stopLoss),
-                }),
-            }).then(res => res.json()).then(data => {
-                if (data.status === 'success') {
-                    // 更新初始值
-                    autoSaveInputs.forEach(input => {
-                        initialValues[input.id] = input.value;
-                    });
-                    showAlert({ type: 'success', text: '保存成功' });
-                } else {
-                    showAlert({ type: 'error', text: data.message || '保存失败' });
-                }
-            }).catch(() => {
-                showAlert({ type: 'error', text: '请求失败，请重试' });
-            });
-        }
-
-        autoSaveInputs.forEach(input => {
-            input.addEventListener('blur', validateAndSave);
-        });
-
-        // 刷新板块关联按钮
-        const rebuildBtn = document.getElementById('rebuildSectorBtn');
-        if (rebuildBtn) {
-            rebuildBtn.addEventListener('click', () => {
-                showConfirm({
-                    title: '刷新板块关联',
-                    text: '确定要重建板块关联吗？',
-                }).then((confirmed) => {
-                    if (!confirmed) return;
-                    rebuildBtn.disabled = true;
-                    rebuildBtn.textContent = '正在刷新...';
-                    fetch('/sector/rebuild', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
-                        body: JSON.stringify({}),
-                    }).then(res => res.json()).then(data => {
-                        if (data.status === 'success') {
-                            showAlert({ type: 'success', text: '刷新已开始，完成后自动生效' });
-                        } else {
-                            showAlert({ type: 'error', text: data.message || '刷新失败' });
-                            rebuildBtn.disabled = false;
-                            rebuildBtn.textContent = '刷新板块关联';
-                        }
-                    }).catch(() => {
-                        showAlert({ type: 'error', text: '请求失败，请重试' });
-                        rebuildBtn.disabled = false;
-                        rebuildBtn.textContent = '刷新板块关联';
-                    });
-                });
-            });
-        }
     });
 </script>
 {% endblock %}

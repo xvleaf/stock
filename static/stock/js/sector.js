@@ -1,7 +1,7 @@
 import { chartPageContainer, initChartPage, setPageConfig } from './chart.js';
-import { refreshQuotes, showRadioModal, postRequest } from './func.js';
+import { refreshQuotes, showRadioModal, postRequest, getCsrfToken } from './func.js';
 
-export function initSectorList(opts) {
+export function initSectorList(opts = {}) {
     const tbody = document.getElementById('stockBody');
     if (!tbody) return;
 
@@ -24,6 +24,27 @@ export function initSectorList(opts) {
             });
         });
     });
+
+    // 从股票所属板块列表进入时，点击板块先设置 backUrl 再跳转
+    const { fromStockSectors = false, stockCode = '', stockMarket = '' } = opts;
+    if (fromStockSectors && stockCode && stockMarket) {
+        document.querySelectorAll('.sector-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const m = link.dataset.market;
+                const c = link.dataset.code;
+                fetch(`/sector/view/${m}/${c}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+                    body: JSON.stringify({ set_back: `/stocks/sectors/${stockMarket}/${stockCode}` }),
+                }).then(() => {
+                    window.location.href = `/sector/view/${m}/${c}`;
+                }).catch(() => {
+                    window.location.href = `/sector/view/${m}/${c}`;
+                });
+            });
+        });
+    }
 }
 
 export function initSectorView(config) {

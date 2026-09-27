@@ -256,6 +256,28 @@ export function handleWindowScroll() {
         frameTicking = true;
     }
 }
+// ====================== Highcharts 全局配置 ======================
+function initHighchartsConfig() {
+    if (typeof window.Highcharts === 'undefined') return;
+    // 拦截 Highcharts startTime 相关报错，避免控制台噪音
+    window.addEventListener('error', function(e) {
+        if (e.message?.includes('startTime') && e.error?.stack?.includes('reportAllChanges')) {
+            e.preventDefault();
+            e.stopPropagation();
+            return true;
+        }
+    }, true);
+    // 禁用无障碍功能，减少控制台警告
+    window.Highcharts.setOptions({
+        accessibility: {
+            enabled: false,
+            announceNewData: { enabled: false },
+            screenReaderSection: { enabled: false },
+            keyboardNavigation: { enabled: false }
+        }
+    });
+}
+
 // ====================== 全局初始化 ======================
 export function baseInit() {
     // 重复初始化时先销毁旧实例，避免事件重复绑定与内存泄漏
@@ -269,6 +291,8 @@ export function baseInit() {
     nav = document.getElementById('mainNav');
     pageContent = document.getElementById('pageContent');
     gapEl = document.getElementById('gap');
+    // Highcharts 全局配置
+    initHighchartsConfig();
     // 开启初始化保护
     isInitializing = true;
     subMenuAbortController = new AbortController();
