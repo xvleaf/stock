@@ -274,7 +274,8 @@ def get_page_config(session, site, cat):
         'trend': trend_init,
         'navi': navi_init,
         'mark': mark_init,
-        'deci': deci
+        'deci': deci,
+        'interval': quote.get_quote_interval_ms()
     }
 
 

@@ -3,7 +3,6 @@ import { postRequest, priceDecimal, setPriceDecimal, showChartError } from './fu
 
 export let trendChart = null;
 let trendTimer = null;
-let trendInterval = 30000;
 let ohlcData = [];
 let volumeData = [];
 let ohlcNewData = [];
@@ -30,6 +29,9 @@ export async function initTrendChart() {
         clearInterval(trendTimer);
         trendTimer = null;
     }
+
+    // 从 pageConfig 获取行情刷新间隔，默认30秒
+    const trendInterval = pageConfig.interval || 30000;
 
     // 启动定时轮询
     trendTimer = setInterval(async () => {
