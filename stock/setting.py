@@ -63,6 +63,20 @@ def web_setting(request):
     saved = request.session.pop('setting_saved', False)
     error = request.session.pop('setting_error', False)
 
+    # 首次进入时初始化数据库（按默认配置字典顺序写入所有默认值）
+    from .models.models import WebSetting, WEB_SETTING_DEFAULTS
+    if WebSetting.objects.count() == 0:
+        for key, meta in WEB_SETTING_DEFAULTS.items():
+            WebSetting.objects.create(
+                key=key,
+                value=meta['value'],
+                value_type=meta['type'],
+                group_name=meta['group'],
+                label=meta['label'],
+                sort_order=meta['sort'],
+            )
+        clear_web_setting_cache()
+
     cfg = get_all_config()
 
     # 比率字段乘以100，以百分比形式显示；值为0时显示整数

@@ -1051,14 +1051,14 @@ def filter_view(request, market, code):
     if task is None:
         task = FilterTask.objects.first()
     if task is None:
-        raise Http404('无筛选任务')
+        return redirect('filter_list')
 
     result = FilterResult.objects.filter(task=task, code=code, market=market).first()
     if result is None:
         # 当前 task 不含该股：回退到含该 code 的最新结果（如 session 残留旧 task）
         result = FilterResult.objects.filter(code=code, market=market).order_by('-task_id').first()
         if result is None:
-            raise Http404('无该股票结果')
+            return redirect('filter_list')
         task = result.task
     func.set_cache(request.session, 'filter-current-task', task.id)
 

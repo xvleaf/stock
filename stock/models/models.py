@@ -7,6 +7,11 @@ import datetime
 # ===================== 全站参数配置（Key-Value） =====================
 # 默认配置定义：key -> {value, type, group, label, sort}
 WEB_SETTING_DEFAULTS = {
+    # 通用设置（4项）
+    'icp_number':           {'value': '',         'type': 'string', 'group': 'general', 'label': '备案编号',       'sort': 1},
+    'icp_website':          {'value': '',         'type': 'string', 'group': 'general', 'label': '备案官网',       'sort': 2},
+    'default_page_size':    {'value': '10',       'type': 'int',    'group': 'general', 'label': '分页默认数量',   'sort': 3},
+    'quote_interval':       {'value': '60000',    'type': 'int',    'group': 'general', 'label': '行情刷新间隔',   'sort': 4},
     # 交易费用（10项）
     'commission_ratio':     {'value': '0.000085', 'type': 'float',  'group': 'fee', 'label': '佣金费率',       'sort': 1},
     'commission_min':       {'value': '0',        'type': 'float',  'group': 'fee', 'label': '最低佣金',       'sort': 2},
@@ -18,11 +23,6 @@ WEB_SETTING_DEFAULTS = {
     'dividend_tax_long':    {'value': '0',        'type': 'float',  'group': 'fee', 'label': '分红税(>1年)',   'sort': 8},
     'dividend_tax_mid':     {'value': '0.1',      'type': 'float',  'group': 'fee', 'label': '分红税(1月~1年)', 'sort': 9},
     'dividend_tax_short':   {'value': '0.2',      'type': 'float',  'group': 'fee', 'label': '分红税(<1月)',   'sort': 10},
-    # 通用设置（4项）
-    'default_page_size':    {'value': '10',       'type': 'int',    'group': 'general', 'label': '分页默认数量',   'sort': 1},
-    'quote_interval':       {'value': '60000',    'type': 'int',    'group': 'general', 'label': '行情刷新间隔',   'sort': 2},
-    'icp_number':           {'value': '',         'type': 'string', 'group': 'general', 'label': '备案编号',       'sort': 3},
-    'icp_website':          {'value': '',         'type': 'string', 'group': 'general', 'label': '备案官网',       'sort': 4},
     # 交易时间（4项）
     'trade_am_start':       {'value': '34200',    'type': 'int',    'group': 'trade_time', 'label': '上午开始时间', 'sort': 1},
     'trade_am_end':         {'value': '41400',    'type': 'int',    'group': 'trade_time', 'label': '上午结束时间', 'sort': 2},
