@@ -17,11 +17,23 @@ from datetime import datetime, time, date as date_type
 def stock_name_api(request):
     code = request.GET.get('code', '').strip()
     market = request.GET.get('market', '').strip().upper()
+    cat = request.GET.get('cat', 'stock').strip().lower()
     if not code or not market:
         # 前台仅要求返回 name，code 与 market 非必须
         return JsonResponse({'code': code, 'market': market, 'name': ''})
-    
-    # 数据库查询
+
+    # 指数类型：直接查询tushare，不存入StockList
+    if cat == 'index':
+        try:
+            df = tushare.get_index_by_code(f'{code}.{market}')
+            if df is not None and not df.empty:
+                index_name = df.iloc[0].get('name', '')
+                return JsonResponse({'code': code, 'market': market, 'name': index_name, 'cat': 'index'})
+        except Exception as e:
+            print(f"指数查询失败 {code}.{market}: {e}")
+        return JsonResponse({'code': code, 'market': market, 'name': '', 'cat': ''})
+
+    # 股票类型：数据库查询
     try:
         stock = StockList.objects.filter(code=code, market=market).first()
         if stock:
