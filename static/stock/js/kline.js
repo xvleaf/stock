@@ -1,13 +1,6 @@
 import { Highcharts, initPageElements, hideChartPlaceholder, loadChartPage, pageConfig, setPageConfig } from './chart.js';
 import { postRequest, priceDecimal, setPriceDecimal,showChartError } from './func.js';
 
-// K 线密度参数
-const BREAKPOINT_FOR_KLINE = 1440;
-const KLINE_DENSITY = {
-    desktop: { max: 20, std: 13, min: 5 },
-    mobile:  { max: 20, std: 13, min: 5  }
-};
-
 // ========== K线图全局状态变量 ==========
 export let klineChart = null;
 let klineData = {};
@@ -413,8 +406,8 @@ function calcShowValues(ohlc, volume, freq, deadline = -1) {
     const increment = freq === 'W' ? dayMs * 7 
                     : freq === 'M' ? dayMs * 30 
                     : dayMs;
-    // 根据宽度断点选择对应密度配置
-    const density = width >= BREAKPOINT_FOR_KLINE ? KLINE_DENSITY.desktop : KLINE_DENSITY.mobile;
+    // 从 pageConfig 获取密度配置（不区分桌面/移动）
+    const density = pageConfig.kline.density || { max: 20, std: 13, min: 5 };
     // 计算各档位显示的K线根数
     const countStd = Math.round(width * density.std / 100);
     const countMax = Math.round(width * density.max / 100);

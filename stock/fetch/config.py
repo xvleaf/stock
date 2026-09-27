@@ -4,25 +4,51 @@ fetch 模块统一配置获取
 从 WebSetting 数据库读取交易时间、K线参数、行情刷新间隔等
 """
 
+# 交易时间模块级缓存
+_trade_times_cache = None
+_trade_times_cache_time = 0
+TRADE_TIMES_CACHE_DURATION = 3600  # 缓存1小时
+
 
 def get_trade_times():
-    """获取交易时间段（秒，从零点开始）"""
+    """获取交易时间段（秒，从零点开始），带缓存"""
+    global _trade_times_cache, _trade_times_cache_time
+    import time
+    now = time.time()
+
+    # 缓存有效则直接返回
+    if _trade_times_cache and (now - _trade_times_cache_time) < TRADE_TIMES_CACHE_DURATION:
+        return _trade_times_cache
+
+    # 缓存失效，重新查询数据库
     try:
         from ..models.models import WebSetting
         s = WebSetting.get_setting()
-        return {
+        result = {
             'am_start': int(s.trade_am_start),
             'am_end': int(s.trade_am_end),
             'pm_start': int(s.trade_pm_start),
             'pm_end': int(s.trade_pm_end),
         }
     except Exception:
-        return {
+        result = {
             'am_start': 34200,   # 09:30
             'am_end': 41400,     # 11:30
             'pm_start': 46800,   # 13:00
             'pm_end': 54000,     # 15:00
         }
+
+    # 更新缓存
+    _trade_times_cache = result
+    _trade_times_cache_time = now
+    return result
+
+
+def clear_trade_times_cache():
+    """清除交易时间缓存"""
+    global _trade_times_cache, _trade_times_cache_time
+    _trade_times_cache = None
+    _trade_times_cache_time = 0
 
 
 def get_quote_interval():
@@ -102,3 +128,17 @@ def get_kline_ema_d(freq='D'):
         return int(s.kline_ema_d_day)
     except Exception:
         return {'D': 30, 'W': 30, 'M': 30}.get(freq, 30)
+
+
+def get_kline_density():
+    """获取K线密度配置"""
+    try:
+        from ..models.models import WebSetting
+        s = WebSetting.get_setting()
+        return {
+            'max': int(s.density_max),
+            'std': int(s.density_std),
+            'min': int(s.density_min),
+        }
+    except Exception:
+        return {'max': 20, 'std': 13, 'min': 5}

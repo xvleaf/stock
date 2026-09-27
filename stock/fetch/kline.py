@@ -4,7 +4,7 @@ import datetime
 from django.http import JsonResponse
 from . import tushare
 from .config import (get_kline_start_date, get_kline_ma_period, get_kline_mv_period,
-                     get_kline_ema_k, get_kline_ema_d)
+                     get_kline_ema_k, get_kline_ema_d, get_kline_density)
 import akshare as ak
 from stock import func
 
@@ -34,7 +34,8 @@ def _get_kline_params_init():
         'k': ema_d['k'],
         'd': ema_d['d'],
         'deci': 2,
-        'deadline': -1
+        'deadline': -1,
+        'density': get_kline_density()
     }
 
 

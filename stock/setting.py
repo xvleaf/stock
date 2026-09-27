@@ -60,96 +60,38 @@ def _is_valid_time(value):
     return bool(re.match(r'^\d{2}:\d{2}$', value))
 
 
+def _apply_setting_change(request, field):
+    """根据修改的字段，精确处理相关缓存"""
+    from . import func
+
+    # 需要清除 kline_params 的字段（EMA参数、密度）
+    KLINE_PARAM_FIELDS = {
+        'kline_ema_k_day', 'kline_ema_k_week', 'kline_ema_k_month',
+        'kline_ema_d_day', 'kline_ema_d_week', 'kline_ema_d_month',
+        'density_max', 'density_std', 'density_min'
+    }
+
+    # 交易时间字段
+    TRADE_TIME_FIELDS = {'trade_am_start', 'trade_am_end', 'trade_pm_start', 'trade_pm_end'}
+
+    if field in KLINE_PARAM_FIELDS:
+        # 只清除 kline_params，不清除 kline-deadline
+        func.set_cache(request.session, 'kline_params', None)
+
+    if field in TRADE_TIME_FIELDS:
+        # 清除交易时间模块缓存
+        from .fetch.config import clear_trade_times_cache
+        clear_trade_times_cache()
+
+    if field == 'default_page_size':
+        # 清除所有列表的分页数量缓存
+        for key in ('cash-per-page', 'focus-per-page', 'filter-per-page',
+                    'refer-per-page', 'sector-per-page', 'trans-per-page'):
+            func.set_cache(request.session, key, None)
+
+
 def web_setting(request):
-    """全站参数设置页面"""
-    if request.method == 'POST':
-        # 校验所有字段
-        fields_num = [
-            'commission_ratio', 'commission_min', 'stamp_buy_ratio', 'stamp_sell_ratio',
-            'transfer_fee_sh', 'transfer_fee_sz', 'transfer_fee_bj',
-            'dividend_tax_long', 'dividend_tax_mid', 'dividend_tax_short',
-        ]
-        fields_int = [
-            'default_page_size', 'quote_interval',
-            'kline_ma_day', 'kline_ma_week', 'kline_ma_month',
-            'kline_mv_day', 'kline_mv_week', 'kline_mv_month',
-            'kline_ema_k_day', 'kline_ema_k_week', 'kline_ema_k_month',
-            'kline_ema_d_day', 'kline_ema_d_week', 'kline_ema_d_month',
-        ]
-        fields_date = [
-            'kline_start_date_day', 'kline_start_date_week', 'kline_start_date_month',
-        ]
-        fields_time = [
-            'trade_am_start', 'trade_am_end', 'trade_pm_start', 'trade_pm_end',
-        ]
-
-        for f in fields_num + fields_int + fields_date + fields_time:
-            val = request.POST.get(f, '')
-            if f in fields_num and not _is_valid_number(val):
-                request.session['setting_error'] = True
-                return redirect('web_setting')
-            if f in fields_int and not _is_valid_integer(val):
-                request.session['setting_error'] = True
-                return redirect('web_setting')
-            if f in fields_date and not _is_valid_date(val):
-                request.session['setting_error'] = True
-                return redirect('web_setting')
-            if f in fields_time and not _is_valid_time(val):
-                request.session['setting_error'] = True
-                return redirect('web_setting')
-
-        # 所有字段合法，保存
-        setting = WebSetting.get_setting()
-        # 交易费用（比率字段除以100）
-        setting.commission_ratio = Decimal(request.POST['commission_ratio']) / 100
-        setting.commission_min = Decimal(request.POST['commission_min'])
-        setting.stamp_buy_ratio = Decimal(request.POST['stamp_buy_ratio']) / 100
-        setting.stamp_sell_ratio = Decimal(request.POST['stamp_sell_ratio']) / 100
-        setting.transfer_fee_sh = Decimal(request.POST['transfer_fee_sh']) / 100
-        setting.transfer_fee_sz = Decimal(request.POST['transfer_fee_sz']) / 100
-        setting.transfer_fee_bj = Decimal(request.POST['transfer_fee_bj']) / 100
-        setting.dividend_tax_long = Decimal(request.POST['dividend_tax_long']) / 100
-        setting.dividend_tax_mid = Decimal(request.POST['dividend_tax_mid']) / 100
-        setting.dividend_tax_short = Decimal(request.POST['dividend_tax_short']) / 100
-        # 通用设置
-        setting.default_page_size = int(request.POST['default_page_size'])
-        setting.quote_interval = int(request.POST['quote_interval']) * 1000  # 秒转毫秒
-        setting.icp_number = request.POST.get('icp_number', '').strip()
-        setting.icp_website = request.POST.get('icp_website', '').strip()
-        # 交易时间（HH:MM 转秒）
-        setting.trade_am_start = _hms_to_seconds(request.POST['trade_am_start'])
-        setting.trade_am_end = _hms_to_seconds(request.POST['trade_am_end'])
-        setting.trade_pm_start = _hms_to_seconds(request.POST['trade_pm_start'])
-        setting.trade_pm_end = _hms_to_seconds(request.POST['trade_pm_end'])
-        # K线起始日期
-        setting.kline_start_date_day = request.POST['kline_start_date_day']
-        setting.kline_start_date_week = request.POST['kline_start_date_week']
-        setting.kline_start_date_month = request.POST['kline_start_date_month']
-        # K线MA周期
-        setting.kline_ma_day = int(request.POST['kline_ma_day'])
-        setting.kline_ma_week = int(request.POST['kline_ma_week'])
-        setting.kline_ma_month = int(request.POST['kline_ma_month'])
-        # K线MV周期
-        setting.kline_mv_day = int(request.POST['kline_mv_day'])
-        setting.kline_mv_week = int(request.POST['kline_mv_week'])
-        setting.kline_mv_month = int(request.POST['kline_mv_month'])
-        # K线EMA-K值
-        setting.kline_ema_k_day = int(request.POST['kline_ema_k_day'])
-        setting.kline_ema_k_week = int(request.POST['kline_ema_k_week'])
-        setting.kline_ema_k_month = int(request.POST['kline_ema_k_month'])
-        # K线EMA-D值
-        setting.kline_ema_d_day = int(request.POST['kline_ema_d_day'])
-        setting.kline_ema_d_week = int(request.POST['kline_ema_d_week'])
-        setting.kline_ema_d_month = int(request.POST['kline_ema_d_month'])
-        setting.save()
-
-        # 清除K线缓存（K线参数修改后重新获取）
-        from django.core.cache import cache
-        cache.clear()
-
-        request.session['setting_saved'] = True
-        return redirect('web_setting')
-
+    """全站参数设置页面（仅GET，POST由setting_save单字段AJAX处理）"""
     # GET：从 session 读取标志（只显示一次）
     saved = request.session.pop('setting_saved', False)
     error = request.session.pop('setting_error', False)
@@ -212,7 +154,8 @@ def setting_save(request):
                   'kline_ma_day', 'kline_ma_week', 'kline_ma_month',
                   'kline_mv_day', 'kline_mv_week', 'kline_mv_month',
                   'kline_ema_k_day', 'kline_ema_k_week', 'kline_ema_k_month',
-                  'kline_ema_d_day', 'kline_ema_d_week', 'kline_ema_d_month'}
+                  'kline_ema_d_day', 'kline_ema_d_week', 'kline_ema_d_month',
+                  'density_max', 'density_std', 'density_min'}
     TEXT_FIELDS = {'icp_number', 'icp_website',
                    'kline_start_date_day', 'kline_start_date_week', 'kline_start_date_month'}
 
@@ -245,10 +188,8 @@ def setting_save(request):
 
         setting.save()
 
-        # K线参数修改后清除缓存
-        if field.startswith('kline_'):
-            from django.core.cache import cache
-            cache.clear()
+        # 精确处理相关缓存
+        _apply_setting_change(request, field)
 
         return JsonResponse({'success': True})
     except Exception as e:

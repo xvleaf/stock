@@ -47,6 +47,10 @@ class WebSetting(models.Model):
     kline_ema_d_day = models.IntegerField('日线EMA-D值', default=30)
     kline_ema_d_week = models.IntegerField('周线EMA-D值', default=30)
     kline_ema_d_month = models.IntegerField('月线EMA-D值', default=30)
+    # K线密度
+    density_max = models.IntegerField('K线最大密度', default=20)
+    density_std = models.IntegerField('K线标准密度', default=13)
+    density_min = models.IntegerField('K线最小密度', default=5)
     updated_at = models.DateField('更新日期', auto_now=True)
 
     class Meta:

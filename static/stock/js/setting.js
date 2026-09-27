@@ -41,6 +41,9 @@ const FIELD_LABELS = {
     'kline_ema_d_day': '日线EMA-D值',
     'kline_ema_d_week': '周线EMA-D值',
     'kline_ema_d_month': '月线EMA-D值',
+    'density_max': 'K线最大密度',
+    'density_std': 'K线标准密度',
+    'density_min': 'K线最小密度',
 };
 
 function getFieldLabel(fieldName) {
