@@ -409,6 +409,10 @@ def _build_default_task():
             task=task, code=code, market=market,
             defaults={'name': sname, 'cat': cat, 'sort_order': idx}
         )
+    # 自动设为默认任务
+    cfg = FilterGlobalConfig.load()
+    cfg.default_task_id = task.id
+    cfg.save(update_fields=['default_task_id'])
     return task
 
 
@@ -1242,7 +1246,14 @@ def filter_config(request):
         if data.get('action') == 'delete':
             t = FilterTask.objects.filter(id=data.get('task_id')).first()
             if t:
+                cfg = FilterGlobalConfig.load()
+                is_default = (cfg.default_task_id == t.id)
                 t.delete()
+                # 若删除的是默认任务，回退到最新任务；无任务则设为-1
+                if is_default:
+                    latest = FilterTask.objects.order_by('-id').first()
+                    cfg.default_task_id = latest.id if latest else -1
+                    cfg.save(update_fields=['default_task_id'])
                 return JsonResponse({'status': 'success'})
             return JsonResponse({'status': 'error', 'message': '任务不存在'}, status=404)
         if data.get('action') == 'save_boards':
@@ -1294,8 +1305,18 @@ def filter_config(request):
             'created': t.created_at.strftime('%Y-%m-%d'),
             'lines': describe_conditions(t.condition_list),
         })
+
+    # 有任务时，若default_task_id=-1或任务不存在，自动修正为最新任务
+    actual_default_id = cfg.default_task_id
+    if tasks and (actual_default_id == -1 or not FilterTask.objects.filter(id=actual_default_id).exists()):
+        latest = FilterTask.objects.order_by('-id').first()
+        if latest:
+            actual_default_id = latest.id
+            cfg.default_task_id = actual_default_id
+            cfg.save(update_fields=['default_task_id'])
+
     return render(request, 'filter-config.html', {
         'tasks': tasks, 'boards': boards,
         'exclude_st': cfg.is_exclude_st(),
-        'default_task_id': cfg.default_task_id,
+        'default_task_id': actual_default_id,
     })

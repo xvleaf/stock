@@ -769,8 +769,8 @@ class FilterGlobalConfig(models.Model):
                                       help_text='逗号分隔的板块 key，空=全部启用')
     exclude_st = models.CharField('排除ST', max_length=2, default='1', blank=True,
                                   help_text='1=样本中排除名称含 ST 的股票')
-    default_task_id = models.IntegerField('默认筛选任务ID', default=0, blank=True,
-                                           help_text='筛选清单默认显示的任务ID，0=最新任务')
+    default_task_id = models.IntegerField('默认筛选任务ID', default=-1, blank=True,
+                                           help_text='筛选清单默认显示的任务ID，-1=无任务')
 
     class Meta:
         db_table = 'models_filter_config'
