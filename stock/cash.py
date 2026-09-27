@@ -14,7 +14,7 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.http import require_http_methods
 from django.db import transaction
-from .models.models import CashConfig, CashHistory, TransOrder, TransHistory, FocusStock, WebSetting, DividendRecord
+from .models.models import CashConfig, CashHistory, TransOrder, TransHistory, FocusStock, DividendRecord
 from .forms.forms import CashConfigForm
 from . import func
 
@@ -532,16 +532,16 @@ def calc_fee(amount, intent, market='SH', config=None):
     :param config: 保留参数（兼容旧调用），实际从 WebSetting 读取
     :return: dict {commission, stamp_tax, transfer_fee, total}
     """
-    from .models.models import WebSetting
-    setting = WebSetting.get_setting()
+    from .fetch.config import get_all_config
+    cfg = get_all_config()
     amount = Decimal(str(amount))
-    commission = calc_commission(amount, setting.commission_ratio, setting.commission_min)
+    commission = calc_commission(amount, cfg.get('commission_ratio', 0.000085), cfg.get('commission_min', 0))
     stamp_tax = Decimal('0')
     if intent == 'S':
-        stamp_tax = calc_stamp_tax(amount, setting.stamp_sell_ratio)
+        stamp_tax = calc_stamp_tax(amount, cfg.get('stamp_sell_ratio', 0.0005))
     # 过户费：买卖双向收取，按市场选择费率
-    transfer_rate = getattr(setting, f'transfer_fee_{market.lower()}', Decimal('0'))
-    transfer_fee = _q(amount * transfer_rate)
+    transfer_rate = cfg.get(f'transfer_fee_{market.lower()}', 0)
+    transfer_fee = _q(amount * Decimal(str(transfer_rate)))
     total = _q(commission + stamp_tax + transfer_fee)
     return {
         'commission': _q(commission),

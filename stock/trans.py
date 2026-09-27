@@ -12,12 +12,13 @@ from django.db import transaction
 
 from .models.models import (
     CashConfig, CashHistory, FocusStock, TransOrder, TransHistory,
-    WebSetting, DividendRecord,
+    DividendRecord,
 )
 from .forms.forms import CAT_CHOICES, MARKET_CHOICES
 from . import cash as cash_utils
 from . import func
 from . import chart
+from .fetch.config import get_config, get_all_config
 from .fetch import quote
 
 
@@ -124,9 +125,9 @@ def trans_deal(request, market, code):
         'available': float(config.allowance - config.risk),
         'current_risk': float(config.risk),
         'allowance': float(config.allowance),
-        'commission_ratio': float(WebSetting.get_setting().commission_ratio),
-        'commission_min': float(WebSetting.get_setting().commission_min),
-        'stamp_sell_ratio': float(WebSetting.get_setting().stamp_sell_ratio),
+        'commission_ratio': float(get_config('commission_ratio', 0.000085)),
+        'commission_min': float(get_config('commission_min', 0)),
+        'stamp_sell_ratio': float(get_config('stamp_sell_ratio', 0.0005)),
         'chart': json.dumps(chart_init),
         'stock_name': stock_name,
         'stock_cat': stock_cat,
@@ -706,10 +707,10 @@ def trans_edit(request, market, code):
     # 预期收益 = 卖出收入 - 卖出费用 - 持仓成本(含买入手续费)
     expected_profit = 0
     if order.position_qty > 0 and order.target_price:
-        setting = WebSetting.get_setting()
+        cfg = get_all_config()
         sell_amount = float(order.target_price) * order.position_qty
-        commission = max(sell_amount * float(setting.commission_ratio), float(setting.commission_min))
-        stamp = sell_amount * float(setting.stamp_sell_ratio)
+        commission = max(sell_amount * float(cfg.get('commission_ratio', 0.000085)), float(cfg.get('commission_min', 0)))
+        stamp = sell_amount * float(cfg.get('stamp_sell_ratio', 0.0005))
         sell_fee = commission + stamp
         expected_profit = round(sell_amount - sell_fee - float(order.position_cost), 2)
 
@@ -760,9 +761,9 @@ def trans_edit(request, market, code):
         'avg_cost_no_fee': round(float(order.avg_cost_no_fee), 3) if order.position_qty > 0 else 0,
         'position_qty': order.position_qty,
         'position_cost': round(float(abs(order.position_cost_no_fee)), 2),
-        'commission_ratio': float(WebSetting.get_setting().commission_ratio),
-        'commission_min': float(WebSetting.get_setting().commission_min),
-        'stamp_sell_ratio': float(WebSetting.get_setting().stamp_sell_ratio),
+        'commission_ratio': float(get_config('commission_ratio', 0.000085)),
+        'commission_min': float(get_config('commission_min', 0)),
+        'stamp_sell_ratio': float(get_config('stamp_sell_ratio', 0.0005)),
     })
 
 
@@ -1032,7 +1033,7 @@ def calc_dividend_tax(request, market, code):
     except (ValueError, TypeError):
         return JsonResponse({'error': '日期格式应为 YYYY-MM-DD'}, status=400)
 
-    setting = WebSetting.get_setting()
+    cfg = get_all_config()
     dividends = DividendRecord.objects.filter(
         order=order, dividend_type=DividendRecord.DIVIDEND_CASH
     ).order_by('date', 'id')
@@ -1042,13 +1043,13 @@ def calc_dividend_tax(request, market, code):
     for d in dividends:
         hold_days = (deal_date - d.date).days
         if hold_days > 365:
-            tax_rate = setting.dividend_tax_long
+            tax_rate = cfg.get('dividend_tax_long', 0)
             rate_label = '0%'
         elif hold_days >= 30:
-            tax_rate = setting.dividend_tax_mid
+            tax_rate = cfg.get('dividend_tax_mid', 0.1)
             rate_label = '10%'
         else:
-            tax_rate = setting.dividend_tax_short
+            tax_rate = cfg.get('dividend_tax_short', 0.2)
             rate_label = '20%'
         tax = _q(d.amount * tax_rate)
         total_tax += tax

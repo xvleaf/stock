@@ -267,8 +267,8 @@ GLOBAL_PAGE_SIZE_KEY = 'global-per-page'
 def _get_default_page_size():
     """从 WebSetting 读取默认每页数量"""
     try:
-        from .models.models import WebSetting
-        return int(WebSetting.get_setting().default_page_size)
+        from .fetch.config import get_config
+        return int(get_config('default_page_size', 10))
     except Exception:
         return 10
 

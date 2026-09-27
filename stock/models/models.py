@@ -4,95 +4,93 @@ from decimal import Decimal
 import datetime
 
 
-# ===================== 全站参数设置 =====================
+# ===================== 全站参数配置（Key-Value） =====================
+# 默认配置定义：key -> {value, type, group, label, sort}
+WEB_SETTING_DEFAULTS = {
+    # 交易费用（10项）
+    'commission_ratio':     {'value': '0.000085', 'type': 'float',  'group': 'fee', 'label': '佣金费率',       'sort': 1},
+    'commission_min':       {'value': '0',        'type': 'float',  'group': 'fee', 'label': '最低佣金',       'sort': 2},
+    'stamp_buy_ratio':      {'value': '0',        'type': 'float',  'group': 'fee', 'label': '印花税率(买入)', 'sort': 3},
+    'stamp_sell_ratio':     {'value': '0.0005',   'type': 'float',  'group': 'fee', 'label': '印花税率(卖出)', 'sort': 4},
+    'transfer_fee_sh':      {'value': '0.00001',  'type': 'float',  'group': 'fee', 'label': '过户费(沪市)',   'sort': 5},
+    'transfer_fee_sz':      {'value': '0.00001',  'type': 'float',  'group': 'fee', 'label': '过户费(深市)',   'sort': 6},
+    'transfer_fee_bj':      {'value': '0.00001',  'type': 'float',  'group': 'fee', 'label': '过户费(北交所)', 'sort': 7},
+    'dividend_tax_long':    {'value': '0',        'type': 'float',  'group': 'fee', 'label': '分红税(>1年)',   'sort': 8},
+    'dividend_tax_mid':     {'value': '0.1',      'type': 'float',  'group': 'fee', 'label': '分红税(1月~1年)', 'sort': 9},
+    'dividend_tax_short':   {'value': '0.2',      'type': 'float',  'group': 'fee', 'label': '分红税(<1月)',   'sort': 10},
+    # 通用设置（4项）
+    'default_page_size':    {'value': '10',       'type': 'int',    'group': 'general', 'label': '分页默认数量',   'sort': 1},
+    'quote_interval':       {'value': '60000',    'type': 'int',    'group': 'general', 'label': '行情刷新间隔',   'sort': 2},
+    'icp_number':           {'value': '',         'type': 'string', 'group': 'general', 'label': '备案编号',       'sort': 3},
+    'icp_website':          {'value': '',         'type': 'string', 'group': 'general', 'label': '备案官网',       'sort': 4},
+    # 交易时间（4项）
+    'trade_am_start':       {'value': '34200',    'type': 'int',    'group': 'trade_time', 'label': '上午开始时间', 'sort': 1},
+    'trade_am_end':         {'value': '41400',    'type': 'int',    'group': 'trade_time', 'label': '上午结束时间', 'sort': 2},
+    'trade_pm_start':       {'value': '46800',    'type': 'int',    'group': 'trade_time', 'label': '下午开始时间', 'sort': 3},
+    'trade_pm_end':         {'value': '54000',    'type': 'int',    'group': 'trade_time', 'label': '下午结束时间', 'sort': 4},
+    # K线参数（18项）
+    'kline_start_date_day':   {'value': '19801020', 'type': 'string', 'group': 'kline', 'label': '日线起始日期',  'sort': 1},
+    'kline_start_date_week':  {'value': '19801020', 'type': 'string', 'group': 'kline', 'label': '周线起始日期',  'sort': 2},
+    'kline_start_date_month': {'value': '19801020', 'type': 'string', 'group': 'kline', 'label': '月线起始日期',  'sort': 3},
+    'kline_ma_day':           {'value': '200',      'type': 'int',    'group': 'kline', 'label': '日线MA周期',    'sort': 4},
+    'kline_ma_week':          {'value': '60',       'type': 'int',    'group': 'kline', 'label': '周线MA周期',    'sort': 5},
+    'kline_ma_month':         {'value': '30',       'type': 'int',    'group': 'kline', 'label': '月线MA周期',    'sort': 6},
+    'kline_mv_day':           {'value': '60',       'type': 'int',    'group': 'kline', 'label': '日线MV周期',    'sort': 7},
+    'kline_mv_week':          {'value': '30',       'type': 'int',    'group': 'kline', 'label': '周线MV周期',    'sort': 8},
+    'kline_mv_month':         {'value': '30',       'type': 'int',    'group': 'kline', 'label': '月线MV周期',    'sort': 9},
+    'kline_ema_k_day':        {'value': '10',       'type': 'int',    'group': 'kline', 'label': '日线EMA-K值',   'sort': 10},
+    'kline_ema_k_week':       {'value': '20',       'type': 'int',    'group': 'kline', 'label': '周线EMA-K值',   'sort': 11},
+    'kline_ema_k_month':      {'value': '20',       'type': 'int',    'group': 'kline', 'label': '月线EMA-K值',   'sort': 12},
+    'kline_ema_d_day':        {'value': '30',       'type': 'int',    'group': 'kline', 'label': '日线EMA-D值',   'sort': 13},
+    'kline_ema_d_week':       {'value': '30',       'type': 'int',    'group': 'kline', 'label': '周线EMA-D值',   'sort': 14},
+    'kline_ema_d_month':      {'value': '30',       'type': 'int',    'group': 'kline', 'label': '月线EMA-D值',   'sort': 15},
+    'density_max':            {'value': '20',       'type': 'int',    'group': 'kline', 'label': 'K线最大密度',    'sort': 16},
+    'density_std':            {'value': '13',       'type': 'int',    'group': 'kline', 'label': 'K线标准密度',    'sort': 17},
+    'density_min':            {'value': '5',        'type': 'int',    'group': 'kline', 'label': 'K线最小密度',    'sort': 18},
+    # 界面配置（22项）
+    'nav_locked':              {'value': 'false', 'type': 'bool', 'group': 'ui', 'label': '锁定导航栏',     'sort': 1},
+    'screen_height_threshold': {'value': '800',   'type': 'int',  'group': 'ui', 'label': '高度阈值',       'sort': 2},
+    'nav_height':              {'value': '50',    'type': 'int',  'group': 'ui', 'label': '导航高度(桌面)', 'sort': 3},
+    'nav_height_mobile':       {'value': '40',    'type': 'int',  'group': 'ui', 'label': '导航高度(移动)', 'sort': 4},
+    'gap_height':              {'value': '2',     'type': 'int',  'group': 'ui', 'label': '导航间隔',       'sort': 5},
+    'navi_bar_height':         {'value': '25',    'type': 'int',  'group': 'ui', 'label': '底部导航高度',   'sort': 6},
+    'mobile_breakpoint':       {'value': '992',   'type': 'int',  'group': 'ui', 'label': '移动断点',       'sort': 7},
+    'w1':                      {'value': '100',   'type': 'int',  'group': 'ui', 'label': '页面宽度一',     'sort': 8},
+    'bp1':                     {'value': '1200',  'type': 'int',  'group': 'ui', 'label': '断点一',         'sort': 9},
+    'w2':                      {'value': '85',    'type': 'int',  'group': 'ui', 'label': '页面宽度二',     'sort': 10},
+    'bp2':                     {'value': '1440',  'type': 'int',  'group': 'ui', 'label': '断点二',         'sort': 11},
+    'w3':                      {'value': '70',    'type': 'int',  'group': 'ui', 'label': '页面宽度三',     'sort': 12},
+    'bp3':                     {'value': '1920',  'type': 'int',  'group': 'ui', 'label': '断点三',         'sort': 13},
+    'w4':                      {'value': '60',    'type': 'int',  'group': 'ui', 'label': '页面宽度四',     'sort': 14},
+    'h1':                      {'value': '100',   'type': 'int',  'group': 'ui', 'label': '高度一',         'sort': 15},
+    'h2':                      {'value': '90',    'type': 'int',  'group': 'ui', 'label': '高度二',         'sort': 16},
+    'h3':                      {'value': '80',    'type': 'int',  'group': 'ui', 'label': '高度三',         'sort': 17},
+    'h4':                      {'value': '75',    'type': 'int',  'group': 'ui', 'label': '高度四',         'sort': 18},
+    'cash_chart_height':       {'value': '400',   'type': 'int',  'group': 'ui', 'label': '资金曲线高度',   'sort': 19},
+    'chart_placeholder_height':{'value': '400',   'type': 'int',  'group': 'ui', 'label': '图表最小高度',   'sort': 20},
+    'trend_main_ratio':        {'value': '75',    'type': 'int',  'group': 'ui', 'label': '分时主图比例',   'sort': 21},
+    'kline_main_ratio':        {'value': '80',    'type': 'int',  'group': 'ui', 'label': 'K线主图比例',    'sort': 22},
+}
+
+
 class WebSetting(models.Model):
-    """全站参数设置（单例，pk=1）"""
-    commission_ratio = models.DecimalField('佣金费率', max_digits=8, decimal_places=6, default=Decimal('0.000085'))
-    commission_min = models.DecimalField('最低佣金', max_digits=8, decimal_places=2, default=Decimal('0'))
-    stamp_buy_ratio = models.DecimalField('印花税率(买入)', max_digits=8, decimal_places=6, default=Decimal('0'))
-    stamp_sell_ratio = models.DecimalField('印花税率(卖出)', max_digits=8, decimal_places=6, default=Decimal('0.0005'))
-    transfer_fee_sh = models.DecimalField('过户费(沪市)', max_digits=8, decimal_places=6, default=Decimal('0.00001'))
-    transfer_fee_sz = models.DecimalField('过户费(深市)', max_digits=8, decimal_places=6, default=Decimal('0.00001'))
-    transfer_fee_bj = models.DecimalField('过户费(北交所)', max_digits=8, decimal_places=6, default=Decimal('0.00001'))
-    dividend_tax_long = models.DecimalField('分红税(>1年)', max_digits=6, decimal_places=4, default=Decimal('0'))
-    dividend_tax_mid = models.DecimalField('分红税(1月~1年)', max_digits=6, decimal_places=4, default=Decimal('0.1'))
-    dividend_tax_short = models.DecimalField('分红税(<1月)', max_digits=6, decimal_places=4, default=Decimal('0.2'))
-    # 通用设置
-    default_page_size = models.IntegerField('分页默认数量', default=10)
-    quote_interval = models.IntegerField('行情刷新间隔(毫秒)', default=60000)
-    icp_number = models.CharField('备案编号', max_length=50, default='', blank=True)
-    icp_website = models.CharField('备案官网', max_length=100, default='', blank=True)
-    # 交易时间（秒，从零点开始）
-    trade_am_start = models.IntegerField('上午开始时间', default=34200)
-    trade_am_end = models.IntegerField('上午结束时间', default=41400)
-    trade_pm_start = models.IntegerField('下午开始时间', default=46800)
-    trade_pm_end = models.IntegerField('下午结束时间', default=54000)
-    # K线起始日期
-    kline_start_date_day = models.CharField('日线起始日期', max_length=8, default='19801020')
-    kline_start_date_week = models.CharField('周线起始日期', max_length=8, default='19801020')
-    kline_start_date_month = models.CharField('月线起始日期', max_length=8, default='19801020')
-    # K线MA周期
-    kline_ma_day = models.IntegerField('日线MA周期', default=200)
-    kline_ma_week = models.IntegerField('周线MA周期', default=60)
-    kline_ma_month = models.IntegerField('月线MA周期', default=30)
-    # K线MV周期
-    kline_mv_day = models.IntegerField('日线MV周期', default=60)
-    kline_mv_week = models.IntegerField('周线MV周期', default=30)
-    kline_mv_month = models.IntegerField('月线MV周期', default=30)
-    # K线EMA-K值
-    kline_ema_k_day = models.IntegerField('日线EMA-K值', default=10)
-    kline_ema_k_week = models.IntegerField('周线EMA-K值', default=20)
-    kline_ema_k_month = models.IntegerField('月线EMA-K值', default=20)
-    # K线EMA-D值
-    kline_ema_d_day = models.IntegerField('日线EMA-D值', default=30)
-    kline_ema_d_week = models.IntegerField('周线EMA-D值', default=30)
-    kline_ema_d_month = models.IntegerField('月线EMA-D值', default=30)
-    # K线密度
-    density_max = models.IntegerField('K线最大密度', default=20)
-    density_std = models.IntegerField('K线标准密度', default=13)
-    density_min = models.IntegerField('K线最小密度', default=5)
-    # 界面配置 - 导航栏
-    nav_locked = models.BooleanField('锁定导航栏', default=False)
-    screen_height_threshold = models.IntegerField('高度阈值', default=800)
-    nav_height = models.IntegerField('导航高度（桌面）', default=50)
-    nav_height_mobile = models.IntegerField('导航高度（移动）', default=40)
-    gap_height = models.IntegerField('导航间隔', default=2)
-    navi_bar_height = models.IntegerField('底部导航高度', default=25)
-    # 界面配置 - 内容布局
-    mobile_breakpoint = models.IntegerField('移动断点', default=992)
-    w1 = models.IntegerField('页面宽度一', default=100)
-    bp1 = models.IntegerField('断点一', default=1200)
-    w2 = models.IntegerField('页面宽度二', default=85)
-    bp2 = models.IntegerField('断点二', default=1440)
-    w3 = models.IntegerField('页面宽度三', default=70)
-    bp3 = models.IntegerField('断点三', default=1920)
-    w4 = models.IntegerField('页面宽度四', default=60)
-    # 界面配置 - 图表布局
-    h1 = models.IntegerField('高度一', default=100)
-    h2 = models.IntegerField('高度二', default=90)
-    h3 = models.IntegerField('高度三', default=80)
-    h4 = models.IntegerField('高度四', default=75)
-    cash_chart_height = models.IntegerField('资金曲线高度', default=400)
-    chart_placeholder_height = models.IntegerField('图表最小高度', default=400)
-    trend_main_ratio = models.IntegerField('分时主图比例', default=75)
-    kline_main_ratio = models.IntegerField('K线主图比例', default=80)
-    updated_at = models.DateField('更新日期', auto_now=True)
+    """全站参数配置（Key-Value模式）"""
+    key = models.CharField('配置键', max_length=50, unique=True)
+    value = models.CharField('配置值', max_length=200, default='')
+    value_type = models.CharField('值类型', max_length=10, default='string')
+    group_name = models.CharField('分组', max_length=20, default='general')
+    label = models.CharField('显示名称', max_length=50, default='')
+    sort_order = models.IntegerField('排序', default=0)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
 
     class Meta:
         db_table = 'models_web_setting'
-        verbose_name = '全站参数设置'
+        verbose_name = '全站参数配置'
         verbose_name_plural = verbose_name
+        ordering = ['group_name', 'sort_order']
 
-    @classmethod
-    def get_setting(cls):
-        obj = cls.objects.filter(pk=1).first()
-        if obj:
-            return obj
-        return cls(pk=1)
-
-    @classmethod
-    def has_setting(cls):
-        return cls.objects.filter(pk=1).exists()
+    def __str__(self):
+        return f'{self.key}={self.value}'
 
     def __str__(self):
         return f'全站参数设置'

@@ -1,284 +1,222 @@
 # -*- coding: utf-8 -*-
 """
 fetch 模块统一配置获取
-从 WebSetting 数据库读取交易时间、K线参数、行情刷新间隔等
+从 WebSetting Key-Value 表读取交易时间、K线参数、行情刷新间隔、界面配置等
+所有读取均带模块级永久缓存，修改时主动清除
 """
 
-# 交易时间模块级缓存（永久缓存，修改时主动清除）
-_trade_times_cache = None
+# 全站配置模块级缓存（永久缓存，修改时主动清除）
+_web_setting_cache = None
 
-# 行情刷新间隔模块级缓存（永久缓存，修改时主动清除）
-_quote_interval_cache = None
 
-# MA/MV/起始日期 模块级缓存（永久缓存，修改时主动清除）
-_kline_ma_cache = {}
-_kline_mv_cache = {}
-_kline_start_date_cache = {}
+def _convert_value(value, value_type):
+    """将字符串值按类型转换"""
+    if value is None:
+        return None
+    if value_type == 'int':
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+    if value_type == 'float':
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+    if value_type == 'bool':
+        return str(value).lower() in ('true', '1', 'yes')
+    return str(value)
 
-# 密度/EMA 模块级缓存（永久缓存，修改时主动清除）
-_kline_density_ema_cache = None
 
+def get_all_config():
+    """一次性读取所有配置，转为 {key: value} 字典，带模块级永久缓存"""
+    global _web_setting_cache
+    if _web_setting_cache is not None:
+        return _web_setting_cache
+
+    from ..models.models import WebSetting, WEB_SETTING_DEFAULTS
+    result = {}
+
+    # 从数据库读取
+    try:
+        for item in WebSetting.objects.all():
+            result[item.key] = _convert_value(item.value, item.value_type)
+    except Exception:
+        pass
+
+    # 补全默认值（数据库中不存在的键）
+    for key, meta in WEB_SETTING_DEFAULTS.items():
+        if key not in result:
+            result[key] = _convert_value(meta['value'], meta['type'])
+
+    _web_setting_cache = result
+    return result
+
+
+def get_config(key, default=None):
+    """获取单个配置值"""
+    return get_all_config().get(key, default)
+
+
+def set_config(key, value):
+    """保存单个配置（upsert），并清除缓存"""
+    from ..models.models import WebSetting, WEB_SETTING_DEFAULTS
+    meta = WEB_SETTING_DEFAULTS.get(key, {})
+    value_type = meta.get('type', 'string')
+    group_name = meta.get('group', 'general')
+    label = meta.get('label', key)
+    sort_order = meta.get('sort', 0)
+
+    WebSetting.objects.update_or_create(
+        key=key,
+        defaults={
+            'value': str(value),
+            'value_type': value_type,
+            'group_name': group_name,
+            'label': label,
+            'sort_order': sort_order,
+        }
+    )
+    clear_web_setting_cache()
+
+
+def clear_web_setting_cache():
+    """清除全站配置缓存"""
+    global _web_setting_cache
+    _web_setting_cache = None
+
+
+# ===================== 各分组配置获取函数（接口不变，内部改用 get_config） =====================
 
 def get_trade_times():
-    """获取交易时间段（秒，从零点开始），带模块级缓存"""
-    global _trade_times_cache
-
-    if _trade_times_cache:
-        return _trade_times_cache
-
-    try:
-        from ..models.models import WebSetting
-        s = WebSetting.get_setting()
-        result = {
-            'am_start': int(s.trade_am_start),
-            'am_end': int(s.trade_am_end),
-            'pm_start': int(s.trade_pm_start),
-            'pm_end': int(s.trade_pm_end),
-        }
-    except Exception:
-        result = {
-            'am_start': 34200,   # 09:30
-            'am_end': 41400,     # 11:30
-            'pm_start': 46800,   # 13:00
-            'pm_end': 54000,     # 15:00
-        }
-
-    _trade_times_cache = result
-    return result
+    """获取交易时间段（秒，从零点开始）"""
+    cfg = get_all_config()
+    return {
+        'am_start': cfg.get('trade_am_start', 34200),
+        'am_end': cfg.get('trade_am_end', 41400),
+        'pm_start': cfg.get('trade_pm_start', 46800),
+        'pm_end': cfg.get('trade_pm_end', 54000),
+    }
 
 
 def clear_trade_times_cache():
-    """清除交易时间缓存"""
-    global _trade_times_cache
-    _trade_times_cache = None
+    """清除交易时间缓存（已合并到统一缓存，保留接口兼容）"""
+    clear_web_setting_cache()
 
 
 def get_quote_interval():
-    """获取行情刷新间隔（毫秒），带模块级缓存"""
-    global _quote_interval_cache
-
-    if _quote_interval_cache is not None:
-        return _quote_interval_cache
-
-    try:
-        from ..models.models import WebSetting
-        result = int(WebSetting.get_setting().quote_interval)
-    except Exception:
-        result = 60000
-
-    _quote_interval_cache = result
-    return result
+    """获取行情刷新间隔（毫秒）"""
+    return get_config('quote_interval', 60000)
 
 
 def clear_quote_interval_cache():
-    """清除行情刷新间隔缓存"""
-    global _quote_interval_cache
-    _quote_interval_cache = None
+    """清除行情刷新间隔缓存（已合并到统一缓存，保留接口兼容）"""
+    clear_web_setting_cache()
 
 
 def get_kline_start_date(freq='D'):
-    """获取K线起始日期，带模块级缓存"""
-    global _kline_start_date_cache
-
-    if freq in _kline_start_date_cache:
-        return _kline_start_date_cache[freq]
-
-    try:
-        from ..models.models import WebSetting
-        s = WebSetting.get_setting()
-        if freq == 'W':
-            result = s.kline_start_date_week
-        elif freq == 'M':
-            result = s.kline_start_date_month
-        else:
-            result = s.kline_start_date_day
-    except Exception:
-        result = '19801020'
-
-    _kline_start_date_cache[freq] = result
-    return result
+    """获取K线起始日期"""
+    cfg = get_all_config()
+    if freq == 'W':
+        return cfg.get('kline_start_date_week', '19801020')
+    if freq == 'M':
+        return cfg.get('kline_start_date_month', '19801020')
+    return cfg.get('kline_start_date_day', '19801020')
 
 
 def get_kline_ma_period(freq='D'):
-    """获取MA周期，带模块级缓存"""
-    global _kline_ma_cache
-
-    if freq in _kline_ma_cache:
-        return _kline_ma_cache[freq]
-
-    try:
-        from ..models.models import WebSetting
-        s = WebSetting.get_setting()
-        if freq == 'W':
-            result = int(s.kline_ma_week)
-        elif freq == 'M':
-            result = int(s.kline_ma_month)
-        else:
-            result = int(s.kline_ma_day)
-    except Exception:
-        result = {'D': 200, 'W': 60, 'M': 30}.get(freq, 200)
-
-    _kline_ma_cache[freq] = result
-    return result
+    """获取MA周期"""
+    cfg = get_all_config()
+    if freq == 'W':
+        return cfg.get('kline_ma_week', 60)
+    if freq == 'M':
+        return cfg.get('kline_ma_month', 30)
+    return cfg.get('kline_ma_day', 200)
 
 
 def get_kline_mv_period(freq='D'):
-    """获取MV周期，带模块级缓存"""
-    global _kline_mv_cache
-
-    if freq in _kline_mv_cache:
-        return _kline_mv_cache[freq]
-
-    try:
-        from ..models.models import WebSetting
-        s = WebSetting.get_setting()
-        if freq == 'W':
-            result = int(s.kline_mv_week)
-        elif freq == 'M':
-            result = int(s.kline_mv_month)
-        else:
-            result = int(s.kline_mv_day)
-    except Exception:
-        result = {'D': 60, 'W': 30, 'M': 30}.get(freq, 60)
-
-    _kline_mv_cache[freq] = result
-    return result
+    """获取MV周期"""
+    cfg = get_all_config()
+    if freq == 'W':
+        return cfg.get('kline_mv_week', 30)
+    if freq == 'M':
+        return cfg.get('kline_mv_month', 30)
+    return cfg.get('kline_mv_day', 60)
 
 
 def clear_kline_param_cache():
-    """清除MA/MV/起始日期缓存"""
-    global _kline_ma_cache, _kline_mv_cache, _kline_start_date_cache
-    _kline_ma_cache = {}
-    _kline_mv_cache = {}
-    _kline_start_date_cache = {}
-
-
-def _load_kline_density_ema():
-    """从数据库读取密度和EMA配置"""
-    try:
-        from ..models.models import WebSetting
-        s = WebSetting.get_setting()
-        return {
-            'density': {
-                'max': int(s.density_max),
-                'std': int(s.density_std),
-                'min': int(s.density_min),
-            },
-            'ema_k': {
-                'D': int(s.kline_ema_k_day),
-                'W': int(s.kline_ema_k_week),
-                'M': int(s.kline_ema_k_month),
-            },
-            'ema_d': {
-                'D': int(s.kline_ema_d_day),
-                'W': int(s.kline_ema_d_week),
-                'M': int(s.kline_ema_d_month),
-            },
-        }
-    except Exception:
-        return {
-            'density': {'max': 20, 'std': 13, 'min': 5},
-            'ema_k': {'D': 10, 'W': 20, 'M': 20},
-            'ema_d': {'D': 30, 'W': 30, 'M': 30},
-        }
-
-
-def _get_kline_density_ema():
-    """获取密度和EMA配置（带模块级缓存）"""
-    global _kline_density_ema_cache
-    if _kline_density_ema_cache is not None:
-        return _kline_density_ema_cache
-    _kline_density_ema_cache = _load_kline_density_ema()
-    return _kline_density_ema_cache
-
-
-def clear_kline_density_ema_cache():
-    """清除密度和EMA缓存"""
-    global _kline_density_ema_cache
-    _kline_density_ema_cache = None
+    """清除MA/MV/起始日期缓存（已合并到统一缓存，保留接口兼容）"""
+    clear_web_setting_cache()
 
 
 def get_kline_ema_k(freq='D'):
-    """获取EMA-K值（带模块级缓存）"""
-    return _get_kline_density_ema()['ema_k'].get(freq, 10)
+    """获取EMA-K值"""
+    cfg = get_all_config()
+    if freq == 'W':
+        return cfg.get('kline_ema_k_week', 20)
+    if freq == 'M':
+        return cfg.get('kline_ema_k_month', 20)
+    return cfg.get('kline_ema_k_day', 10)
 
 
 def get_kline_ema_d(freq='D'):
-    """获取EMA-D值（带模块级缓存）"""
-    return _get_kline_density_ema()['ema_d'].get(freq, 30)
+    """获取EMA-D值"""
+    cfg = get_all_config()
+    if freq == 'W':
+        return cfg.get('kline_ema_d_week', 30)
+    if freq == 'M':
+        return cfg.get('kline_ema_d_month', 30)
+    return cfg.get('kline_ema_d_day', 30)
 
 
 def get_kline_density():
-    """获取K线密度配置（带模块级缓存）"""
-    return _get_kline_density_ema()['density']
+    """获取K线密度配置"""
+    cfg = get_all_config()
+    return {
+        'max': cfg.get('density_max', 20),
+        'std': cfg.get('density_std', 13),
+        'min': cfg.get('density_min', 5),
+    }
 
 
-# 界面配置模块级缓存（永久缓存，修改时主动清除）
-_ui_config_cache = None
+def clear_kline_density_ema_cache():
+    """清除密度和EMA缓存（已合并到统一缓存，保留接口兼容）"""
+    clear_web_setting_cache()
 
 
 def get_ui_config():
-    """获取界面配置（导航栏/内容布局/图表布局），带模块级缓存"""
-    global _ui_config_cache
-
-    if _ui_config_cache:
-        return _ui_config_cache
-
-    try:
-        from ..models.models import WebSetting
-        s = WebSetting.get_setting()
-        result = {
-            # 导航栏
-            'nav_locked': bool(s.nav_locked),
-            'screen_height_threshold': int(s.screen_height_threshold),
-            'nav_height': int(s.nav_height),
-            'nav_height_mobile': int(s.nav_height_mobile),
-            'gap_height': int(s.gap_height),
-            'navi_bar_height': int(s.navi_bar_height),
-            # 内容布局
-            'mobile_breakpoint': int(s.mobile_breakpoint),
-            'mobile_breakpoint_plus_1': int(s.mobile_breakpoint) + 1,
-            'w1': int(s.w1),
-            'bp1': int(s.bp1),
-            'w2': int(s.w2),
-            'bp2': int(s.bp2),
-            'w3': int(s.w3),
-            'bp3': int(s.bp3),
-            'w4': int(s.w4),
-            # 图表布局
-            'h1': int(s.h1),
-            'h2': int(s.h2),
-            'h3': int(s.h3),
-            'h4': int(s.h4),
-            'cash_chart_height': int(s.cash_chart_height),
-            'chart_placeholder_height': int(s.chart_placeholder_height),
-            'trend_main_ratio': int(s.trend_main_ratio),
-            'kline_main_ratio': int(s.kline_main_ratio),
-        }
-    except Exception:
-        result = {
-            'nav_locked': False,
-            'screen_height_threshold': 800,
-            'nav_height': 50,
-            'nav_height_mobile': 40,
-            'gap_height': 2,
-            'navi_bar_height': 25,
-            'mobile_breakpoint': 992,
-            'mobile_breakpoint_plus_1': 993,
-            'w1': 100, 'bp1': 1200, 'w2': 85, 'bp2': 1440,
-            'w3': 70, 'bp3': 1920, 'w4': 60,
-            'h1': 100, 'h2': 90, 'h3': 80, 'h4': 75,
-            'cash_chart_height': 400,
-            'chart_placeholder_height': 400,
-            'trend_main_ratio': 75,
-            'kline_main_ratio': 80,
-        }
-
-    _ui_config_cache = result
-    return result
+    """获取界面配置（导航栏/内容布局/图表布局）"""
+    cfg = get_all_config()
+    return {
+        # 导航栏
+        'nav_locked': cfg.get('nav_locked', False),
+        'screen_height_threshold': cfg.get('screen_height_threshold', 800),
+        'nav_height': cfg.get('nav_height', 50),
+        'nav_height_mobile': cfg.get('nav_height_mobile', 40),
+        'gap_height': cfg.get('gap_height', 2),
+        'navi_bar_height': cfg.get('navi_bar_height', 25),
+        # 内容布局
+        'mobile_breakpoint': cfg.get('mobile_breakpoint', 992),
+        'mobile_breakpoint_plus_1': cfg.get('mobile_breakpoint', 992) + 1,
+        'w1': cfg.get('w1', 100),
+        'bp1': cfg.get('bp1', 1200),
+        'w2': cfg.get('w2', 85),
+        'bp2': cfg.get('bp2', 1440),
+        'w3': cfg.get('w3', 70),
+        'bp3': cfg.get('bp3', 1920),
+        'w4': cfg.get('w4', 60),
+        # 图表布局
+        'h1': cfg.get('h1', 100),
+        'h2': cfg.get('h2', 90),
+        'h3': cfg.get('h3', 80),
+        'h4': cfg.get('h4', 75),
+        'cash_chart_height': cfg.get('cash_chart_height', 400),
+        'chart_placeholder_height': cfg.get('chart_placeholder_height', 400),
+        'trend_main_ratio': cfg.get('trend_main_ratio', 75),
+        'kline_main_ratio': cfg.get('kline_main_ratio', 80),
+    }
 
 
 def clear_ui_config_cache():
-    """清除界面配置缓存"""
-    global _ui_config_cache
-    _ui_config_cache = None
+    """清除界面配置缓存（已合并到统一缓存，保留接口兼容）"""
+    clear_web_setting_cache()
