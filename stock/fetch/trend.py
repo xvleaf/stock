@@ -3,12 +3,8 @@ import datetime
 import pytz
 import pandas as pd
 from . import ashare
+from .config import get_trade_times
 from stock import func
-
-AM_START = int(os.environ.get('STOCK_TRADE_AM_START', 34200))   # 09:30
-AM_END   = int(os.environ.get('STOCK_TRADE_AM_END', 41400))     # 11:30
-PM_START = int(os.environ.get('STOCK_TRADE_PM_START', 46800))   # 13:00
-PM_END   = int(os.environ.get('STOCK_TRADE_PM_END', 54000))     # 15:00
 
 
 def trend_data_for_chart(session, tscode, step, deci=2):
@@ -179,26 +175,27 @@ def _build_full_day_data(df, pre_close, deci=2):
 
     tz = pytz.timezone('Asia/Shanghai')
     target_date = df.index.date[-1]
+    trade_times = get_trade_times()
 
     # 构造上午时段索引
     am_start_dt = datetime.datetime.combine(
         target_date,
-        datetime.time(AM_START // 3600, (AM_START % 3600) // 60)
+        datetime.time(trade_times['am_start'] // 3600, (trade_times['am_start'] % 3600) // 60)
     )
     am_end_dt = datetime.datetime.combine(
         target_date,
-        datetime.time(AM_END // 3600, (AM_END % 3600) // 60)
+        datetime.time(trade_times['am_end'] // 3600, (trade_times['am_end'] % 3600) // 60)
     )
     am_index = pd.date_range(start=am_start_dt, end=am_end_dt, freq='1min', tz=tz)
 
     # 构造下午时段索引
     pm_start_dt = datetime.datetime.combine(
         target_date,
-        datetime.time(PM_START // 3600, (PM_START % 3600) // 60)
+        datetime.time(trade_times['pm_start'] // 3600, (trade_times['pm_start'] % 3600) // 60)
     )
     pm_end_dt = datetime.datetime.combine(
         target_date,
-        datetime.time(PM_END // 3600, (PM_END % 3600) // 60)
+        datetime.time(trade_times['pm_end'] // 3600, (trade_times['pm_end'] % 3600) // 60)
     )
     pm_index = pd.date_range(start=pm_start_dt, end=pm_end_dt, freq='1min', tz=tz)
 
@@ -248,7 +245,9 @@ def _is_trading_time(dt):
     判断给定时间是否在交易时段内
     """
     sec = dt.hour * 3600 + dt.minute * 60 + dt.second
-    return (AM_START <= sec <= AM_END) or (PM_START <= sec <= PM_END)
+    trade_times = get_trade_times()
+    return (trade_times['am_start'] <= sec <= trade_times['am_end']) or \
+           (trade_times['pm_start'] <= sec <= trade_times['pm_end'])
 
 
 def _calc_tick_params(df, pre_close, deci=2):

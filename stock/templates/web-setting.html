@@ -8,6 +8,38 @@
     <form method="post">
         {% csrf_token %}
 
+        <!-- 通用设置 -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="mb-3">通用设置</h6>
+                <div class="row g-3">
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1">备案编号</label>
+                        <input type="text" name="icp_number" class="form-control form-control-sm" value="{{ setting.icp_number }}">
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1">备案官网</label>
+                        <input type="text" name="icp_website" class="form-control form-control-sm" value="{{ setting.icp_website }}">
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1">分页默认数量</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="default_page_size" class="form-control" value="{{ setting.default_page_size }}">
+                            <span class="input-group-text">条</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1">行情刷新间隔</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="quote_interval" class="form-control" value="{{ setting.quote_interval }}">
+                            <span class="input-group-text">毫秒</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 交易费用 -->
         <div class="card mb-3">
             <div class="card-body">
                 <h6 class="mb-3">交易费用</h6>
@@ -44,6 +76,7 @@
             </div>
         </div>
 
+        <!-- 过户费用 -->
         <div class="card mb-3">
             <div class="card-body">
                 <h6 class="mb-3">过户费用</h6>
@@ -73,6 +106,7 @@
             </div>
         </div>
 
+        <!-- 分红税率 -->
         <div class="card mb-3">
             <div class="card-body">
                 <h6 class="mb-3">分红税率</h6>
@@ -97,6 +131,100 @@
                             <input type="text" name="dividend_tax_short" class="form-control" value="{{ dividend_tax_short_pct }}">
                             <span class="input-group-text">%</span>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 交易时间 -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="mb-3">交易时间</h6>
+                <div class="row g-3">
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1">上午开始时间</label>
+                        <input type="text" name="trade_am_start" class="form-control form-control-sm" value="{{ trade_am_start_fmt }}" placeholder="HH:MM">
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1">上午结束时间</label>
+                        <input type="text" name="trade_am_end" class="form-control form-control-sm" value="{{ trade_am_end_fmt }}" placeholder="HH:MM">
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1">下午开始时间</label>
+                        <input type="text" name="trade_pm_start" class="form-control form-control-sm" value="{{ trade_pm_start_fmt }}" placeholder="HH:MM">
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1">下午结束时间</label>
+                        <input type="text" name="trade_pm_end" class="form-control form-control-sm" value="{{ trade_pm_end_fmt }}" placeholder="HH:MM">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- K线参数 -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="mb-3">K线参数</h6>
+                <div class="row g-3">
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">日线起始日期</label>
+                        <input type="text" name="kline_start_date_day" class="form-control form-control-sm" value="{{ setting.kline_start_date_day }}" placeholder="YYYYMMDD">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">周线起始日期</label>
+                        <input type="text" name="kline_start_date_week" class="form-control form-control-sm" value="{{ setting.kline_start_date_week }}" placeholder="YYYYMMDD">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">月线起始日期</label>
+                        <input type="text" name="kline_start_date_month" class="form-control form-control-sm" value="{{ setting.kline_start_date_month }}" placeholder="YYYYMMDD">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">日线MA周期</label>
+                        <input type="text" name="kline_ma_day" class="form-control form-control-sm" value="{{ setting.kline_ma_day }}">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">周线MA周期</label>
+                        <input type="text" name="kline_ma_week" class="form-control form-control-sm" value="{{ setting.kline_ma_week }}">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">月线MA周期</label>
+                        <input type="text" name="kline_ma_month" class="form-control form-control-sm" value="{{ setting.kline_ma_month }}">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">日线MV周期</label>
+                        <input type="text" name="kline_mv_day" class="form-control form-control-sm" value="{{ setting.kline_mv_day }}">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">周线MV周期</label>
+                        <input type="text" name="kline_mv_week" class="form-control form-control-sm" value="{{ setting.kline_mv_week }}">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">月线MV周期</label>
+                        <input type="text" name="kline_mv_month" class="form-control form-control-sm" value="{{ setting.kline_mv_month }}">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">日线EMA-K值</label>
+                        <input type="text" name="kline_ema_k_day" class="form-control form-control-sm" value="{{ setting.kline_ema_k_day }}">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">周线EMA-K值</label>
+                        <input type="text" name="kline_ema_k_week" class="form-control form-control-sm" value="{{ setting.kline_ema_k_week }}">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">月线EMA-K值</label>
+                        <input type="text" name="kline_ema_k_month" class="form-control form-control-sm" value="{{ setting.kline_ema_k_month }}">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">日线EMA-D值</label>
+                        <input type="text" name="kline_ema_d_day" class="form-control form-control-sm" value="{{ setting.kline_ema_d_day }}">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">周线EMA-D值</label>
+                        <input type="text" name="kline_ema_d_week" class="form-control form-control-sm" value="{{ setting.kline_ema_d_week }}">
+                    </div>
+                    <div class="col-md-4 col-12">
+                        <label class="form-label small mb-1">月线EMA-D值</label>
+                        <input type="text" name="kline_ema_d_month" class="form-control form-control-sm" value="{{ setting.kline_ema_d_month }}">
                     </div>
                 </div>
             </div>

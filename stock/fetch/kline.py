@@ -3,32 +3,39 @@ import pandas as pd
 import datetime
 from django.http import JsonResponse
 from . import tushare
+from .config import (get_kline_start_date, get_kline_ma_period, get_kline_mv_period,
+                     get_kline_ema_k, get_kline_ema_d)
 import akshare as ak
 from stock import func
 
-# 交易休息时间
-KLINE_START_DATE = os.getenv('KLINE_START_DATE')
 
-KLINE_MA_CONFIG = {
-    'D': {'ma': int(os.getenv('KLINE_MA_DAY')), 'mv': int(os.getenv('KLINE_MV_DAY'))},
-    'W': {'ma': int(os.getenv('KLINE_MA_WEEK')), 'mv': int(os.getenv('KLINE_MV_WEEK'))},
-    'M': {'ma': int(os.getenv('KLINE_MA_MONTH')),'mv': int(os.getenv('KLINE_MV_MONTH'))},
-}
+def _get_kline_ma_config(freq):
+    """获取指定周期的MA/MV配置"""
+    return {
+        'ma': get_kline_ma_period(freq),
+        'mv': get_kline_mv_period(freq),
+    }
 
-KLINE_EMA_CONFIG = {
-    'D': {'k': int(os.getenv('KLINE_EMA_K_DAY')), 'd': int(os.getenv('KLINE_EMA_D_DAY'))},
-    'W': {'k': int(os.getenv('KLINE_EMA_K_WEEK')), 'd': int(os.getenv('KLINE_EMA_D_WEEK'))},
-    'M': {'k': int(os.getenv('KLINE_EMA_K_MONTH')), 'd': int(os.getenv('KLINE_EMA_D_MONTH'))},
-}
 
-KLINE_PARAMS_INIT = {
-    'freq': 'D',
-    'right': 'qfq',
-    'k': KLINE_EMA_CONFIG['D']['k'],
-    'd': KLINE_EMA_CONFIG['D']['d'],
-    'deci': 2,
-    'deadline': -1
-}
+def _get_kline_ema_config(freq):
+    """获取指定周期的EMA配置"""
+    return {
+        'k': get_kline_ema_k(freq),
+        'd': get_kline_ema_d(freq),
+    }
+
+
+def _get_kline_params_init():
+    """获取K线参数初始化值"""
+    ema_d = _get_kline_ema_config('D')
+    return {
+        'freq': 'D',
+        'right': 'qfq',
+        'k': ema_d['k'],
+        'd': ema_d['d'],
+        'deci': 2,
+        'deadline': -1
+    }
 
 
 def kline_data_for_chart(session, site, cat, market, code):
@@ -68,7 +75,7 @@ def kline_data_for_chart(session, site, cat, market, code):
             inplace=True
         )
 
-        start_date = pd.to_datetime(KLINE_START_DATE)
+        start_date = pd.to_datetime(get_kline_start_date(freq))
         df['trade_date'] = pd.to_datetime(df['trade_date'])
         df = df[df['trade_date'] >= start_date]
         df.sort_values('trade_date', inplace=True)
@@ -80,7 +87,7 @@ def kline_data_for_chart(session, site, cat, market, code):
         df = df.tail(-1)
         
     else:
-        start = KLINE_START_DATE # or (datetime.datetime.now() - datetime.timedelta(days=730)).strftime('%Y%m%d')
+        start = get_kline_start_date(freq)
         end = datetime.datetime.now().strftime('%Y%m%d')
 
         df = tushare.get_kline_data(
@@ -165,12 +172,12 @@ def kline_data_for_chart(session, site, cat, market, code):
 
 
 def get_kline_params(session):
-    kline_params = func.get_cache(session, 'kline_params', KLINE_PARAMS_INIT)
+    kline_params = func.get_cache(session, 'kline_params', _get_kline_params_init())
     return kline_params
 
 
 def set_kline_params(session, key, value):
-    kline_params = func.get_cache(session, 'kline_params', KLINE_PARAMS_INIT)
+    kline_params = func.get_cache(session, 'kline_params', _get_kline_params_init())
     kline_params[key] = value
     func.set_cache(session, 'kline_params', kline_params)
 
@@ -196,8 +203,9 @@ def _handle_kline_full(df, freq, right, k, d, deci, deadline):
     tp, up, av, lw, fl = _calc_ema_track_line(df, k, d, deci)
 
     # 简单均线与均量线
-    ma = _calc_simple_ma_line(df, 'close', window=KLINE_MA_CONFIG[freq]['ma'], deci=deci)
-    mv = _calc_simple_ma_line(df, 'vol', window=KLINE_MA_CONFIG[freq]['mv'], deci=0)
+    ma_config = _get_kline_ma_config(freq)
+    ma = _calc_simple_ma_line(df, 'close', window=ma_config['ma'], deci=deci)
+    mv = _calc_simple_ma_line(df, 'vol', window=ma_config['mv'], deci=0)
 
     # 交易信号预留
     deal = {'long': [], 'short': [], 'dual': [], 'divd': []}

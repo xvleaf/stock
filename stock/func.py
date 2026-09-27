@@ -249,18 +249,27 @@ def _update_stock_sector(new_stocks):
 # =====================================================================
 # 统一列表分页 / 导航工具（供筛选列表、筛选对比、关注列表等复用）
 # =====================================================================
-DEFAULT_PAGE_SIZE = 10  # 硬编码默认值，不再使用环境变量
 GLOBAL_PAGE_SIZE_KEY = 'global-per-page'
+
+
+def _get_default_page_size():
+    """从 WebSetting 读取默认每页数量"""
+    try:
+        from .models.models import WebSetting
+        return int(WebSetting.get_setting().default_page_size)
+    except Exception:
+        return 10
 
 
 def get_page_size(session):
     """从全局 session 读取每页条数，非法值（非正整数）回退默认。"""
-    raw = str(get_cache(session, GLOBAL_PAGE_SIZE_KEY, str(DEFAULT_PAGE_SIZE)))
+    default_size = _get_default_page_size()
+    raw = str(get_cache(session, GLOBAL_PAGE_SIZE_KEY, str(default_size)))
     try:
         v = int(raw)
-        return v if v >= 1 else DEFAULT_PAGE_SIZE
+        return v if v >= 1 else default_size
     except (TypeError, ValueError):
-        return DEFAULT_PAGE_SIZE
+        return default_size
 
 
 def set_page_size(session, value):

@@ -2,17 +2,10 @@ import os
 import tushare as ts
 import akshare as ak
 import pandas as pd
+from .config import get_trade_times
 
 # 从环境变量读取TUSHARE的TOKEN
 TUSHARE_TOKEN = os.getenv('DJANGO_TUSHARE_TOKEN')
-# 交易开始时间，对应时间戳
-TRADE_AM_START = int(os.getenv('STOCK_TRADE_AM_START'))
-# 交易休息时间
-TRADE_AM_END = int(os.getenv('STOCK_TRADE_AM_END'))
-# 交易回复时间
-TRADE_PM_START = int(os.getenv('STOCK_TRADE_PM_START'))
-# 交易休息时间
-TRADE_PM_END = int(os.getenv('STOCK_TRADE_PM_END'))
 
 ts.set_token(TUSHARE_TOKEN)
 pro = ts.pro_api()
@@ -224,10 +217,11 @@ def get_trend_data(tscode, deci):
     trend = get_data['trend']
     
     # 交易时段时间点
-    am_start = clock_zero + pd.Timedelta(seconds=TRADE_AM_START)
-    am_end = clock_zero + pd.Timedelta(seconds=TRADE_AM_END)
-    pm_start = clock_zero + pd.Timedelta(seconds=TRADE_PM_START)
-    pm_end = clock_zero + pd.Timedelta(seconds=TRADE_PM_END)
+    trade_times = get_trade_times()
+    am_start = clock_zero + pd.Timedelta(seconds=trade_times['am_start'])
+    am_end = clock_zero + pd.Timedelta(seconds=trade_times['am_end'])
+    pm_start = clock_zero + pd.Timedelta(seconds=trade_times['pm_start'])
+    pm_end = clock_zero + pd.Timedelta(seconds=trade_times['pm_end'])
 
     # 上午交易时段
     am_range = pd.date_range(start=am_start, end=am_end, freq='1min')

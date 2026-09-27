@@ -18,14 +18,40 @@ from django.core.cache import cache
 
 # 筛选进行中的全局锁（防止并发重复筛选）
 FILTER_RUNNING_KEY = 'filter-running'
-FILTER_RUNNING_TIMEOUT = 7200   # 2 小时
 
-# 筛选添加关注时的默认倍率
-TARGET_PROFIT_RATIO = 1.1    # 目标价 = 计划价 × 1.1
-STOP_LOSS_RATIO = 0.98       # 止损价 = 计划价 × 0.98
+# 筛选添加关注时的默认倍率（从数据库读取，此处仅作兜底）
 FILTER_PROGRESS_KEY = 'filter-progress'
 FILTER_STOP_KEY = 'filter-stop'
 FILTER_TIMEOUT_KEY = 'filter-timeout'
+
+
+def _get_filter_config():
+    """获取筛选全局配置"""
+    return FilterGlobalConfig.load()
+
+
+def _get_filter_timeout():
+    """获取筛选超时时间（秒）"""
+    try:
+        return int(_get_filter_config().filter_timeout)
+    except Exception:
+        return 3600
+
+
+def _get_target_profit_ratio():
+    """获取添加关注目标价倍率"""
+    try:
+        return float(_get_filter_config().target_profit_ratio)
+    except Exception:
+        return 1.1
+
+
+def _get_stop_loss_ratio():
+    """获取添加关注止损价倍率"""
+    try:
+        return float(_get_filter_config().stop_loss_ratio)
+    except Exception:
+        return 0.98
 
 
 # =====================================================================
@@ -96,13 +122,14 @@ def _load_kline_map(cache, code, market, cat, conditions):
 
     asset_map = {'stock': 'E', 'index': 'I', 'fund': 'FD', 'bond': 'CB'}
     asset = asset_map.get(cat, 'E')
-    start = os.getenv('KLINE_START_DATE', '20230101')
     end = datetime.datetime.now().strftime('%Y%m%d')
     need_freqs = _used_freqs(conditions)
 
     df_map = {}
     for freq in sorted(need_freqs):
         try:
+            from .fetch.config import get_kline_start_date
+            start = get_kline_start_date(freq)
             df = tushare.get_kline_data(
                 asset=asset, tscode=tscode, start=start, end=end,
                 freq=freq, adj='qfq'
@@ -511,9 +538,10 @@ def _run_filter_background(task_id, conditions, parent_id):
     sample = _stock_sample(parent)
     total = len(sample)
     start_time = time.time()
+    filter_timeout = _get_filter_timeout()
     cache.set(FILTER_PROGRESS_KEY,
               {'task_id': task_id, 'done': 0, 'total': total, 'start_time': start_time},
-              FILTER_RUNNING_TIMEOUT)
+              filter_timeout)
 
     cache_disk = {}
     passed_count = 0
@@ -524,7 +552,7 @@ def _run_filter_background(task_id, conditions, parent_id):
             aborted = True
             break
         # 超时
-        if time.time() - start_time > FILTER_RUNNING_TIMEOUT:
+        if time.time() - start_time > filter_timeout:
             cache.set(FILTER_TIMEOUT_KEY, '1', 120)
             aborted = True
             break
@@ -541,7 +569,7 @@ def _run_filter_background(task_id, conditions, parent_id):
         if (idx + 1) % 10 == 0 or idx + 1 == total:
             cache.set(FILTER_PROGRESS_KEY,
                       {'task_id': task_id, 'done': idx + 1, 'total': total, 'start_time': start_time},
-                      FILTER_RUNNING_TIMEOUT)
+                      filter_timeout)
 
     if aborted:
         # 回滚：删除本次 task 及其所有结果
@@ -590,7 +618,7 @@ def filter_run(request):
         if cache.get(FILTER_RUNNING_KEY):
             return JsonResponse({'status': 'error', 'message': '正在筛选中，请等待本次完成后再试'},
                                 status=409)
-        cache.set(FILTER_RUNNING_KEY, '1', FILTER_RUNNING_TIMEOUT)
+        cache.set(FILTER_RUNNING_KEY, '1', _get_filter_timeout())
         cache.delete(FILTER_STOP_KEY)
         cache.delete(FILTER_TIMEOUT_KEY)
         cache.delete(FILTER_PROGRESS_KEY)
@@ -762,8 +790,8 @@ def _do_focus(result, ema_price=None):
         return JsonResponse({'status': 'error', 'message': 'EMA价格缺失'}, status=400)
 
     plan = float(ema_price)
-    target = round(plan * TARGET_PROFIT_RATIO, 3)
-    stop = round(plan * STOP_LOSS_RATIO, 3)
+    target = round(plan * _get_target_profit_ratio(), 3)
+    stop = round(plan * _get_stop_loss_ratio(), 3)
     qty = cash.calc_allowed_qty(plan, stop) if plan > 0 else 0
 
     # 排在关注列表最后
@@ -1319,4 +1347,25 @@ def filter_config(request):
         'tasks': tasks, 'boards': boards,
         'exclude_st': cfg.is_exclude_st(),
         'default_task_id': actual_default_id,
+        'filter_config': cfg,
     })
+
+
+def filter_config_save(request):
+    """保存筛选通用设置"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': '仅支持POST'}, status=405)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': '无效JSON'}, status=400)
+
+    cfg = FilterGlobalConfig.load()
+    if 'filter_timeout' in data:
+        cfg.filter_timeout = int(data['filter_timeout'])
+    if 'target_profit_ratio' in data:
+        cfg.target_profit_ratio = Decimal(str(data['target_profit_ratio']))
+    if 'stop_loss_ratio' in data:
+        cfg.stop_loss_ratio = Decimal(str(data['stop_loss_ratio']))
+    cfg.save()
+    return JsonResponse({'status': 'success'})

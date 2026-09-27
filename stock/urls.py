@@ -16,6 +16,7 @@ urlpatterns = [
     path('filter/run/stop', filter.filter_run_stop, name='filter_run_stop'),
     path('refer/list', filter.refer_list, name='refer_list'),
     path('filter/config', filter.filter_config, name='filter_config'),
+    path('filter/config/save', filter.filter_config_save, name='filter_config_save'),
     path('filter/view/<str:market>/<str:code>', filter.filter_view, name='filter_view'),
     path('stocks/view/<str:market>/<str:code>', filter.filter_view, name='stocks_view'),
     path('refer/view/<str:market>/<str:code>', filter.filter_view, name='refer_view'),

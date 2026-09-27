@@ -1,8 +1,11 @@
 import os
 from . import ashare
+from .config import get_quote_interval
 
 
-QUOTE_REQUEST_INTERVAL = int(os.environ.get('QUOTE_REQUEST_INTERVAL', 20000))
+def get_quote_interval_ms():
+    """获取行情刷新间隔（毫秒）"""
+    return get_quote_interval()
 
 def get_last_price(tscode, deci=2):    
     """

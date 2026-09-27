@@ -80,7 +80,7 @@ def focus_list(request):
     func.set_view_back(request.session, '/focus/list')
     return render(request, 'focus-list.html', {
         'list': items,
-        'interval': quote.QUOTE_REQUEST_INTERVAL,
+        'interval': quote.get_quote_interval_ms(),
         'current_page': pg['current_page'],
         'total_pages': pg['total_pages'],
         'per_page': pg['per_page'],

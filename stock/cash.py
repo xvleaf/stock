@@ -82,7 +82,7 @@ def cash_view(request):
         end_str = end_date.strftime('%Y-%m-%d')
     # 历史记录按日期范围过滤 + 分页（每页条数独立存储，不影响其他页面）
     history_qs = CashHistory.objects.filter(date__gte=start_date, date__lte=end_date).order_by('-date', '-id')
-    cash_per_page = int(func.get_cache(request.session, 'cash-per-page', str(func.DEFAULT_PAGE_SIZE)))
+    cash_per_page = int(func.get_cache(request.session, 'cash-per-page', str(func._get_default_page_size())))
     pg = func.paginate_queryset(request, history_qs, 'cash-history-page', per_page=cash_per_page)
     items = list(pg['items'])
     return render(request, 'cash-view.html', {

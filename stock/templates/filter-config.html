@@ -2,6 +2,36 @@
 {% block title %}筛选历史{% endblock %}
 {% block content %}
 <div class="form-wrap">
+<!-- 通用设置 -->
+<h6 class="mb-3">通用设置</h6>
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-3">
+            <div class="col-md-4 col-sm-6">
+                <label class="form-label small mb-1">筛选超时时间</label>
+                <div class="input-group input-group-sm">
+                    <input type="text" name="filter_timeout" class="form-control auto-save-input" id="filterTimeoutInput" value="{{ filter_config.filter_timeout }}">
+                    <span class="input-group-text">秒</span>
+                </div>
+            </div>
+            <div class="col-md-4 col-sm-6">
+                <label class="form-label small mb-1">添加关注目标价</label>
+                <div class="input-group input-group-sm">
+                    <input type="text" name="target_profit_ratio" class="form-control auto-save-input" id="targetProfitInput" value="{{ filter_config.target_profit_ratio }}">
+                    <span class="input-group-text">倍</span>
+                </div>
+            </div>
+            <div class="col-md-4 col-sm-6">
+                <label class="form-label small mb-1">添加关注止损价</label>
+                <div class="input-group input-group-sm">
+                    <input type="text" name="stop_loss_ratio" class="form-control auto-save-input" id="stopLossInput" value="{{ filter_config.stop_loss_ratio }}">
+                    <span class="input-group-text">倍</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="d-flex justify-content-between align-items-center mb-2">
     <h6 class="mb-0">全量样本</h6>
     <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" id="rebuildSectorBtn">刷新板块关联</button>
@@ -103,6 +133,73 @@
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         initFilterConfig();
+
+        // 通用设置自动保存
+        const autoSaveInputs = document.querySelectorAll('.auto-save-input');
+        const initialValues = {};
+        autoSaveInputs.forEach(input => {
+            initialValues[input.id] = input.value;
+        });
+
+        let saveTimer = null;
+
+        function validateAndSave() {
+            const filterTimeout = document.getElementById('filterTimeoutInput').value.trim();
+            const targetProfit = document.getElementById('targetProfitInput').value.trim();
+            const stopLoss = document.getElementById('stopLossInput').value.trim();
+
+            // 校验
+            if (!/^\d+$/.test(filterTimeout)) {
+                showAlert({ type: 'error', text: '筛选超时时间请输入整数' });
+                return;
+            }
+            if (!/^\d+(\.\d+)?$/.test(targetProfit)) {
+                showAlert({ type: 'error', text: '添加关注目标价请输入数字' });
+                return;
+            }
+            if (!/^\d+(\.\d+)?$/.test(stopLoss)) {
+                showAlert({ type: 'error', text: '添加关注止损价请输入数字' });
+                return;
+            }
+
+            // 检查是否有变化
+            let hasChange = false;
+            autoSaveInputs.forEach(input => {
+                if (input.value !== initialValues[input.id]) {
+                    hasChange = true;
+                }
+            });
+            if (!hasChange) return;
+
+            fetch('/filter/config/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+                body: JSON.stringify({
+                    filter_timeout: parseInt(filterTimeout),
+                    target_profit_ratio: parseFloat(targetProfit),
+                    stop_loss_ratio: parseFloat(stopLoss),
+                }),
+            }).then(res => res.json()).then(data => {
+                if (data.status === 'success') {
+                    // 更新初始值
+                    autoSaveInputs.forEach(input => {
+                        initialValues[input.id] = input.value;
+                    });
+                    showAlert({ type: 'success', text: '保存成功' });
+                } else {
+                    showAlert({ type: 'error', text: data.message || '保存失败' });
+                }
+            }).catch(() => {
+                showAlert({ type: 'error', text: '请求失败，请重试' });
+            });
+        }
+
+        autoSaveInputs.forEach(input => {
+            input.addEventListener('input', () => {
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(validateAndSave, 500);
+            });
+        });
 
         // 刷新板块关联按钮
         const rebuildBtn = document.getElementById('rebuildSectorBtn');

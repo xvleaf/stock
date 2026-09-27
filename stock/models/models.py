@@ -17,6 +17,36 @@ class WebSetting(models.Model):
     dividend_tax_long = models.DecimalField('分红税(>1年)', max_digits=6, decimal_places=4, default=Decimal('0'))
     dividend_tax_mid = models.DecimalField('分红税(1月~1年)', max_digits=6, decimal_places=4, default=Decimal('0.1'))
     dividend_tax_short = models.DecimalField('分红税(<1月)', max_digits=6, decimal_places=4, default=Decimal('0.2'))
+    # 通用设置
+    default_page_size = models.IntegerField('分页默认数量', default=10)
+    quote_interval = models.IntegerField('行情刷新间隔(毫秒)', default=60000)
+    icp_number = models.CharField('备案编号', max_length=50, default='', blank=True)
+    icp_website = models.CharField('备案官网', max_length=100, default='', blank=True)
+    # 交易时间（秒，从零点开始）
+    trade_am_start = models.IntegerField('上午开始时间', default=34200)
+    trade_am_end = models.IntegerField('上午结束时间', default=41400)
+    trade_pm_start = models.IntegerField('下午开始时间', default=46800)
+    trade_pm_end = models.IntegerField('下午结束时间', default=54000)
+    # K线起始日期
+    kline_start_date_day = models.CharField('日线起始日期', max_length=8, default='19801020')
+    kline_start_date_week = models.CharField('周线起始日期', max_length=8, default='19801020')
+    kline_start_date_month = models.CharField('月线起始日期', max_length=8, default='19801020')
+    # K线MA周期
+    kline_ma_day = models.IntegerField('日线MA周期', default=200)
+    kline_ma_week = models.IntegerField('周线MA周期', default=60)
+    kline_ma_month = models.IntegerField('月线MA周期', default=30)
+    # K线MV周期
+    kline_mv_day = models.IntegerField('日线MV周期', default=60)
+    kline_mv_week = models.IntegerField('周线MV周期', default=30)
+    kline_mv_month = models.IntegerField('月线MV周期', default=30)
+    # K线EMA-K值
+    kline_ema_k_day = models.IntegerField('日线EMA-K值', default=10)
+    kline_ema_k_week = models.IntegerField('周线EMA-K值', default=20)
+    kline_ema_k_month = models.IntegerField('月线EMA-K值', default=20)
+    # K线EMA-D值
+    kline_ema_d_day = models.IntegerField('日线EMA-D值', default=30)
+    kline_ema_d_week = models.IntegerField('周线EMA-D值', default=30)
+    kline_ema_d_month = models.IntegerField('月线EMA-D值', default=30)
     updated_at = models.DateField('更新日期', auto_now=True)
 
     class Meta:
@@ -843,6 +873,10 @@ class FilterGlobalConfig(models.Model):
                                   help_text='1=样本中排除名称含 ST 的股票')
     default_task_id = models.IntegerField('默认筛选任务ID', default=-1, blank=True,
                                            help_text='筛选清单默认显示的任务ID，-1=无任务')
+    # 筛选通用设置
+    filter_timeout = models.IntegerField('筛选超时时间(秒)', default=3600)
+    target_profit_ratio = models.DecimalField('添加关注目标价', max_digits=5, decimal_places=2, default=Decimal('1.1'))
+    stop_loss_ratio = models.DecimalField('添加关注止损价', max_digits=5, decimal_places=2, default=Decimal('0.98'))
 
     class Meta:
         db_table = 'models_filter_config'
