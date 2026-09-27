@@ -22,7 +22,7 @@
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">最低佣金</label>
                         <div class="input-group input-group-sm">
-                            <input type="text" name="commission_min" class="form-control" value="{{ setting.commission_min }}">
+                            <input type="text" name="commission_min" class="form-control" value="{{ commission_min_fmt }}">
                             <span class="input-group-text">元</span>
                         </div>
                     </div>
@@ -113,6 +113,6 @@
 {% block extra_js %}
 <script type="module">
     import { initSetting } from "{% static 'stock/js/setting.js' %}";
-    initSetting({% if saved %}true{% else %}false{% endif %});
+    initSetting({% if saved %}true{% else %}false{% endif %}, {% if error %}true{% else %}false{% endif %});
 </script>
 {% endblock %}
