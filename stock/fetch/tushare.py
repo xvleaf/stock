@@ -91,6 +91,20 @@ def get_stock_basic():
     return data
 
 
+def get_stock_by_code(ts_code):
+    """
+    根据ts代码查询单只股票基础信息
+    :param ts_code: str 000333.SZ
+    :return: DataFrame 或 None
+    """
+    fields = 'symbol,name,exchange,market,industry'
+    try:
+        data = pro.stock_basic(ts_code=ts_code, list_status='L', fields=fields)
+        return data
+    except Exception:
+        return None
+
+
 # ========================= 以下代码备用 =========================
 # *****fund_basic接口获得的基金列表，与get_kline_data不对应，get_kline_data能得到ETF基金的K线*****
 # *****etf_basic接口无权限调用（需要5000积分以上）*****

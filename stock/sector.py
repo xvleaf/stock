@@ -7,7 +7,7 @@ from .fetch import tushare
 from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.views.decorators.http import require_http_methods
-from .models.models import SectorList, StockSector
+from .models.models import SectorList, StockSector, StockList
 from django.db import connection, transaction
 from django.core.cache import cache
 import pytz
@@ -311,6 +311,8 @@ def _update_sector_list():
 
         df.rename(columns={'index_code': 'code'}, inplace=True)
         df.rename(columns={'industry_name': 'name'}, inplace=True)
+        # 按代码正序排列
+        df = df.sort_values('code').reset_index(drop=True)
 
         with transaction.atomic():
             for _, row in df.iterrows():
@@ -337,10 +339,18 @@ def _update_sector_list():
 
 
 def rebuild_stock_sector(request):
-    """重建板块关联：清空 StockSector，后台异步全量重建"""
+    """重建板块关联：全量更新StockList和SectorList（不覆盖已有数据），再清空StockSector后台异步全量重建"""
     if request.method != 'POST':
         return JsonResponse({'error': '仅支持POST'}, status=405)
     try:
+        # 全量更新StockList（存在则更新name/industry，不存在则创建，不覆盖mark/hide）
+        print("[rebuild] 全量更新股票列表...")
+        func._update_stock_list()
+        print(f"[rebuild] 股票列表更新完成，共 {StockList.objects.count()} 只")
+        # 全量更新SectorList（存在则更新name，不存在则创建，不覆盖原记录）
+        print("[rebuild] 全量更新板块列表...")
+        _update_sector_list()
+        print(f"[rebuild] 板块列表更新完成，共 {SectorList.objects.count()} 个")
         # 清空现有数据（触发 _update_stock_sector 的全量模式）
         StockSector.objects.all().delete()
         # 后台异步执行全量重建

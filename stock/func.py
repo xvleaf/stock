@@ -29,18 +29,27 @@ def stock_name_api(request):
     except Exception:
         pass
 
-    # 数据库中不存在，尝试更新股票列表
-    _update_stock_list()
-
-    # 再次从数据库查询
+    # 数据库中不存在，单只查询tushare并增量存入
     try:
-        stock = StockList.objects.filter(code=code, market=market).first()
-        if stock:
-            return JsonResponse({'code': code, 'market': market, 'name': stock.name, 'cat': stock.cat})
-        else:
-            return JsonResponse({'code': code, 'market': market, 'name': '', 'cat': ''})
-    except Exception:
-        return JsonResponse({'code': code, 'market': market, 'name': '', 'cat': ''})
+        EXCHANGE_MAP = {'SSE': 'SH', 'SZSE': 'SZ', 'BSE': 'BJ'}
+        df = tushare.get_stock_by_code(f'{code}.{market}')
+        if df is not None and not df.empty:
+            row = df.iloc[0]
+            stock_name = row.get('name', '')
+            industry = row.get('industry', '') or ''
+            # 增量存入StockList（不影响已有数据）
+            StockList.objects.get_or_create(
+                code=code, market=market,
+                defaults={'name': stock_name, 'cat': 'stock', 'industry': industry}
+            )
+            # 异步增量更新板块关联
+            t = threading.Thread(target=_update_stock_sector, args=([(code, market)],), daemon=True)
+            t.start()
+            return JsonResponse({'code': code, 'market': market, 'name': stock_name, 'cat': 'stock'})
+    except Exception as e:
+        print(f"单只股票查询失败 {code}.{market}: {e}")
+
+    return JsonResponse({'code': code, 'market': market, 'name': '', 'cat': ''})
         
 
 def date_to_timestamp(date_obj):
@@ -136,6 +145,8 @@ def _update_stock_list():
         df['market'] = df['exchange'].map(EXCHANGE_MAP)
         df = df.dropna(subset=['market'])
         df['industry'] = df['industry'].fillna('')
+        # 按代码正序排列
+        df = df.sort_values('code').reset_index(drop=True)
 
         with transaction.atomic():
             for _, row in df.iterrows():
@@ -198,6 +209,8 @@ def _update_stock_sector(new_stocks):
                 except Exception as e:
                     print(f"[StockSector] 板块 {sector.code} 获取成分股失败: {e}")
             if bulk_list:
+                # 按股票代码正序排列
+                bulk_list.sort(key=lambda x: x.stock_code)
                 with transaction.atomic():
                     StockSector.objects.all().delete()
                     StockSector.objects.bulk_create(bulk_list, batch_size=500)
