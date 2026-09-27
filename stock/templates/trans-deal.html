@@ -152,6 +152,44 @@
     </form>
 </div>
 
+{# 红利税确认弹窗 #}
+<div class="modal fade" id="dividendTaxModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title w-100 text-center" style="font-size:0.6rem;">红利税确认</h6>
+            </div>
+            <div class="modal-body pt-0">
+                <div class="small text-muted mb-2">本次卖出将清仓，以下为每笔分红的红利税明细：</div>
+                <div class="table-responsive mb-2">
+                    <table class="table table-sm table-bordered mb-0" id="dividendTaxTable">
+                        <thead>
+                            <tr>
+                                <th>分红日期</th>
+                                <th>每股分红</th>
+                                <th>分红总额</th>
+                                <th>持股天数</th>
+                                <th>税率</th>
+                                <th>税额</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dividendTaxBody">
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mb-0">
+                    <label class="form-label small mb-1">红利税合计（可修改）</label>
+                    <input type="text" class="form-control form-control-sm" id="dividendTaxInput" value="0">
+                </div>
+            </div>
+            <div class="modal-footer py-2 justify-content-between border-top-0">
+                <button type="button" class="btn btn-link p-0" id="dividendTaxCancel">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" id="dividendTaxConfirm">确定</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}

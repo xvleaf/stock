@@ -550,10 +550,6 @@ function submitInit() {
     const cash = parseFloat(document.getElementById('modalInitCash')?.value);
     const stock = parseFloat(document.getElementById('modalInitStock')?.value);
     const allowance = parseFloat(document.getElementById('modalInitAllowance')?.value);
-    const commissionRatio = parseFloat(document.getElementById('modalInitCommissionRatio')?.value);
-    const commissionMin = parseFloat(document.getElementById('modalInitCommissionMin')?.value);
-    const stampBuy = parseFloat(document.getElementById('modalInitStampBuy')?.value);
-    const stampSell = parseFloat(document.getElementById('modalInitStampSell')?.value);
 
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
         showAlert({ title: '提示', text: '请输入有效的日期（YYYY-MM-DD）', type: 'warning' });
@@ -571,22 +567,6 @@ function submitInit() {
         showAlert({ title: '提示', text: '请输入有效的风险额度', type: 'warning' });
         return;
     }
-    if (isNaN(commissionRatio) || commissionRatio < 0) {
-        showAlert({ title: '提示', text: '请输入有效的佣金费率', type: 'warning' });
-        return;
-    }
-    if (isNaN(commissionMin) || commissionMin < 0) {
-        showAlert({ title: '提示', text: '请输入有效的最低佣金', type: 'warning' });
-        return;
-    }
-    if (isNaN(stampBuy) || stampBuy < 0) {
-        showAlert({ title: '提示', text: '请输入有效的买入印花税率', type: 'warning' });
-        return;
-    }
-    if (isNaN(stampSell) || stampSell < 0) {
-        showAlert({ title: '提示', text: '请输入有效的卖出印花税率', type: 'warning' });
-        return;
-    }
 
     fetch(INIT_URL, {
         method: 'POST',
@@ -599,10 +579,6 @@ function submitInit() {
             cash: cash,
             stock: stock,
             allowance: allowance,
-            commission_ratio: commissionRatio,
-            commission_min: commissionMin,
-            stamp_buy_ratio: stampBuy,
-            stamp_sell_ratio: stampSell,
         }),
     })
         .then(r => r.json())

@@ -14,7 +14,7 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.http import require_http_methods
 from django.db import transaction
-from .models.models import CashConfig, CashHistory, TransOrder, TransHistory, FocusStock
+from .models.models import CashConfig, CashHistory, TransOrder, TransHistory, FocusStock, WebSetting, DividendRecord
 from .forms.forms import CashConfigForm
 from . import func
 
@@ -224,7 +224,7 @@ def cash_revoke(request):
         return JsonResponse({'error': '仅可撤回最新一笔记录'}, status=400)
     if latest.event not in (CashHistory.EVENT_DEPOSIT, CashHistory.EVENT_WITHDRAW,
                             CashHistory.EVENT_BUY, CashHistory.EVENT_SELL,
-                            CashHistory.EVENT_ADJUST):
+                            CashHistory.EVENT_ADJUST, CashHistory.EVENT_DIVIDEND):
         return JsonResponse({'error': '该记录不可撤回'}, status=400)
 
     config = CashConfig.get_config()
@@ -264,6 +264,45 @@ def cash_revoke(request):
             config.risk -= (risk_before - risk_after)
             if config.risk < 0:
                 config.risk = Decimal('0')
+            config.save()
+            latest.delete()
+        elif latest.event == CashHistory.EVENT_DIVIDEND:
+            # 撤回分红（支持同时包含现金分红和送股转增）
+            order = latest.order
+            if not order:
+                return JsonResponse({'error': '关联交易订单不存在'}, status=400)
+            # 查找对应的分红记录
+            dividend = DividendRecord.objects.filter(order=order).order_by('-id').first()
+            if not dividend:
+                return JsonResponse({'error': '分红记录不存在'}, status=400)
+
+            # 1. 现金分红撤销：恢复资金
+            if dividend.amount > 0:
+                amount = dividend.amount
+                config.cash -= amount
+                config.total = config.cash + config.stock
+                config.profit -= amount
+                order.profit -= amount
+
+            # 2. 送股撤销：删除对应的 TransHistory，重算持仓
+            if dividend.qty_change > 0:
+                deal = order.histories.filter(action=TransHistory.ACTION_DIVIDEND).order_by('-id').first()
+                if deal:
+                    deal.delete()
+                order.recalculate()
+                # 从剩余最新一笔 history 恢复快照
+                last_deal = order.histories.order_by('-id').first()
+                if last_deal:
+                    order.target_price = last_deal.target_price
+                    order.stop_price = last_deal.stop_price
+                    order.risk_amount = last_deal.risk_amount
+                    order.win_ratio = last_deal.win_ratio
+                    order.profit = last_deal.profit
+                config.stock = order.position_cost_no_fee
+
+            order.save()
+            # 删除分红记录和资金历史
+            dividend.delete()
             config.save()
             latest.delete()
         else:
@@ -337,7 +376,7 @@ def cash_revoke(request):
 def cash_init(request):
     """
     首次使用时初始化资金配置 + 写入初始存入记录
-    POST JSON: {date, cash, stock, allowance, commission_ratio, commission_min, stamp_buy_ratio, stamp_sell_ratio}
+    POST JSON: {date, cash, stock, allowance}
     """
     if CashConfig.has_config():
         return JsonResponse({'error': '已初始化，请勿重复提交'}, status=400)
@@ -354,10 +393,6 @@ def cash_init(request):
         cash_val = Decimal(str(params.get('cash', 0)))
         stock_val = Decimal(str(params.get('stock', 0)))
         allowance_val = Decimal(str(params.get('allowance', 0)))
-        commission_ratio_val = Decimal(str(params.get('commission_ratio', 0)))
-        commission_min_val = Decimal(str(params.get('commission_min', 0)))
-        stamp_buy_val = Decimal(str(params.get('stamp_buy_ratio', 0)))
-        stamp_sell_val = Decimal(str(params.get('stamp_sell_ratio', 0)))
     except Exception:
         return JsonResponse({'error': '金额格式错误'}, status=400)
     if cash_val < 0 or stock_val < 0 or allowance_val < 0:
@@ -372,10 +407,6 @@ def cash_init(request):
         config.allowance = allowance_val.quantize(Decimal('0.01'))
         config.risk = Decimal('0')
         config.profit = Decimal('0')
-        config.commission_ratio = commission_ratio_val
-        config.commission_min = commission_min_val
-        config.stamp_buy_ratio = stamp_buy_val
-        config.stamp_sell_ratio = stamp_sell_val
         config.save()
         # 写入初始存入记录（初始化无收益）
         CashHistory.snapshot(
@@ -425,6 +456,37 @@ def cash_setting(request):
     else:
         form = CashConfigForm(instance=config)
     return render(request, 'stock/setting.html', {'form': form})
+
+
+# ===================== 全站参数设置 =====================
+def web_setting(request):
+    """全站参数设置页面：佣金、印花税、分红税"""
+    setting = WebSetting.get_setting()
+    if request.method == 'POST':
+        # 比率字段：前端显示百分比，保存时除以100
+        setting.commission_ratio = Decimal(request.POST.get('commission_ratio', '0')) / 100
+        setting.commission_min = Decimal(request.POST.get('commission_min', '0'))
+        setting.stamp_buy_ratio = Decimal(request.POST.get('stamp_buy_ratio', '0')) / 100
+        setting.stamp_sell_ratio = Decimal(request.POST.get('stamp_sell_ratio', '0')) / 100
+        setting.dividend_tax_long = Decimal(request.POST.get('dividend_tax_long', '0')) / 100
+        setting.dividend_tax_mid = Decimal(request.POST.get('dividend_tax_mid', '0')) / 100
+        setting.dividend_tax_short = Decimal(request.POST.get('dividend_tax_short', '0')) / 100
+        setting.save()
+        return redirect('web_setting')
+    # GET：比率字段乘以100，以百分比形式显示；值为0时显示整数
+    def _fmt_pct(val):
+        v = float(val) * 100
+        return int(v) if v == 0 else v
+    context = {
+        'setting': setting,
+        'commission_ratio_pct': _fmt_pct(setting.commission_ratio),
+        'stamp_buy_ratio_pct': _fmt_pct(setting.stamp_buy_ratio),
+        'stamp_sell_ratio_pct': _fmt_pct(setting.stamp_sell_ratio),
+        'dividend_tax_long_pct': _fmt_pct(setting.dividend_tax_long),
+        'dividend_tax_mid_pct': _fmt_pct(setting.dividend_tax_mid),
+        'dividend_tax_short_pct': _fmt_pct(setting.dividend_tax_short),
+    }
+    return render(request, 'web-setting.html', context)
 
 
 # ===================== 计算工具函数 =====================
@@ -491,19 +553,21 @@ def calc_stamp_tax(amount, stamp_tax_rate):
     return _q(Decimal(str(amount)) * Decimal(str(stamp_tax_rate)))
 
 
-def calc_fee(amount, intent, config):
+def calc_fee(amount, intent, config=None):
     """
     计算交易费用
     :param amount: 成交金额
     :param intent: 'B'买入 / 'S'卖出
-    :param config: CashConfig 实例
+    :param config: 保留参数（兼容旧调用），实际从 WebSetting 读取
     :return: dict {commission, stamp_tax, total}
     """
+    from .models.models import WebSetting
+    setting = WebSetting.get_setting()
     amount = Decimal(str(amount))
-    commission = calc_commission(amount, config.commission_ratio, config.commission_min)
+    commission = calc_commission(amount, setting.commission_ratio, setting.commission_min)
     stamp_tax = Decimal('0')
     if intent == 'S':
-        stamp_tax = calc_stamp_tax(amount, config.stamp_sell_ratio)
+        stamp_tax = calc_stamp_tax(amount, setting.stamp_sell_ratio)
     total = _q(commission + stamp_tax)
     return {
         'commission': _q(commission),

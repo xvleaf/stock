@@ -198,20 +198,15 @@ class TransHistoryForm(forms.ModelForm):
 
 
 class CashConfigForm(forms.ModelForm):
-    """账户资金与费率设置"""
+    """账户资金设置"""
     class Meta:
         model = CashConfig
         fields = [
-            'total', 'allowance', 'commission_ratio', 'commission_min', 
-            'stamp_buy_ratio', 'stamp_sell_ratio'
+            'total', 'allowance',
         ]
         widgets = {
             'total': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'allowance': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'commission_ratio': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.00001'}),
-            'commission_min': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'stamp_buy_ratio': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.00001'}),
-            'stamp_sell_ratio': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.00001'}),
         }
 
 

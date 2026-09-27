@@ -39,11 +39,14 @@ urlpatterns = [
     path('cash/init', cash.cash_init, name='cash_init'),
     path('cash/quota', cash.cash_quota, name='cash_quota'),
     path('cash/setting', cash.cash_setting, name='cash_setting'),
+    path('setting', cash.web_setting, name='web_setting'),
 
     # ---- 交易 ----
     path('trans/list', trans.trans_list, name='trans_list'),
     path('trans/deal/<str:market>/<str:code>', trans.trans_deal, name='trans_deal'),
     path('trans/calc', trans.trans_calc, name='trans_calc'),
+    path('trans/dividend/<str:market>/<str:code>', trans.trans_dividend, name='trans_dividend'),
+    path('trans/calc_dividend_tax/<str:market>/<str:code>', trans.calc_dividend_tax, name='calc_dividend_tax'),
     path('trans/view/<str:market>/<str:code>', trans.trans_view, name='trans_view'),
     path('trans/edit/<str:market>/<str:code>', trans.trans_edit, name='trans_edit'),
 

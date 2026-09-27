@@ -4,6 +4,38 @@ from decimal import Decimal
 import datetime
 
 
+# ===================== 全站参数设置 =====================
+class WebSetting(models.Model):
+    """全站参数设置（单例，pk=1）"""
+    commission_ratio = models.DecimalField('佣金费率', max_digits=8, decimal_places=6, default=Decimal('0.000085'))
+    commission_min = models.DecimalField('最低佣金', max_digits=8, decimal_places=2, default=Decimal('0'))
+    stamp_buy_ratio = models.DecimalField('印花税率(买入)', max_digits=8, decimal_places=6, default=Decimal('0'))
+    stamp_sell_ratio = models.DecimalField('印花税率(卖出)', max_digits=8, decimal_places=6, default=Decimal('0.0005'))
+    dividend_tax_long = models.DecimalField('分红税(>1年)', max_digits=6, decimal_places=4, default=Decimal('0'))
+    dividend_tax_mid = models.DecimalField('分红税(1月~1年)', max_digits=6, decimal_places=4, default=Decimal('0.1'))
+    dividend_tax_short = models.DecimalField('分红税(<1月)', max_digits=6, decimal_places=4, default=Decimal('0.2'))
+    updated_at = models.DateField('更新日期', auto_now=True)
+
+    class Meta:
+        db_table = 'models_web_setting'
+        verbose_name = '全站参数设置'
+        verbose_name_plural = verbose_name
+
+    @classmethod
+    def get_setting(cls):
+        obj = cls.objects.filter(pk=1).first()
+        if obj:
+            return obj
+        return cls(pk=1)
+
+    @classmethod
+    def has_setting(cls):
+        return cls.objects.filter(pk=1).exists()
+
+    def __str__(self):
+        return f'全站参数设置'
+
+
 # ===================== 账户资金配置 =====================
 class CashConfig(models.Model):
     total = models.DecimalField('资产', max_digits=14, decimal_places=2, default=100000)
@@ -12,10 +44,6 @@ class CashConfig(models.Model):
     allowance = models.DecimalField('风险额度', max_digits=14, decimal_places=2, default=2000)
     risk = models.DecimalField('风险资金', max_digits=14, decimal_places=2, default=0)
     profit = models.DecimalField('投资收益', max_digits=14, decimal_places=2, default=0)
-    commission_ratio = models.DecimalField('佣金费率', max_digits=8, decimal_places=6, default=Decimal('0.000085'))
-    commission_min = models.DecimalField('最低佣金', max_digits=8, decimal_places=2, default=Decimal('0'))
-    stamp_buy_ratio = models.DecimalField('印花税率(买入)', max_digits=8, decimal_places=6, default=Decimal('0'))
-    stamp_sell_ratio = models.DecimalField('印花税率(卖出)', max_digits=8, decimal_places=6, default=Decimal('0.0005'))
     updated_at = models.DateField('更新日期', auto_now=True)
 
     class Meta:        
@@ -29,7 +57,7 @@ class CashConfig(models.Model):
         obj = cls.objects.filter(pk=1).first()
         if obj:
             return obj
-        # 数据库为空时，资产/现金/股票/额度/风险/收益返回0，费率字段自动取模型默认值，不创建记录
+        # 数据库为空时，资产/现金/股票/额度/风险/收益返回0，不创建记录
         return cls(
             pk=1, total=0, cash=0, stock=0,
             allowance=0, risk=0, profit=0,
@@ -507,7 +535,11 @@ class TransOrder(models.Model):
         self.buy_fee = buy_fee
         self.sell_fee = sell_fee
         self.total_fee = buy_fee + sell_fee
-        self.profit = profit.quantize(Decimal('0.01'))
+        # 加上累计现金分红的利润（送股不影响利润）
+        from django.db.models import Sum
+        total_dividend = self.dividends.filter(dividend_type=DividendRecord.DIVIDEND_CASH).aggregate(
+            total=Sum('amount'))['total'] or Decimal('0')
+        self.profit = (profit + total_dividend).quantize(Decimal('0.01'))
         # 保存含手续费持仓成本（多头为正，空头为负），用于从数据库重新获取时正确计算 avg_cost
         self.position_cost = position_cost.quantize(Decimal('0.01'))
         self.position_cost_no_fee = position_cost_no_fee.quantize(Decimal('0.01'))
@@ -546,10 +578,12 @@ class TransHistory(models.Model):
     ACTION_BUY = 'buy'
     ACTION_SELL = 'sell'
     ACTION_EDIT = 'edit'
+    ACTION_DIVIDEND = 'dividend'
     ACTION_CHOICES = [
         (ACTION_BUY, '买入'),
         (ACTION_SELL, '卖出'),
         (ACTION_EDIT, '编辑'),
+        (ACTION_DIVIDEND, '分红'),
     ]
     order = models.ForeignKey(TransOrder, on_delete=models.CASCADE,
                               related_name='histories', verbose_name='所属交易')
@@ -585,8 +619,10 @@ class TransHistory(models.Model):
         return f'{action} {self.order.code} {self.qty}@{self.price}'
 
     def save(self, *args, **kwargs):
-        if self.action != self.ACTION_EDIT:
-            self.amount = (self.price * self.qty).quantize(Decimal('0.01'))
+        if self.action not in (self.ACTION_EDIT, self.ACTION_DIVIDEND):
+            self.amount = (Decimal(str(self.price)) * self.qty).quantize(Decimal('0.01'))
+        elif self.action == self.ACTION_DIVIDEND:
+            self.amount = Decimal('0')
         super().save(*args, **kwargs)
         self.order.recalculate()
 
@@ -594,6 +630,39 @@ class TransHistory(models.Model):
         order = self.order
         super().delete(*args, **kwargs)
         order.recalculate()
+
+
+# ===================== 分红记录 =====================
+class DividendRecord(models.Model):
+    """股票分红记录（现金分红/送股转增）"""
+    DIVIDEND_CASH = 'cash'
+    DIVIDEND_BONUS = 'bonus'
+    DIVIDEND_CHOICES = [
+        (DIVIDEND_CASH, '现金分红'),
+        (DIVIDEND_BONUS, '送股转增'),
+    ]
+    order = models.ForeignKey(TransOrder, on_delete=models.CASCADE,
+                              related_name='dividends', verbose_name='所属交易')
+    code = models.CharField('股票代码', max_length=20, db_index=True)
+    name = models.CharField('股票名称', max_length=50)
+    market = models.CharField('股票市场', max_length=10, default='SH')
+    date = models.DateField('分红日期', default=timezone.now)
+    dividend_type = models.CharField('分红类型', max_length=10, choices=DIVIDEND_CHOICES, default=DIVIDEND_CASH)
+    per_share = models.DecimalField('每股分红(税前)', max_digits=10, decimal_places=4, default=0)
+    bonus_ratio = models.DecimalField('送股比例', max_digits=8, decimal_places=4, default=0)
+    amount = models.DecimalField('税前分红总额', max_digits=14, decimal_places=2, default=0)
+    qty_change = models.IntegerField('持仓变化数量', default=0)
+    remark = models.CharField('备注', max_length=200, blank=True, default='')
+    created_at = models.DateField('创建日期', auto_now_add=True)
+
+    class Meta:
+        db_table = 'models_dividend_record'
+        verbose_name = '分红记录'
+        verbose_name_plural = verbose_name
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f'{self.date:%Y-%m-%d} {self.name} {self.get_dividend_type_display()}'
 
 
 # ===================== 复盘记录 =====================

@@ -35,6 +35,106 @@ export function initTransDeal(opts = {}) {
     let lastParams = null;
     let calcTimer = null;
 
+    // ===== 红利税确认弹窗 =====
+    const dividendTaxModalEl = document.getElementById('dividendTaxModal');
+    const dividendTaxModal = dividendTaxModalEl ? new bootstrap.Modal(dividendTaxModalEl) : null;
+    const dividendTaxInput = document.getElementById('dividendTaxInput');
+    const dividendTaxBody = document.getElementById('dividendTaxBody');
+    let confirmedDividendTax = 0;
+    let dividendTaxChecked = false; // 防止重复弹窗
+
+    // 判断是否达到清仓/反手做空条件（卖出方向 且 卖出数量 >= 多头持仓数量）
+    function isClearCondition() {
+        const intent = intentSelect ? intentSelect.value : 'B';
+        const qty = parseInt(qtyInput.value) || 0;
+        return intent === 'S' && positionQty > 0 && qty >= positionQty;
+    }
+
+    // 调用后端计算红利税明细
+    function fetchDividendTax() {
+        const dateInput = document.getElementById('id_date');
+        const date = dateInput ? dateInput.value : '';
+        return fetch(`/trans/calc_dividend_tax/${initChart.market}/${initChart.code}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
+            },
+            body: JSON.stringify({ date: date }),
+        })
+        .then(res => res.json())
+        .catch(() => null);
+    }
+
+    // 显示红利税确认弹窗
+    function showDividendTaxModal(data) {
+        if (!dividendTaxModal || !dividendTaxBody || !dividendTaxInput) return;
+        // 填充明细表格
+        dividendTaxBody.innerHTML = '';
+        if (data.details && data.details.length > 0) {
+            data.details.forEach(d => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${d.date}</td>
+                    <td>${d.per_share}元</td>
+                    <td>${d.amount}元</td>
+                    <td>${d.hold_days}天</td>
+                    <td>${d.tax_rate}</td>
+                    <td>${d.tax}元</td>
+                `;
+                dividendTaxBody.appendChild(tr);
+            });
+        }
+        dividendTaxInput.value = data.total_tax || '0';
+        dividendTaxModal.show();
+    }
+
+    // 检查是否需要弹窗
+    function checkDividendTax() {
+        if (!isClearCondition()) {
+            // 未达到清仓条件，重置已确认的红利税
+            confirmedDividendTax = 0;
+            dividendTaxChecked = false;
+            return;
+        }
+        if (dividendTaxChecked) return; // 已检查过，不重复弹窗
+        dividendTaxChecked = true;
+
+        fetchDividendTax().then(data => {
+            if (!data || data.error) return;
+            if (data.has_dividend) {
+                showDividendTaxModal(data);
+            } else {
+                confirmedDividendTax = 0;
+            }
+        });
+    }
+
+    // 弹窗确定按钮
+    if (document.getElementById('dividendTaxConfirm')) {
+        document.getElementById('dividendTaxConfirm').addEventListener('click', () => {
+            confirmedDividendTax = parseFloat(dividendTaxInput.value) || 0;
+            dividendTaxModal.hide();
+        });
+    }
+    // 弹窗取消按钮
+    if (document.getElementById('dividendTaxCancel')) {
+        document.getElementById('dividendTaxCancel').addEventListener('click', () => {
+            confirmedDividendTax = 0;
+            dividendTaxChecked = false;
+            dividendTaxModal.hide();
+        });
+    }
+
+    // 交易方向或数量变化时，重置检查状态
+    function onIntentOrQtyChange() {
+        dividendTaxChecked = false;
+        // 延迟检查，等其他计算完成
+        setTimeout(checkDividendTax, 100);
+    }
+    if (intentSelect) intentSelect.addEventListener('change', onIntentOrQtyChange);
+    qtyInput.addEventListener('input', onIntentOrQtyChange);
+
     // 收集当前参数
     function collectParams() {
         return {
@@ -118,6 +218,8 @@ export function initTransDeal(opts = {}) {
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         const formData = new FormData(form);
+        // 添加已确认的红利税
+        formData.append('dividend_tax', confirmedDividendTax);
         const submitBtn = document.getElementById('submitBtn');
         if (submitBtn) submitBtn.disabled = true;
 
@@ -146,6 +248,8 @@ export function initTransDeal(opts = {}) {
 
     // 初始化计算
     requestCalc();
+    // 初始化检查红利税
+    setTimeout(checkDividendTax, 500);
 }
 
 // ===================== 交易清单 =====================
@@ -217,6 +321,76 @@ export function initTransView(opts = {}) {
 
     // 暴露给图表的 up/down 按钮
     window.switchTransPilot = switchPilot;
+
+    // ===== 分红登记（divdBtn） =====
+    const divdBtn = document.getElementById('divdBtn');
+    const dividendModalEl = document.getElementById('dividendModal');
+    if (divdBtn && dividendModalEl) {
+        const dividendModal = new bootstrap.Modal(dividendModalEl);
+        const perShareInput = document.getElementById('dividendPerShare');
+        const bonusRatioInput = document.getElementById('dividendBonusRatio');
+        const dateInput = document.getElementById('dividendDate');
+        const remarkInput = document.getElementById('dividendRemark');
+
+        // 默认填写当前日期
+        const today = new Date();
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, '0');
+        const d = String(today.getDate()).padStart(2, '0');
+        dateInput.value = `${y}-${m}-${d}`;
+
+        // 点击 divdBtn 打开弹窗
+        divdBtn.addEventListener('click', () => {
+            dividendModal.show();
+        });
+
+        // 取消按钮
+        document.getElementById('dividendModalCancel').addEventListener('click', () => {
+            dividendModal.hide();
+        });
+
+        // 确认按钮
+        document.getElementById('dividendModalConfirm').addEventListener('click', () => {
+            const date = dateInput.value.trim();
+            const remark = remarkInput.value.trim();
+            const perShare = parseFloat(perShareInput.value);
+            const bonusRatio = parseFloat(bonusRatioInput.value);
+
+            // 至少填写一项
+            const hasCash = !isNaN(perShare) && perShare > 0;
+            const hasBonus = !isNaN(bonusRatio) && bonusRatio > 0;
+            if (!hasCash && !hasBonus) {
+                showAlert({ title: '提示', text: '请至少填写每股分红或送股比例', type: 'warning' });
+                return;
+            }
+
+            if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                showAlert({ title: '提示', text: '请输入有效的日期（YYYY-MM-DD）', type: 'warning' });
+                return;
+            }
+
+            const payload = {
+                date: date,
+                remark: remark,
+                per_share: hasCash ? perShare : 0,
+                bonus_ratio: hasBonus ? bonusRatio : 0,
+            };
+
+            postRequest(`/trans/dividend/${initChart.market}/${initChart.code}`, payload)
+                .then(res => {
+                    if (res.error) {
+                        showAlert({ title: '失败', text: res.error, type: 'error' });
+                        return;
+                    }
+                    dividendModal.hide();
+                    showAlert({ title: '成功', text: '分红登记完成', type: 'success' });
+                    setTimeout(() => { window.location.reload(); }, 3000);
+                })
+                .catch(() => {
+                    showAlert({ title: '失败', text: '分红登记失败', type: 'error' });
+                });
+        });
+    }
 }
 
 // ===================== 交易编辑 =====================

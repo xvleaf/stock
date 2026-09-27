@@ -12,6 +12,7 @@ from django.db import transaction
 
 from .models.models import (
     CashConfig, CashHistory, FocusStock, TransOrder, TransHistory,
+    WebSetting, DividendRecord,
 )
 from .forms.forms import CAT_CHOICES, MARKET_CHOICES
 from . import cash as cash_utils
@@ -63,13 +64,8 @@ def trans_deal(request, market, code):
     # 初始表单数据
     can_choose_intent = not order  # 无持仓时可选择交易方向
     if order:
-        # 持仓中：根据订单方向决定默认操作
-        if order.intent == 'S':
-            # 空头持仓：默认买入平仓
-            default_intent = 'B'
-        else:
-            # 多头持仓：默认卖出平仓
-            default_intent = 'S'
+        # 持仓中：默认交易方向与持仓方向一致
+        default_intent = order.intent
         initial = {
             'intent': default_intent,
             'date': timezone.now().strftime('%Y-%m-%d'),
@@ -128,9 +124,9 @@ def trans_deal(request, market, code):
         'available': float(config.allowance - config.risk),
         'current_risk': float(config.risk),
         'allowance': float(config.allowance),
-        'commission_ratio': float(config.commission_ratio),
-        'commission_min': float(config.commission_min),
-        'stamp_sell_ratio': float(config.stamp_sell_ratio),
+        'commission_ratio': float(WebSetting.get_setting().commission_ratio),
+        'commission_min': float(WebSetting.get_setting().commission_min),
+        'stamp_sell_ratio': float(WebSetting.get_setting().stamp_sell_ratio),
         'chart': json.dumps(chart_init),
         'stock_name': stock_name,
         'stock_cat': stock_cat,
@@ -154,6 +150,7 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
         stop_price = Decimal(str(params.get('stop_price', 0) or 0))
         win_ratio = Decimal(str(params.get('win_ratio', 0) or 0))
         comments = params.get('comments', '')
+        dividend_tax = Decimal(str(params.get('dividend_tax', 0) or 0))
     except (ValueError, TypeError):
         return JsonResponse({'status': 'error', 'error': '参数格式错误'})
 
@@ -354,6 +351,13 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
             deal.avg_cost_no_fee = order.avg_cost_no_fee
             deal.save(update_fields=['profit', 'win_ratio', 'risk_amount', 'position_qty', 'avg_cost', 'avg_cost_no_fee'])
 
+            # 清仓时使用前端提交的红利税（用户已在弹窗中确认）
+            if position_qty_before > 0 and order.position_qty <= 0 and dividend_tax > 0:
+                # 从收入中扣除分红税
+                total_income -= dividend_tax
+                # 从 order.profit 中扣除分红税
+                order.profit -= dividend_tax
+
             # 更新资金配置
             config.cash += total_income
             # stock 直接根据当前持仓设置（多头为正，空头为负，平仓为0）
@@ -363,15 +367,16 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
             config.risk += risk_change
             if config.risk < 0:
                 config.risk = Decimal('0')
-            config.profit += deal_profit
+            config.profit += deal_profit - dividend_tax
+            order.save(update_fields=['profit'])
             config.save()
 
             # 写入资金历史
             CashHistory.snapshot(
                 event=CashHistory.EVENT_SELL,
                 change=total_income,
-                current_profit=deal_profit,
-                remark=f'卖出{stock_name}{qty}股@{float(price):.{deci}f}',
+                current_profit=deal_profit - dividend_tax,
+                remark=f'卖出{stock_name}{qty}股@{float(price):.{deci}f}' + (f' 扣红利税{dividend_tax}' if dividend_tax > 0 else ''),
                 order=order,
                 date=deal_date,
             )
@@ -701,9 +706,10 @@ def trans_edit(request, market, code):
     # 预期收益 = 卖出收入 - 卖出费用 - 持仓成本(含买入手续费)
     expected_profit = 0
     if order.position_qty > 0 and order.target_price:
+        setting = WebSetting.get_setting()
         sell_amount = float(order.target_price) * order.position_qty
-        commission = max(sell_amount * float(config.commission_ratio), float(config.commission_min))
-        stamp = sell_amount * float(config.stamp_sell_ratio)
+        commission = max(sell_amount * float(setting.commission_ratio), float(setting.commission_min))
+        stamp = sell_amount * float(setting.stamp_sell_ratio)
         sell_fee = commission + stamp
         expected_profit = round(sell_amount - sell_fee - float(order.position_cost), 2)
 
@@ -754,9 +760,9 @@ def trans_edit(request, market, code):
         'avg_cost_no_fee': round(float(order.avg_cost_no_fee), 3) if order.position_qty > 0 else 0,
         'position_qty': order.position_qty,
         'position_cost': round(float(abs(order.position_cost_no_fee)), 2),
-        'commission_ratio': float(config.commission_ratio),
-        'commission_min': float(config.commission_min),
-        'stamp_sell_ratio': float(config.stamp_sell_ratio),
+        'commission_ratio': float(WebSetting.get_setting().commission_ratio),
+        'commission_min': float(WebSetting.get_setting().commission_min),
+        'stamp_sell_ratio': float(WebSetting.get_setting().stamp_sell_ratio),
     })
 
 
@@ -896,4 +902,166 @@ def trans_calc(request):
         'allowed_qty': allowed_qty,
         'win_ratio': win_ratio,
         'profit': profit,
+    })
+
+
+# ===================== 分红登记 =====================
+@require_http_methods(["POST"])
+def trans_dividend(request, market, code):
+    """
+    分红登记：支持同时登记现金分红和送股转增
+    POST JSON: {per_share, bonus_ratio, date, remark}
+    per_share > 0 时进行现金分红，bonus_ratio > 0 时进行送股转增，两者可同时
+    """
+    order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_OPEN).first()
+    if not order:
+        return JsonResponse({'error': '未找到持仓记录'}, status=404)
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': '无效JSON'}, status=400)
+
+    date_str = data.get('date', '')
+    try:
+        div_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else timezone.now().date()
+    except (ValueError, TypeError):
+        return JsonResponse({'error': '日期格式应为 YYYY-MM-DD'}, status=400)
+    remark = data.get('remark', '')
+
+    per_share = Decimal(str(data.get('per_share', 0) or 0))
+    bonus_ratio = Decimal(str(data.get('bonus_ratio', 0) or 0))
+
+    if per_share <= 0 and bonus_ratio <= 0:
+        return JsonResponse({'error': '现金分红和送股比例不能同时为0'}, status=400)
+
+    position_qty = abs(order.position_qty)
+    if position_qty <= 0:
+        return JsonResponse({'error': '当前无持仓'}, status=400)
+
+    with transaction.atomic():
+        config = CashConfig.get_config()
+
+        cash_amount = Decimal('0')
+        qty_change = 0
+
+        # 1. 现金分红
+        if per_share > 0:
+            cash_amount = _q(per_share * position_qty)
+            config.cash = _q(config.cash + cash_amount)
+            config.total = _q(config.cash + config.stock)
+            config.profit = _q(config.profit + cash_amount)
+            order.profit = _q(order.profit + cash_amount)
+
+        # 2. 送股转增
+        if bonus_ratio > 0:
+            qty_change = int(position_qty * bonus_ratio)
+            if qty_change <= 0:
+                return JsonResponse({'error': '送股数量为0'}, status=400)
+            if order.intent == TransOrder.INTENT_BUY:
+                order.buy_qty += qty_change
+            else:
+                order.sell_qty += qty_change
+
+        # 保存 order 和 config
+        order.save()
+        config.save()
+
+        # 3. 写入分红记录（先创建，供 recalculate 查询累计现金分红）
+        dividend = DividendRecord.objects.create(
+            order=order, code=code, name=order.name, market=market,
+            date=div_date,
+            dividend_type=DividendRecord.DIVIDEND_CASH if cash_amount > 0 else DividendRecord.DIVIDEND_BONUS,
+            per_share=per_share, bonus_ratio=bonus_ratio,
+            amount=cash_amount, qty_change=qty_change,
+            remark=remark,
+        )
+
+        # 4. 写入交易历史（送股时需要，用于 recalculate）
+        if qty_change > 0:
+            TransHistory.objects.create(
+                order=order, action=TransHistory.ACTION_DIVIDEND,
+                intent=order.intent, date=div_date,
+                price=0, qty=qty_change, amount=0, fee=0,
+                target_price=order.target_price, stop_price=order.stop_price,
+                comments=remark or f'送股{qty_change}股',
+                profit=order.profit, win_ratio=order.win_ratio,
+                risk_amount=order.risk_amount,
+                position_qty=abs(order.position_qty),
+                avg_cost=order.avg_cost, avg_cost_no_fee=order.avg_cost_no_fee,
+            )
+            order.recalculate()
+
+        # 5. 写入资金历史（change 为现金分红金额，送股时为0）
+        remark_parts = []
+        if cash_amount > 0:
+            remark_parts.append(f'{order.name}现金分红')
+        if qty_change > 0:
+            remark_parts.append(f'送股{qty_change}股')
+        full_remark = ' '.join(remark_parts) + (f' {remark}' if remark else '')
+        CashHistory.snapshot(
+            event=CashHistory.EVENT_DIVIDEND,
+            change=cash_amount,
+            current_profit=cash_amount,
+            remark=full_remark,
+            order=order,
+            date=div_date,
+        )
+
+    return JsonResponse({'status': 'success', 'cash_amount': str(cash_amount), 'qty_change': qty_change})
+
+
+@require_http_methods(['POST'])
+def calc_dividend_tax(request, market, code):
+    """
+    计算卖出清仓时的红利税明细
+    POST JSON: {date: 'YYYY-MM-DD'}
+    返回每笔分红的明细及合计税额
+    """
+    order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_OPEN).first()
+    if not order:
+        return JsonResponse({'error': '未找到持仓记录'}, status=404)
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': '无效JSON'}, status=400)
+
+    date_str = data.get('date', '')
+    try:
+        deal_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else timezone.now().date()
+    except (ValueError, TypeError):
+        return JsonResponse({'error': '日期格式应为 YYYY-MM-DD'}, status=400)
+
+    setting = WebSetting.get_setting()
+    dividends = DividendRecord.objects.filter(
+        order=order, dividend_type=DividendRecord.DIVIDEND_CASH
+    ).order_by('date', 'id')
+
+    details = []
+    total_tax = Decimal('0')
+    for d in dividends:
+        hold_days = (deal_date - d.date).days
+        if hold_days > 365:
+            tax_rate = setting.dividend_tax_long
+            rate_label = '0%'
+        elif hold_days >= 30:
+            tax_rate = setting.dividend_tax_mid
+            rate_label = '10%'
+        else:
+            tax_rate = setting.dividend_tax_short
+            rate_label = '20%'
+        tax = _q(d.amount * tax_rate)
+        total_tax += tax
+        details.append({
+            'date': d.date.strftime('%Y-%m-%d'),
+            'per_share': str(d.per_share),
+            'amount': str(d.amount),
+            'hold_days': hold_days,
+            'tax_rate': rate_label,
+            'tax': str(tax),
+        })
+
+    return JsonResponse({
+        'has_dividend': len(details) > 0,
+        'total_tax': str(total_tax),
+        'details': details,
     })

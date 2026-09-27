@@ -1,0 +1,90 @@
+{% extends "base-view.html" %}
+{% load static %}
+{% block title %}参数设置{% endblock %}
+{% block content %}
+<div class="form-wrap">
+    <h6 class="mb-3">参数设置</h6>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="mb-3">交易费用</h6>
+                <div class="row g-3">
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1">佣金费率</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="commission_ratio" class="form-control" value="{{ commission_ratio_pct }}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1">最低佣金</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="commission_min" class="form-control" value="{{ setting.commission_min }}">
+                            <span class="input-group-text">元</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1">印花税率（买入）</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="stamp_buy_ratio" class="form-control" value="{{ stamp_buy_ratio_pct }}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <label class="form-label small mb-1">印花税率（卖出）</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="stamp_sell_ratio" class="form-control" value="{{ stamp_sell_ratio_pct }}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="mb-3">分红税率</h6>
+                <div class="row g-3">
+                    <div class="col-md-4 col-sm-12">
+                        <label class="form-label small mb-1">持股 > 1年</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="dividend_tax_long" class="form-control" value="{{ dividend_tax_long_pct }}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-12">
+                        <label class="form-label small mb-1">持股 ≥ 1月</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="dividend_tax_mid" class="form-control" value="{{ dividend_tax_mid_pct }}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-12">
+                        <label class="form-label small mb-1">持股 < 1月</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="dividend_tax_short" class="form-control" value="{{ dividend_tax_short_pct }}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary btn-sm">保存</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+    import { baseInit } from "{% static 'base/js/base.js' %}";
+    document.addEventListener('DOMContentLoaded', () => {
+        baseInit();
+    });
+</script>
+{% endblock %}

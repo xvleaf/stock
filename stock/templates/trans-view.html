@@ -113,6 +113,39 @@
     </div>
 </div>
 
+{# 分红登记弹窗 #}
+<div class="modal fade" id="dividendModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title w-100 text-center" style="font-size:0.6rem;">分红登记</h6>
+            </div>
+            <div class="modal-body pt-0">
+                <div class="mb-2">
+                    <label class="form-label small mb-1">每股分红（税前，元，可留空）</label>
+                    <input type="text" class="form-control form-control-sm" id="dividendPerShare" placeholder="例如：0.5">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">送股比例（例如0.1表示10送1，可留空）</label>
+                    <input type="text" class="form-control form-control-sm" id="dividendBonusRatio" placeholder="例如：0.1">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">分红日期</label>
+                    <input type="text" class="form-control form-control-sm" id="dividendDate" placeholder="YYYY-MM-DD" maxlength="10">
+                </div>
+                <div class="mb-0">
+                    <label class="form-label small mb-1">备注（可选）</label>
+                    <input type="text" class="form-control form-control-sm" id="dividendRemark" placeholder="可选">
+                </div>
+            </div>
+            <div class="modal-footer py-2 justify-content-between border-top-0">
+                <button type="button" class="btn btn-link p-0" id="dividendModalCancel">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" id="dividendModalConfirm">确认</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
