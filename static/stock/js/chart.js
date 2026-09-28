@@ -619,7 +619,10 @@ function hideAction() {
 }
 
 function exitEventListen() {
-    document.getElementById('exitBtn').addEventListener('click', function(e) {
+    const exitBtn = document.getElementById('exitBtn');
+    if (!exitBtn || exitBtn.dataset.bound) return;
+    exitBtn.dataset.bound = 'true';
+    exitBtn.addEventListener('click', function(e) {
         e.preventDefault();
 
         // 获取当前日期作为默认值（格式 YYYY-MM-DD）

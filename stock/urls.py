@@ -48,7 +48,7 @@ urlpatterns = [
     path('trans/deal/<str:market>/<str:code>', trans.trans_deal, name='trans_deal'),
     path('trans/calc', trans.trans_calc, name='trans_calc'),
     path('trans/dividend/<str:market>/<str:code>', trans.trans_dividend, name='trans_dividend'),
-    path('trans/calc_dividend_tax/<str:market>/<str:code>', trans.calc_dividend_tax, name='calc_dividend_tax'),
+    path('trans/dividend/calc/<str:market>/<str:code>', trans.calc_dividend_tax, name='calc_dividend_tax'),
     path('trans/view/<str:market>/<str:code>', trans.trans_view, name='trans_view'),
     path('trans/edit/<str:market>/<str:code>', trans.trans_edit, name='trans_edit'),
 

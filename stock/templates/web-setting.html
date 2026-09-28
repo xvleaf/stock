@@ -15,22 +15,22 @@
                 <div class="row g-3">
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">备案编号</label>
-                        <input type="text" name="icp_number" class="form-control form-control-sm" value="{{ setting.icp_number }}" placeholder="{{ remarks.icp_number }}">
+                        <input type="text" name="icp_number" class="form-control" value="{{ setting.icp_number }}" placeholder="{{ remarks.icp_number }}">
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">备案官网</label>
-                        <input type="text" name="icp_website" class="form-control form-control-sm" value="{{ setting.icp_website }}" placeholder="{{ remarks.icp_website }}">
+                        <input type="text" name="icp_website" class="form-control" value="{{ setting.icp_website }}" placeholder="{{ remarks.icp_website }}">
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">分页默认数量</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="default_page_size" class="form-control" value="{{ setting.default_page_size }}" placeholder="{{ remarks.default_page_size }}">
                             <span class="input-group-text">条</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">行情刷新间隔</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="quote_interval" class="form-control" value="{{ setting.quote_interval }}" placeholder="{{ remarks.quote_interval }}">
                             <span class="input-group-text">秒</span>
                         </div>
@@ -46,28 +46,28 @@
                 <div class="row g-3">
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">佣金费率</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="commission_ratio" class="form-control" value="{{ commission_ratio_pct }}" placeholder="{{ remarks.commission_ratio }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">最低佣金</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="commission_min" class="form-control" value="{{ commission_min_fmt }}" placeholder="{{ remarks.commission_min }}">
                             <span class="input-group-text">元</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">印花税率（买入）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="stamp_buy_ratio" class="form-control" value="{{ stamp_buy_ratio_pct }}" placeholder="{{ remarks.stamp_buy_ratio }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">印花税率（卖出）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="stamp_sell_ratio" class="form-control" value="{{ stamp_sell_ratio_pct }}" placeholder="{{ remarks.stamp_sell_ratio }}">
                             <span class="input-group-text">%</span>
                         </div>
@@ -83,21 +83,21 @@
                 <div class="row g-3">
                     <div class="col-md-4 col-sm-12">
                         <label class="form-label small mb-1">沪市</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="transfer_fee_sh" class="form-control" value="{{ transfer_fee_sh_pct }}" placeholder="{{ remarks.transfer_fee_sh }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-4 col-sm-12">
                         <label class="form-label small mb-1">深市</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="transfer_fee_sz" class="form-control" value="{{ transfer_fee_sz_pct }}" placeholder="{{ remarks.transfer_fee_sz }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-4 col-sm-12">
                         <label class="form-label small mb-1">北交所</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="transfer_fee_bj" class="form-control" value="{{ transfer_fee_bj_pct }}" placeholder="{{ remarks.transfer_fee_bj }}">
                             <span class="input-group-text">%</span>
                         </div>
@@ -113,21 +113,21 @@
                 <div class="row g-3">
                     <div class="col-md-4 col-sm-12">
                         <label class="form-label small mb-1">持股 > 1年</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="dividend_tax_long" class="form-control" value="{{ dividend_tax_long_pct }}" placeholder="{{ remarks.dividend_tax_long }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-4 col-sm-12">
                         <label class="form-label small mb-1">持股 ≥ 1月</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="dividend_tax_mid" class="form-control" value="{{ dividend_tax_mid_pct }}" placeholder="{{ remarks.dividend_tax_mid }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-4 col-sm-12">
                         <label class="form-label small mb-1">持股 < 1月</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="dividend_tax_short" class="form-control" value="{{ dividend_tax_short_pct }}" placeholder="{{ remarks.dividend_tax_short }}">
                             <span class="input-group-text">%</span>
                         </div>
@@ -143,19 +143,19 @@
                 <div class="row g-3">
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">上午开始时间</label>
-                        <input type="text" name="trade_am_start" class="form-control form-control-sm" value="{{ trade_am_start_fmt }}" placeholder="{{ remarks.trade_am_start }}">
+                        <input type="text" name="trade_am_start" class="form-control" value="{{ trade_am_start_fmt }}" placeholder="{{ remarks.trade_am_start }}">
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">上午结束时间</label>
-                        <input type="text" name="trade_am_end" class="form-control form-control-sm" value="{{ trade_am_end_fmt }}" placeholder="{{ remarks.trade_am_end }}">
+                        <input type="text" name="trade_am_end" class="form-control" value="{{ trade_am_end_fmt }}" placeholder="{{ remarks.trade_am_end }}">
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">下午开始时间</label>
-                        <input type="text" name="trade_pm_start" class="form-control form-control-sm" value="{{ trade_pm_start_fmt }}" placeholder="{{ remarks.trade_pm_start }}">
+                        <input type="text" name="trade_pm_start" class="form-control" value="{{ trade_pm_start_fmt }}" placeholder="{{ remarks.trade_pm_start }}">
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">下午结束时间</label>
-                        <input type="text" name="trade_pm_end" class="form-control form-control-sm" value="{{ trade_pm_end_fmt }}" placeholder="{{ remarks.trade_pm_end }}">
+                        <input type="text" name="trade_pm_end" class="form-control" value="{{ trade_pm_end_fmt }}" placeholder="{{ remarks.trade_pm_end }}">
                     </div>
                 </div>
             </div>
@@ -168,75 +168,75 @@
                 <div class="row g-3">
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">日线起始日期</label>
-                        <input type="text" name="kline_start_date_day" class="form-control form-control-sm" value="{{ setting.kline_start_date_day }}" placeholder="{{ remarks.kline_start_date_day }}">
+                        <input type="text" name="kline_start_date_day" class="form-control" value="{{ setting.kline_start_date_day }}" placeholder="{{ remarks.kline_start_date_day }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">周线起始日期</label>
-                        <input type="text" name="kline_start_date_week" class="form-control form-control-sm" value="{{ setting.kline_start_date_week }}" placeholder="{{ remarks.kline_start_date_week }}">
+                        <input type="text" name="kline_start_date_week" class="form-control" value="{{ setting.kline_start_date_week }}" placeholder="{{ remarks.kline_start_date_week }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">月线起始日期</label>
-                        <input type="text" name="kline_start_date_month" class="form-control form-control-sm" value="{{ setting.kline_start_date_month }}" placeholder="{{ remarks.kline_start_date_month }}">
+                        <input type="text" name="kline_start_date_month" class="form-control" value="{{ setting.kline_start_date_month }}" placeholder="{{ remarks.kline_start_date_month }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">日线MA周期</label>
-                        <input type="text" name="kline_ma_day" class="form-control form-control-sm" value="{{ setting.kline_ma_day }}" placeholder="{{ remarks.kline_ma_day }}">
+                        <input type="text" name="kline_ma_day" class="form-control" value="{{ setting.kline_ma_day }}" placeholder="{{ remarks.kline_ma_day }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">周线MA周期</label>
-                        <input type="text" name="kline_ma_week" class="form-control form-control-sm" value="{{ setting.kline_ma_week }}" placeholder="{{ remarks.kline_ma_week }}">
+                        <input type="text" name="kline_ma_week" class="form-control" value="{{ setting.kline_ma_week }}" placeholder="{{ remarks.kline_ma_week }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">月线MA周期</label>
-                        <input type="text" name="kline_ma_month" class="form-control form-control-sm" value="{{ setting.kline_ma_month }}" placeholder="{{ remarks.kline_ma_month }}">
+                        <input type="text" name="kline_ma_month" class="form-control" value="{{ setting.kline_ma_month }}" placeholder="{{ remarks.kline_ma_month }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">日线MV周期</label>
-                        <input type="text" name="kline_mv_day" class="form-control form-control-sm" value="{{ setting.kline_mv_day }}" placeholder="{{ remarks.kline_mv_day }}">
+                        <input type="text" name="kline_mv_day" class="form-control" value="{{ setting.kline_mv_day }}" placeholder="{{ remarks.kline_mv_day }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">周线MV周期</label>
-                        <input type="text" name="kline_mv_week" class="form-control form-control-sm" value="{{ setting.kline_mv_week }}" placeholder="{{ remarks.kline_mv_week }}">
+                        <input type="text" name="kline_mv_week" class="form-control" value="{{ setting.kline_mv_week }}" placeholder="{{ remarks.kline_mv_week }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">月线MV周期</label>
-                        <input type="text" name="kline_mv_month" class="form-control form-control-sm" value="{{ setting.kline_mv_month }}" placeholder="{{ remarks.kline_mv_month }}">
+                        <input type="text" name="kline_mv_month" class="form-control" value="{{ setting.kline_mv_month }}" placeholder="{{ remarks.kline_mv_month }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">日线EMA-K值</label>
-                        <input type="text" name="kline_ema_k_day" class="form-control form-control-sm" value="{{ setting.kline_ema_k_day }}" placeholder="{{ remarks.kline_ema_k_day }}">
+                        <input type="text" name="kline_ema_k_day" class="form-control" value="{{ setting.kline_ema_k_day }}" placeholder="{{ remarks.kline_ema_k_day }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">周线EMA-K值</label>
-                        <input type="text" name="kline_ema_k_week" class="form-control form-control-sm" value="{{ setting.kline_ema_k_week }}" placeholder="{{ remarks.kline_ema_k_week }}">
+                        <input type="text" name="kline_ema_k_week" class="form-control" value="{{ setting.kline_ema_k_week }}" placeholder="{{ remarks.kline_ema_k_week }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">月线EMA-K值</label>
-                        <input type="text" name="kline_ema_k_month" class="form-control form-control-sm" value="{{ setting.kline_ema_k_month }}" placeholder="{{ remarks.kline_ema_k_month }}">
+                        <input type="text" name="kline_ema_k_month" class="form-control" value="{{ setting.kline_ema_k_month }}" placeholder="{{ remarks.kline_ema_k_month }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">日线EMA-D值</label>
-                        <input type="text" name="kline_ema_d_day" class="form-control form-control-sm" value="{{ setting.kline_ema_d_day }}" placeholder="{{ remarks.kline_ema_d_day }}">
+                        <input type="text" name="kline_ema_d_day" class="form-control" value="{{ setting.kline_ema_d_day }}" placeholder="{{ remarks.kline_ema_d_day }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">周线EMA-D值</label>
-                        <input type="text" name="kline_ema_d_week" class="form-control form-control-sm" value="{{ setting.kline_ema_d_week }}" placeholder="{{ remarks.kline_ema_d_week }}">
+                        <input type="text" name="kline_ema_d_week" class="form-control" value="{{ setting.kline_ema_d_week }}" placeholder="{{ remarks.kline_ema_d_week }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">月线EMA-D值</label>
-                        <input type="text" name="kline_ema_d_month" class="form-control form-control-sm" value="{{ setting.kline_ema_d_month }}" placeholder="{{ remarks.kline_ema_d_month }}">
+                        <input type="text" name="kline_ema_d_month" class="form-control" value="{{ setting.kline_ema_d_month }}" placeholder="{{ remarks.kline_ema_d_month }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">K线最大密度</label>
-                        <input type="text" name="density_max" class="form-control form-control-sm" value="{{ setting.density_max }}" placeholder="{{ remarks.density_max }}">
+                        <input type="text" name="density_max" class="form-control" value="{{ setting.density_max }}" placeholder="{{ remarks.density_max }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">K线标准密度</label>
-                        <input type="text" name="density_std" class="form-control form-control-sm" value="{{ setting.density_std }}" placeholder="{{ remarks.density_std }}">
+                        <input type="text" name="density_std" class="form-control" value="{{ setting.density_std }}" placeholder="{{ remarks.density_std }}">
                     </div>
                     <div class="col-md-4 col-12">
                         <label class="form-label small mb-1">K线最小密度</label>
-                        <input type="text" name="density_min" class="form-control form-control-sm" value="{{ setting.density_min }}" placeholder="{{ remarks.density_min }}">
+                        <input type="text" name="density_min" class="form-control" value="{{ setting.density_min }}" placeholder="{{ remarks.density_min }}">
                     </div>
                 </div>
             </div>
@@ -257,7 +257,7 @@
                     </div>
                     <div class="col-md-4 col-sm-6">
                         <label class="form-label small mb-1">导航栏隐藏阈值</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <span class="input-group-text">≤</span>
                             <input type="text" name="nav_locked_screen_height" id="id_nav_locked_screen_height" class="form-control" value="{{ setting.nav_locked_screen_height }}" placeholder="{{ remarks.nav_locked_screen_height }}">
                             <span class="input-group-text">px</span>
@@ -265,28 +265,28 @@
                     </div>
                     <div class="col-md-4 col-sm-6">
                         <label class="form-label small mb-1">导航间隔</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="gap_height" class="form-control" value="{{ setting.gap_height }}" placeholder="{{ remarks.gap_height }}">
                             <span class="input-group-text">px</span>
                         </div>
                     </div>
                     <div class="col-md-4 col-sm-6">
                         <label class="form-label small mb-1">导航高度（桌面）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="nav_height" class="form-control" value="{{ setting.nav_height }}" placeholder="{{ remarks.nav_height }}">
                             <span class="input-group-text">px</span>
                         </div>
                     </div>
                     <div class="col-md-4 col-sm-6">
                         <label class="form-label small mb-1">导航高度（移动）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="nav_height_mobile" class="form-control" value="{{ setting.nav_height_mobile }}" placeholder="{{ remarks.nav_height_mobile }}">
                             <span class="input-group-text">px</span>
                         </div>
                     </div>
                     <div class="col-md-4 col-sm-6">
                         <label class="form-label small mb-1">底部导航高度</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="navi_bar_height" class="form-control" value="{{ setting.navi_bar_height }}" placeholder="{{ remarks.navi_bar_height }}">
                             <span class="input-group-text">px</span>
                         </div>
@@ -298,56 +298,56 @@
                 <div class="row g-3">
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">移动断点</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="mobile_breakpoint" class="form-control" value="{{ setting.mobile_breakpoint }}" placeholder="{{ remarks.mobile_breakpoint }}">
                             <span class="input-group-text">px</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">断点一</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="bp1" class="form-control" value="{{ setting.bp1 }}" placeholder="{{ remarks.bp1 }}">
                             <span class="input-group-text">px</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">断点二</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="bp2" class="form-control" value="{{ setting.bp2 }}" placeholder="{{ remarks.bp2 }}">
                             <span class="input-group-text">px</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">断点三</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="bp3" class="form-control" value="{{ setting.bp3 }}" placeholder="{{ remarks.bp3 }}">
                             <span class="input-group-text">px</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">宽度一（正常）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="w1" class="form-control" value="{{ setting.w1 }}" placeholder="{{ remarks.w1 }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">宽度二（正常）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="w2" class="form-control" value="{{ setting.w2 }}" placeholder="{{ remarks.w2 }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">宽度三（正常）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="w3" class="form-control" value="{{ setting.w3 }}" placeholder="{{ remarks.w3 }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">宽度四（正常）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="w4" class="form-control" value="{{ setting.w4 }}" placeholder="{{ remarks.w4 }}">
                             <span class="input-group-text">%</span>
                         </div>
@@ -359,91 +359,91 @@
                 <div class="row g-3">
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">高度一（正常）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="h1" class="form-control" value="{{ setting.h1 }}" placeholder="{{ remarks.h1 }}">
                             <span class="input-group-text">vh</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">高度二（正常）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="h2" class="form-control" value="{{ setting.h2 }}" placeholder="{{ remarks.h2 }}">
                             <span class="input-group-text">vh</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">高度三（正常）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="h3" class="form-control" value="{{ setting.h3 }}" placeholder="{{ remarks.h3 }}">
                             <span class="input-group-text">vh</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">高度四（正常）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="h4" class="form-control" value="{{ setting.h4 }}" placeholder="{{ remarks.h4 }}">
                             <span class="input-group-text">vh</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">宽度一（全屏）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="w5" class="form-control" value="{{ setting.w5 }}" placeholder="{{ remarks.w5 }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">宽度二（全屏）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="w6" class="form-control" value="{{ setting.w6 }}" placeholder="{{ remarks.w6 }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">宽度三（全屏）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="w7" class="form-control" value="{{ setting.w7 }}" placeholder="{{ remarks.w7 }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">宽度四（全屏）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="w8" class="form-control" value="{{ setting.w8 }}" placeholder="{{ remarks.w8 }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">高度一（全屏）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="h5" class="form-control" value="{{ setting.h5 }}" placeholder="{{ remarks.h5 }}">
                             <span class="input-group-text">vh</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">高度二（全屏）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="h6" class="form-control" value="{{ setting.h6 }}" placeholder="{{ remarks.h6 }}">
                             <span class="input-group-text">vh</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">高度三（全屏）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="h7" class="form-control" value="{{ setting.h7 }}" placeholder="{{ remarks.h7 }}">
                             <span class="input-group-text">vh</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">高度四（全屏）</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="h8" class="form-control" value="{{ setting.h8 }}" placeholder="{{ remarks.h8 }}">
                             <span class="input-group-text">vh</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">资金曲线高度</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="cash_chart_height" class="form-control" value="{{ setting.cash_chart_height }}" placeholder="{{ remarks.cash_chart_height }}">
                             <span class="input-group-text">px</span>
                         </div>
@@ -458,14 +458,14 @@
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">分时主图比例</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="trend_main_ratio" class="form-control" value="{{ setting.trend_main_ratio }}" placeholder="{{ remarks.trend_main_ratio }}">
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
                     <div class="col-md-3 col-sm-6">
                         <label class="form-label small mb-1">K线主图比例</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group">
                             <input type="text" name="kline_main_ratio" class="form-control" value="{{ setting.kline_main_ratio }}" placeholder="{{ remarks.kline_main_ratio }}">
                             <span class="input-group-text">%</span>
                         </div>

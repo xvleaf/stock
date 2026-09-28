@@ -42,19 +42,26 @@ export function initTransDeal(opts = {}) {
     const dividendTaxBody = document.getElementById('dividendTaxBody');
     let confirmedDividendTax = 0;
     let dividendTaxChecked = false; // 防止重复弹窗
+    // 保存上一次非清仓状态的目标/止损价格
+    let lastTargetPrice = targetInput ? targetInput.value : '0';
+    let lastStopPrice = stopInput ? stopInput.value : '0';
 
-    // 判断是否达到清仓/反手做空条件（卖出方向 且 卖出数量 >= 多头持仓数量）
+    // 判断是否达到清仓/反手条件（支持多头和空头）
     function isClearCondition() {
         const intent = intentSelect ? intentSelect.value : 'B';
         const qty = parseInt(qtyInput.value) || 0;
-        return intent === 'S' && positionQty > 0 && qty >= positionQty;
+        // 多头清仓/反手做空：卖出方向 + 多头持仓 + 卖出数量 >= 持仓
+        if (intent === 'S' && positionQty > 0 && qty >= positionQty) return true;
+        // 空头清仓/反手做多：买入方向 + 空头持仓 + 买入数量 >= 持仓绝对值
+        if (intent === 'B' && positionQty < 0 && qty >= Math.abs(positionQty)) return true;
+        return false;
     }
 
     // 调用后端计算红利税明细
     function fetchDividendTax() {
         const dateInput = document.getElementById('id_date');
         const date = dateInput ? dateInput.value : '';
-        return fetch(`/trans/calc_dividend_tax/${initChart.market}/${initChart.code}`, {
+        return fetch(`/trans/dividend/calc/${initChart.market}/${initChart.code}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -74,13 +81,15 @@ export function initTransDeal(opts = {}) {
         if (data.details && data.details.length > 0) {
             data.details.forEach(d => {
                 const tr = document.createElement('tr');
+                const perShare = parseFloat(d.per_share).toFixed(2);
                 tr.innerHTML = `
-                    <td>${d.date}</td>
-                    <td>${d.per_share}元</td>
-                    <td>${d.amount}元</td>
-                    <td>${d.hold_days}天</td>
+                    <td>${d.div_date.replace(/-/g, '')}</td>
+                    <td>${d.buy_date.replace(/-/g, '')}</td>
+                    <td>${d.hold_days}</td>
+                    <td>${d.qty}</td>
+                    <td>${perShare}</td>
                     <td>${d.tax_rate}</td>
-                    <td>${d.tax}元</td>
+                    <td>${d.tax}</td>
                 `;
                 dividendTaxBody.appendChild(tr);
             });
@@ -129,11 +138,31 @@ export function initTransDeal(opts = {}) {
     // 交易方向或数量变化时，重置检查状态
     function onIntentOrQtyChange() {
         dividendTaxChecked = false;
+
+        // 清仓或反手时，目标价格和止损价格自动设为0；取消时恢复
+        if (isClearCondition()) {
+            if (targetInput && targetInput.value !== '0') {
+                lastTargetPrice = targetInput.value;
+            }
+            if (stopInput && stopInput.value !== '0') {
+                lastStopPrice = stopInput.value;
+            }
+            if (targetInput) targetInput.value = '0';
+            if (stopInput) stopInput.value = '0';
+        } else {
+            if (targetInput && targetInput.value === '0') {
+                targetInput.value = lastTargetPrice;
+            }
+            if (stopInput && stopInput.value === '0') {
+                stopInput.value = lastStopPrice;
+            }
+        }
+
         // 延迟检查，等其他计算完成
         setTimeout(checkDividendTax, 100);
     }
     if (intentSelect) intentSelect.addEventListener('change', onIntentOrQtyChange);
-    qtyInput.addEventListener('blur', onIntentOrQtyChange);
+    if (qtyInput) qtyInput.addEventListener('input', onIntentOrQtyChange);
 
     // 收集当前参数
     function collectParams() {
@@ -323,73 +352,87 @@ export function initTransView(opts = {}) {
     // 暴露给图表的 up/down 按钮
     window.switchTransPilot = switchPilot;
 
-    // ===== 分红登记（divdBtn） =====
-    const divdBtn = document.getElementById('divdBtn');
-    const dividendModalEl = document.getElementById('dividendModal');
-    if (divdBtn && dividendModalEl) {
-        const dividendModal = new bootstrap.Modal(dividendModalEl);
-        const perShareInput = document.getElementById('dividendPerShare');
-        const bonusRatioInput = document.getElementById('dividendBonusRatio');
-        const dateInput = document.getElementById('dividendDate');
-        const remarkInput = document.getElementById('dividendRemark');
+    // ===== 分红登记（divdBtn）—— 监听 chartLoaded 事件，确保图表渲染完成后绑定 =====
+    if (!window._dividendModalBound) {
+        window._dividendModalBound = true;
+        window.addEventListener('chartLoaded', (e) => {
+            if (!e.detail || e.detail.site !== '/trans/view') return;
 
-        // 默认填写当前日期
-        const today = new Date();
-        const y = today.getFullYear();
-        const m = String(today.getMonth() + 1).padStart(2, '0');
-        const d = String(today.getDate()).padStart(2, '0');
-        dateInput.value = `${y}-${m}-${d}`;
+            const divdBtn = document.getElementById('divdBtn');
+            const dividendModalEl = document.getElementById('dividendModal');
+            if (!divdBtn || !dividendModalEl || divdBtn.dataset.bound) return;
+            divdBtn.dataset.bound = 'true';
 
-        // 点击 divdBtn 打开弹窗
-        divdBtn.addEventListener('click', () => {
-            dividendModal.show();
-        });
+            const dividendModal = bootstrap.Modal.getInstance(dividendModalEl) || new bootstrap.Modal(dividendModalEl);
+            const perShareInput = document.getElementById('dividendPerShare');
+            const bonusRatioInput = document.getElementById('dividendBonusRatio');
+            const dateInput = document.getElementById('dividendDate');
+            const remarkInput = document.getElementById('dividendRemark');
 
-        // 取消按钮
-        document.getElementById('dividendModalCancel').addEventListener('click', () => {
-            dividendModal.hide();
-        });
+            // 默认填写当前日期
+            const today = new Date();
+            const y = today.getFullYear();
+            const m = String(today.getMonth() + 1).padStart(2, '0');
+            const d = String(today.getDate()).padStart(2, '0');
+            if (dateInput) dateInput.value = `${y}-${m}-${d}`;
 
-        // 确认按钮
-        document.getElementById('dividendModalConfirm').addEventListener('click', () => {
-            const date = dateInput.value.trim();
-            const remark = remarkInput.value.trim();
-            const perShare = parseFloat(perShareInput.value);
-            const bonusRatio = parseFloat(bonusRatioInput.value);
+            // 点击 divdBtn 打开弹窗
+            divdBtn.addEventListener('click', () => {
+                dividendModal.show();
+            });
 
-            // 至少填写一项
-            const hasCash = !isNaN(perShare) && perShare > 0;
-            const hasBonus = !isNaN(bonusRatio) && bonusRatio > 0;
-            if (!hasCash && !hasBonus) {
-                showAlert({ title: '提示', text: '请至少填写每股分红或送股比例', type: 'warning' });
-                return;
+            // 取消按钮
+            const cancelBtn = document.getElementById('dividendModalCancel');
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', () => {
+                    dividendModal.hide();
+                });
             }
 
-            if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-                showAlert({ title: '提示', text: '请输入有效的日期（YYYY-MM-DD）', type: 'warning' });
-                return;
-            }
+            // 确认按钮
+            const confirmBtn = document.getElementById('dividendModalConfirm');
+            if (confirmBtn) {
+                confirmBtn.addEventListener('click', () => {
+                    const date = dateInput ? dateInput.value.trim() : '';
+                    const remark = remarkInput ? remarkInput.value.trim() : '';
+                    const cashAmount = perShareInput ? parseFloat(perShareInput.value) : NaN;
+                    const bonusQty = bonusRatioInput ? parseInt(bonusRatioInput.value) : NaN;
 
-            const payload = {
-                date: date,
-                remark: remark,
-                per_share: hasCash ? perShare : 0,
-                bonus_ratio: hasBonus ? bonusRatio : 0,
-            };
-
-            postRequest(`/trans/dividend/${initChart.market}/${initChart.code}`, payload)
-                .then(res => {
-                    if (res.error) {
-                        showAlert({ title: '失败', text: res.error, type: 'error' });
+                    // 至少填写一项
+                    const hasCash = !isNaN(cashAmount) && cashAmount > 0;
+                    const hasBonus = !isNaN(bonusQty) && bonusQty > 0;
+                    if (!hasCash && !hasBonus) {
+                        showAlert({ title: '提示', text: '请至少填写分红金额或送股数量', type: 'warning' });
                         return;
                     }
-                    dividendModal.hide();
-                    showAlert({ title: '成功', text: '分红登记完成', type: 'success' });
-                    setTimeout(() => { window.location.reload(); }, 3000);
-                })
-                .catch(() => {
-                    showAlert({ title: '失败', text: '分红登记失败', type: 'error' });
+
+                    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                        showAlert({ title: '提示', text: '请输入有效的日期（YYYY-MM-DD）', type: 'warning' });
+                        return;
+                    }
+
+                    const payload = {
+                        date: date,
+                        remark: remark,
+                        cash_amount: hasCash ? cashAmount : 0,
+                        bonus_qty: hasBonus ? bonusQty : 0,
+                    };
+
+                    postRequest(`/trans/dividend/${initChart.market}/${initChart.code}`, payload)
+                        .then(res => {
+                            if (res.error) {
+                                showAlert({ title: '失败', text: res.error, type: 'error' });
+                                return;
+                            }
+                            dividendModal.hide();
+                            showAlert({ title: '成功', text: '分红登记完成', type: 'success' });
+                            setTimeout(() => { window.location.reload(); }, 3000);
+                        })
+                        .catch(() => {
+                            showAlert({ title: '失败', text: '分红登记失败', type: 'error' });
+                        });
                 });
+            }
         });
     }
 }

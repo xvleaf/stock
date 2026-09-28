@@ -26,11 +26,11 @@ def cash_view(request):
     config = CashConfig.get_config()
     # 最近一条历史记录用于展示
     latest_history = CashHistory.objects.first()
-    # 可撤回的记录ID：最新一条为存入/取出/买入/卖出/调整计划时
+    # 可撤回的记录ID：最新一条为存入/取出/买入/卖出/调整计划/分红时
     revocable_id = latest_history.id if latest_history and latest_history.event in (
         CashHistory.EVENT_DEPOSIT, CashHistory.EVENT_WITHDRAW,
         CashHistory.EVENT_BUY, CashHistory.EVENT_SELL,
-        CashHistory.EVENT_ADJUST
+        CashHistory.EVENT_ADJUST, CashHistory.EVENT_DIVIDEND
     ) else None
     # 分页 / 每页数量 / 日期范围（POST 提交时更新 session）
     if request.method == 'POST':
@@ -276,33 +276,38 @@ def cash_revoke(request):
             if not dividend:
                 return JsonResponse({'error': '分红记录不存在'}, status=400)
 
-            # 1. 现金分红撤销：恢复资金
+            # 1. 现金分红撤销：恢复资金（分红不算收益，不修改 profit）
             if dividend.amount > 0:
                 amount = dividend.amount
                 config.cash -= amount
+                config.stock += amount  # 恢复折减的成本市值
                 config.total = config.cash + config.stock
-                config.profit -= amount
-                order.profit -= amount
 
-            # 2. 送股撤销：删除对应的 TransHistory，重算持仓
-            if dividend.qty_change > 0:
-                deal = order.histories.filter(action=TransHistory.ACTION_DIVIDEND).order_by('-id').first()
-                if deal:
-                    deal.delete()
-                order.recalculate()
-                # 从剩余最新一笔 history 恢复快照
-                last_deal = order.histories.order_by('-id').first()
-                if last_deal:
-                    order.target_price = last_deal.target_price
-                    order.stop_price = last_deal.stop_price
-                    order.risk_amount = last_deal.risk_amount
-                    order.win_ratio = last_deal.win_ratio
-                    order.profit = last_deal.profit
-                config.stock = order.position_cost_no_fee
+            # 2. 先删除分红记录（确保 recalculate 时累计现金分红不包含这笔分红）
+            dividend.delete()
+
+            # 3. 删除分红对应的 TransHistory 记录（现金分红和送股都有记录）
+            deal = order.histories.filter(action=TransHistory.ACTION_DIVIDEND).order_by('-id').first()
+            if deal:
+                deal.delete()
+
+            # 4. 重新计算持仓（position_cost/avg_cost/sold_cost/buy_qty/sell_qty 等全部重算）
+            order.recalculate()
+
+            # 5. 从剩余最新一笔 history 恢复快照（目标价/止损价/风险资金/盈利机会等）
+            last_deal = order.histories.order_by('-id').first()
+            if last_deal:
+                order.target_price = last_deal.target_price
+                order.stop_price = last_deal.stop_price
+                order.risk_amount = last_deal.risk_amount
+                order.win_ratio = last_deal.win_ratio
+                order.profit = last_deal.profit
+
+            # 6. 更新 config.stock（根据当前持仓成本）
+            config.stock = order.position_cost_no_fee
+            config.total = config.cash + config.stock
 
             order.save()
-            # 删除分红记录和资金历史
-            dividend.delete()
             config.save()
             latest.delete()
         else:

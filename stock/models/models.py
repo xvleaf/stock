@@ -156,7 +156,7 @@ class CashHistory(models.Model):
         (EVENT_WITHDRAW, '取出资金'),
         (EVENT_BUY, '买入股票'),
         (EVENT_SELL, '卖出股票'),
-        (EVENT_DIVIDEND, '分红'),
+        (EVENT_DIVIDEND, '股票分红'),
         (EVENT_ADJUST, '调整计划'),
     ]
     date = models.DateField('变化日期', default=timezone.now, db_index=True)
@@ -503,6 +503,16 @@ class TransOrder(models.Model):
         for d in histories:
             if d.action == TransHistory.ACTION_EDIT:
                 continue  # 编辑记录不参与持仓计算
+            if d.action == TransHistory.ACTION_DIVIDEND:
+                # 分红记录：实时处理
+                if d.dividend_amount > 0:
+                    # 现金分红：折减持仓成本（含手续费和不含手续费都扣除）
+                    position_cost -= d.dividend_amount
+                    position_cost_no_fee -= d.dividend_amount
+                if d.qty > 0 and position_qty != 0:
+                    # 送股转增：按比例增加持仓数量，成本不变，均价摊薄
+                    position_qty += d.qty
+                continue
             if d.intent == TransHistory.INTENT_BUY:
                 if position_qty >= 0:
                     # 多头或空仓：买入建仓/加仓
@@ -606,11 +616,8 @@ class TransOrder(models.Model):
         self.buy_fee = buy_fee
         self.sell_fee = sell_fee
         self.total_fee = buy_fee + sell_fee
-        # 加上累计现金分红的利润（送股不影响利润）
-        from django.db.models import Sum
-        total_dividend = self.dividends.filter(dividend_type=DividendRecord.DIVIDEND_CASH).aggregate(
-            total=Sum('amount'))['total'] or Decimal('0')
-        self.profit = (profit + total_dividend).quantize(Decimal('0.01'))
+        # profit 不加上分红金额（分红不算收益，仅是市值转现金；分红已在遍历中实时扣除持仓成本）
+        self.profit = profit.quantize(Decimal('0.01'))
         # 保存含手续费持仓成本（多头为正，空头为负），用于从数据库重新获取时正确计算 avg_cost
         self.position_cost = position_cost.quantize(Decimal('0.01'))
         self.position_cost_no_fee = position_cost_no_fee.quantize(Decimal('0.01'))
@@ -676,6 +683,8 @@ class TransHistory(models.Model):
     position_qty = models.IntegerField('持仓数量', default=0)
     avg_cost = models.DecimalField('持仓均价', max_digits=10, decimal_places=3, default=0)
     avg_cost_no_fee = models.DecimalField('不含费持仓均价', max_digits=10, decimal_places=3, default=0)
+    dividend_amount = models.DecimalField('分红金额', max_digits=14, decimal_places=2, default=0)
+    dividend_tax = models.DecimalField('红利税', max_digits=10, decimal_places=2, default=0)
 
     class Meta:
         db_table = 'models_trans_history'

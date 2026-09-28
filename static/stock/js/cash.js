@@ -51,7 +51,7 @@ function renderChart(data) {
     }
 
     // 按数据点顺序收集日期（不去重，同一天多笔变动各自独立显示）
-    const maxLen = Math.max(data.total.length, data.cash.length, data.stock.length);
+    const maxLen = Math.max(data.total.length, data.cash.length, data.stock.length, data.profit ? data.profit.length : 0);
     const refSeries = data.total.length ? data.total : (data.cash.length ? data.cash : data.stock);
     const allDates = [];
     for (let i = 0; i < maxLen; i++) {
@@ -67,25 +67,32 @@ function renderChart(data) {
         return result;
     }
 
-    // 纵轴上下留白比例
-    const Y_AXIS_PADDING = 0.05;
+    // 根据可见曲线数据计算纵轴范围（全隐藏时按4条均显示兜底）
+    function calcYAxisRange(visibleSeries) {
+        const Y_AXIS_PADDING = 0.05;
+        const allFour = [data.total, data.cash, data.stock, data.profit || []];
+        // 若所有曲线均隐藏，则按四条曲线均显示来计算
+        let seriesToUse = visibleSeries.length > 0 ? visibleSeries : allFour;
 
-    // 计算全局最小/最大值，yAxis 上下各留 5%
-    const allValues = [];
-    [data.total, data.cash, data.stock].forEach(series => {
-        series.forEach(p => { if (p[1] !== null && p[1] !== undefined) allValues.push(p[1]); });
-    });
-    const minVal = Math.min(...allValues);
-    const maxVal = Math.max(...allValues);
-    // 先按 5% 计算初始 yMin/yMax
-    let yMin = minVal >= 0 ? minVal * (1 - Y_AXIS_PADDING) : minVal * (1 + Y_AXIS_PADDING);
-    let yMax = maxVal >= 0 ? maxVal * (1 + Y_AXIS_PADDING) : maxVal * (1 - Y_AXIS_PADDING);
-    // 统一上下留白为较大值，确保最小值不贴近横轴
-    const paddingTop = yMax - maxVal;
-    const paddingBottom = minVal - yMin;
-    const padding = Math.max(paddingTop, paddingBottom);
-    yMax = maxVal + padding;
-    yMin = minVal - padding;
+        const allValues = [];
+        seriesToUse.forEach(series => {
+            if (!series) return;
+            series.forEach(p => { if (p && p[1] !== null && p[1] !== undefined) allValues.push(p[1]); });
+        });
+        if (allValues.length === 0) return { min: 0, max: 100 };
+
+        const minVal = Math.min(...allValues);
+        const maxVal = Math.max(...allValues);
+        let yMin = minVal >= 0 ? minVal * (1 - Y_AXIS_PADDING) : minVal * (1 + Y_AXIS_PADDING);
+        let yMax = maxVal >= 0 ? maxVal * (1 + Y_AXIS_PADDING) : maxVal * (1 - Y_AXIS_PADDING);
+        const padding = Math.max(yMax - maxVal, minVal - yMin);
+        return { min: minVal - padding, max: maxVal + padding };
+    }
+
+    // 初始化时按可见曲线计算（默认只有收益可见）
+    const initialRange = calcYAxisRange([data.profit || []]);
+    let yMin = initialRange.min;
+    let yMax = initialRange.max;
 
     // 图表创建前：混合方案计算刻度位置（优先整除均匀间距，太少时回退循环去掉）
     const total = allDates.length;
@@ -202,21 +209,31 @@ function renderChart(data) {
             }, false],
             formatter: function () {
                 const dateStr = allDates[this.x] !== undefined ? allDates[this.x] : this.x;
-                let rows = '';
-                this.points.forEach(p => {
-                    rows += `<tr><td style="padding:2px 5px"><span style="color:${p.color}">●</span> ${p.series.name}</td><td style="padding:2px 5px">${p.y.toFixed(2)}</td></tr>`;
-                });
-                // 风险（不作为曲线显示，仅在tooltip中展示）
                 const reasonItem = data.reasons && data.reasons[this.x] ? data.reasons[this.x] : null;
-                const riskVal = reasonItem ? reasonItem.risk : 0;
-                rows += `<tr><td style="padding:2px 5px"><span style="color:#8b5cf6">●</span> 风险</td><td style="padding:2px 5px">${riskVal.toFixed(2)}</td></tr>`;
-                // 收益（不作为曲线显示，仅在tooltip中展示）
-                const profitVal = data.profit && data.profit[this.x] !== undefined ? data.profit[this.x][1] : 0;
-                rows += `<tr><td style="padding:2px 5px"><span style="color:#16a34a">●</span> 收益</td><td style="padding:2px 5px">${profitVal.toFixed(2)}</td></tr>`;
-                return `<div><table>
-                    <tr><td colspan="2" style="padding:2px 5px"><span style="font-weight:bold;">${dateStr}</span></td></tr>
-                    ${rows}
-                </table></div>`;
+                const eventStr = reasonItem ? reasonItem.event : '';
+                const remarkStr = reasonItem && reasonItem.remark ? reasonItem.remark : '';
+
+                // 获取各曲线值
+                const getVal = (name) => {
+                    const s = chartInstance.series.find(s => s.name === name);
+                    const p = s && s.data[this.x];
+                    return (p && p.y !== null && p.y !== undefined) ? p.y.toFixed(2) : '--';
+                };
+
+                return `<div style="font-size:13px;">
+                    <div style="font-weight:bold;margin-bottom:4px;">${dateStr}${eventStr ? ', ' + eventStr : ''}</div>
+                    ${remarkStr ? `<div style="margin-bottom:4px;color:#666;">[${remarkStr}]</div>` : ''}
+                    <table>
+                        <tr>
+                            <td style="padding:4px 8px 4px 0;">资产：${getVal('资产')}</td>
+                            <td style="padding:4px 0;">收益：${getVal('收益')}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding:4px 8px 4px 0;">现金：${getVal('现金')}</td>
+                            <td style="padding:4px 0;">股票：${getVal('股票')}</td>
+                        </tr>
+                    </table>
+                </div>`;
             },
         },
         legend: {
@@ -230,12 +247,26 @@ function renderChart(data) {
             series: {
                 animation: false,
                 states: { hover: { enabled: false } },
+                events: {
+                    legendItemClick: function () {
+                        // 延迟执行，等 Highcharts 切换可见状态后再重新计算
+                        setTimeout(() => {
+                            if (!chartInstance) return;
+                            const visibleSeries = chartInstance.series
+                                .filter(s => s.visible)
+                                .map(s => s.options.rawData || []);
+                            const range = calcYAxisRange(visibleSeries);
+                            chartInstance.yAxis[0].update({ min: range.min, max: range.max });
+                        }, 50);
+                    },
+                },
             },
         },
         series: [
-            { name: '资产', data: toValues(data.total), color: '#dc2626', lineWidth: 2 },
-            { name: '现金', data: toValues(data.cash), color: '#06b6d4', lineWidth: 1.5 },
-            { name: '股票', data: toValues(data.stock), color: '#f59e0b', lineWidth: 1.5 },
+            { name: '资产', data: toValues(data.total), rawData: data.total, color: '#06b6d4', lineWidth: 2, visible: false },
+            { name: '现金', data: toValues(data.cash), rawData: data.cash, color: '#2563eb', lineWidth: 1.5, visible: false },
+            { name: '股票', data: toValues(data.stock), rawData: data.stock, color: '#8b5cf6', lineWidth: 1.5, visible: false },
+            { name: '收益', data: toValues(data.profit || []), rawData: data.profit || [], color: '#dc2626', lineWidth: 1.5 },
         ],
         credits: { enabled: false },
     });
