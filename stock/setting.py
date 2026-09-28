@@ -73,6 +73,7 @@ def web_setting(request):
                 value_type=meta['type'],
                 group_name=meta['group'],
                 label=meta['label'],
+                remark=meta.get('remark', ''),
                 sort_order=meta['sort'],
             )
         clear_web_setting_cache()
@@ -93,8 +94,17 @@ def web_setting(request):
     # 行情刷新间隔：毫秒转秒显示
     setting['quote_interval'] = int(cfg.get('quote_interval', 60000)) // 1000
 
+    # 构建 remarks 字典，用于输入框 placeholder
+    remarks = {}
+    try:
+        for item in WebSetting.objects.all():
+            remarks[item.key] = item.remark or ''
+    except Exception:
+        pass
+
     context = {
         'setting': setting,
+        'remarks': remarks,
         'saved': saved,
         'error': error,
         # 交易费用（百分比形式）
@@ -139,14 +149,16 @@ def setting_save(request):
                   'kline_ema_k_day', 'kline_ema_k_week', 'kline_ema_k_month',
                   'kline_ema_d_day', 'kline_ema_d_week', 'kline_ema_d_month',
                   'density_max', 'density_std', 'density_min',
-                  'screen_height_threshold', 'nav_height', 'nav_height_mobile',
+                  'nav_locked_screen_height', 'nav_height', 'nav_height_mobile',
                   'gap_height', 'navi_bar_height',
-                  'mobile_breakpoint', 'w1', 'bp1', 'w2', 'bp2', 'w3', 'bp3', 'w4',
-                  'h1', 'h2', 'h3', 'h4', 'cash_chart_height',
-                  'chart_placeholder_height', 'trend_main_ratio', 'kline_main_ratio'}
-    BOOL_FIELDS = {'nav_locked'}
+                  'mobile_breakpoint', 'bp1', 'bp2', 'bp3',
+                  'w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7', 'w8',
+                  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8',
+                  'cash_chart_height', 'trend_main_ratio', 'kline_main_ratio'}
+    BOOL_FIELDS = {'stock_chart_visible'}
     TEXT_FIELDS = {'icp_number', 'icp_website',
-                   'kline_start_date_day', 'kline_start_date_week', 'kline_start_date_month'}
+                   'kline_start_date_day', 'kline_start_date_week', 'kline_start_date_month',
+                   'chart_vertical_align_fullscreen'}
 
     try:
         if field in PCT_FIELDS:
@@ -165,8 +177,13 @@ def setting_save(request):
                 return JsonResponse({'success': False, 'error': '请输入整数'})
             save_value = str(int(value) * 1000)
         elif field in INT_FIELDS:
-            if not value.isdigit():
-                return JsonResponse({'success': False, 'error': '请输入整数'})
+            if field == 'nav_locked_screen_height':
+                # 允许 -1（锁定导航栏）或正整数（高度阈值）
+                if value != '-1' and not value.isdigit():
+                    return JsonResponse({'success': False, 'error': '请输入整数或-1'})
+            else:
+                if not value.isdigit():
+                    return JsonResponse({'success': False, 'error': '请输入整数'})
             save_value = value
         elif field in BOOL_FIELDS:
             save_value = 'true' if value.lower() in ('true', '1', '是') else 'false'

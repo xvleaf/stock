@@ -44,29 +44,37 @@ const FIELD_LABELS = {
     'density_max': 'K线最大密度',
     'density_std': 'K线标准密度',
     'density_min': 'K线最小密度',
-    // 界面配置 - 导航栏
-    'nav_locked': '锁定导航栏',
-    'screen_height_threshold': '高度阈值',
+    // 界面配置 - 通用布局
+    'stock_chart_visible': '股票图表',
+    'nav_locked_screen_height': '导航栏隐藏阈值',
+    'gap_height': '导航间隔',
     'nav_height': '导航高度（桌面）',
     'nav_height_mobile': '导航高度（移动）',
-    'gap_height': '导航间隔',
     'navi_bar_height': '底部导航高度',
     // 界面配置 - 内容布局
     'mobile_breakpoint': '移动断点',
-    'w1': '页面宽度一',
+    'w1': '宽度一（正常）',
     'bp1': '断点一',
-    'w2': '页面宽度二',
+    'w2': '宽度二（正常）',
     'bp2': '断点二',
-    'w3': '页面宽度三',
+    'w3': '宽度三（正常）',
     'bp3': '断点三',
-    'w4': '页面宽度四',
+    'w4': '宽度四（正常）',
     // 界面配置 - 图表布局
-    'h1': '高度一',
-    'h2': '高度二',
-    'h3': '高度三',
-    'h4': '高度四',
+    'h1': '高度一（正常）',
+    'h2': '高度二（正常）',
+    'h3': '高度三（正常）',
+    'h4': '高度四（正常）',
+    'w5': '宽度一（全屏）',
+    'w6': '宽度二（全屏）',
+    'w7': '宽度三（全屏）',
+    'w8': '宽度四（全屏）',
+    'h5': '高度一（全屏）',
+    'h6': '高度二（全屏）',
+    'h7': '高度三（全屏）',
+    'h8': '高度四（全屏）',
     'cash_chart_height': '资金曲线高度',
-    'chart_placeholder_height': '图表最小高度',
+    'chart_vertical_align_fullscreen': '高度对齐（全屏）',
     'trend_main_ratio': '分时主图比例',
     'kline_main_ratio': 'K线主图比例',
 };
@@ -91,23 +99,6 @@ export function initSetting(saved = false, error = false) {
 
         const inputs = form.querySelectorAll('input[name], select[name]');
 
-        // 锁定导航栏与高度阈值联动
-        const navLockedSelect = form.querySelector('select[name="nav_locked"]');
-        const heightThresholdInput = document.getElementById('id_screen_height_threshold');
-        const updateHeightThresholdState = () => {
-            if (navLockedSelect && heightThresholdInput) {
-                const locked = navLockedSelect.value === 'true';
-                heightThresholdInput.disabled = locked;
-                if (locked) {
-                    heightThresholdInput.dataset.original = heightThresholdInput.value;
-                }
-            }
-        };
-        updateHeightThresholdState();
-        if (navLockedSelect) {
-            navLockedSelect.addEventListener('change', updateHeightThresholdState);
-        }
-
         // 记录每个输入框的原始值
         inputs.forEach(input => {
             input.dataset.original = input.value;
@@ -128,10 +119,13 @@ export function initSetting(saved = false, error = false) {
 
                 const label = getFieldLabel(fieldName);
 
-                // bool 字段值转换为中文显示
-                const BOOL_FIELDS = {'nav_locked': true};
-                const displayOld = BOOL_FIELDS[fieldName] ? (oldValue === 'true' ? '是' : '否') : oldValue;
-                const displayNew = BOOL_FIELDS[fieldName] ? (newValue === 'true' ? '是' : '否') : newValue;
+                // 字段值中文映射
+                const VALUE_LABELS = {
+                    'stock_chart_visible': {'true': '显示', 'false': '隐藏'},
+                    'chart_vertical_align_fullscreen': {'flex-start': '顶部', 'center': '居中', 'flex-end': '底部'},
+                };
+                const displayOld = VALUE_LABELS[fieldName] ? (VALUE_LABELS[fieldName][oldValue] || oldValue) : oldValue;
+                const displayNew = VALUE_LABELS[fieldName] ? (VALUE_LABELS[fieldName][newValue] || newValue) : newValue;
 
                 // 弹出确认对话框
                 const confirmed = await showConfirm({
@@ -144,10 +138,6 @@ export function initSetting(saved = false, error = false) {
                 if (!confirmed) {
                     // 用户取消，还原输入框
                     input.value = oldValue;
-                    // 恢复联动状态（如锁定导航栏取消后恢复高度阈值可用）
-                    if (fieldName === 'nav_locked') {
-                        updateHeightThresholdState();
-                    }
                     return;
                 }
 

@@ -153,8 +153,9 @@ export async function loadChartPage(func, value) {
             }
 
             // 若浏览器地址栏与当前股票不一致，同步历史记录（hide 后 loadChartPage 切换股票时需要）
+            // plus 页面不修改 URL，避免刷新后 404
             const expectedPath = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
-            if (window.location.pathname !== expectedPath) {
+            if (window.location.pathname !== expectedPath && !pageConfig.site.includes('/plus')) {
                 history.pushState({
                     site: pageConfig.site,
                     code: pageConfig.code,
@@ -499,15 +500,17 @@ function naviSwitch(type, action) {
             pageConfig.name = res.name || '';
             pageConfig.cat = res.cat || 'stock';
 
-            // 更新浏览器地址栏
+            // 更新浏览器地址栏（plus 页面不修改 URL，避免刷新后 404）
             const newUrl = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;  
-            history.pushState({ 
-                site: pageConfig.site, 
-                code: pageConfig.code, 
-                market: pageConfig.market,
-                name: pageConfig.name,
-                cat: pageConfig.cat
-            }, '', newUrl);
+            if (!pageConfig.site.includes('/plus')) {
+                history.pushState({ 
+                    site: pageConfig.site, 
+                    code: pageConfig.code, 
+                    market: pageConfig.market,
+                    name: pageConfig.name,
+                    cat: pageConfig.cat
+                }, '', newUrl);
+            }
             
             // 更新表单和标题（传入完整数据）
             updateFormData(res);

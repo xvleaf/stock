@@ -14,6 +14,10 @@ let tickMin = 0;
 
 
 export async function initTrendChart() {
+    // 全局配置隐藏图表时，不加载数据、不渲染
+    if (window.UI_CONFIG && window.UI_CONFIG.stock_chart_visible === false) {
+        return;
+    }
     const hasData = await loadTrendData('0');
     if (hasData) {
         renderTrendChart();

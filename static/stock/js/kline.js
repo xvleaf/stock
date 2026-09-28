@@ -7,6 +7,10 @@ let klineData = {};
 
 // ==================== K线图逻辑 ====================
 export function initKlineChart() {    
+    // 全局配置隐藏图表时，不加载数据、不渲染
+    if (window.UI_CONFIG && window.UI_CONFIG.stock_chart_visible === false) {
+        return;
+    }
     fetchKlineData('get-kline-data')
         .then(data => {
             if (!data) {

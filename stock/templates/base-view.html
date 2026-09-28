@@ -29,12 +29,20 @@
         --w2: {{ ui_config.w2 }}%;
         --w3: {{ ui_config.w3 }}%;
         --w4: {{ ui_config.w4 }}%;
+        --w5: {{ ui_config.w5 }}%;
+        --w6: {{ ui_config.w6 }}%;
+        --w7: {{ ui_config.w7 }}%;
+        --w8: {{ ui_config.w8 }}%;
         --h1: {{ ui_config.h1 }}vh;
         --h2: {{ ui_config.h2 }}vh;
         --h3: {{ ui_config.h3 }}vh;
         --h4: {{ ui_config.h4 }}vh;
-        --chart-placeholder-height: {{ ui_config.chart_placeholder_height }}px;
+        --h5: {{ ui_config.h5 }}vh;
+        --h6: {{ ui_config.h6 }}vh;
+        --h7: {{ ui_config.h7 }}vh;
+        --h8: {{ ui_config.h8 }}vh;
         --cash-chart-height: {{ ui_config.cash_chart_height }}px;
+        --chart-vertical-align-fullscreen: {{ ui_config.chart_vertical_align_fullscreen }};
     }
     @media (max-width: {{ ui_config.mobile_breakpoint }}px) {
         :root {
@@ -186,7 +194,7 @@
     <link rel="apple-touch-icon-precomposed" sizes="180x180" href="{% static 'base/icon/apple-touch-icon.png' %}">
 
 </head>
-<body>
+<body class="{% if not ui_config.stock_chart_visible %}chart-hidden{% endif %}">
     {# 全局导航组件 #}
     {% block nav %}{% include "base-navi.html" %}{% endblock %}
 
@@ -202,8 +210,8 @@
     <script>
     window.UI_CONFIG = {
         mobile_breakpoint: {{ ui_config.mobile_breakpoint }},
-        screen_height_threshold: {{ ui_config.screen_height_threshold }},
-        nav_locked: {% if ui_config.nav_locked %}true{% else %}false{% endif %},
+        nav_locked_screen_height: {{ ui_config.nav_locked_screen_height }},
+        stock_chart_visible: {% if ui_config.stock_chart_visible %}true{% else %}false{% endif %},
         trend_main_ratio: {{ ui_config.trend_main_ratio }},
         kline_main_ratio: {{ ui_config.kline_main_ratio }},
         cash_chart_height: {{ ui_config.cash_chart_height }},

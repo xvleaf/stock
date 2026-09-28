@@ -36,7 +36,7 @@ export function getMainNavHeight() {
 }
 /** 导出屏幕高度阈值供外部读取 */
 export function getScreenHeightThreshold() {
-    return window.UI_CONFIG ? window.UI_CONFIG.screen_height_threshold : 800;
+    return window.UI_CONFIG ? window.UI_CONFIG.nav_locked_screen_height : 800;
 }
 // ====================== 工具纯函数 ======================
 export function isMobileSize() {
@@ -157,9 +157,10 @@ function updatePageLayoutByNavState() {
 }
 export function toggleNavVisible() {
     if (!nav) return;
-    // true = 强制锁定导航永久显示，禁用自动隐藏逻辑
-    // false = 取消锁定，交给滚动自动控制显隐，不会主动隐藏导航
-    const navLocked = window.UI_CONFIG ? window.UI_CONFIG.nav_locked : false;
+    // nav_locked_screen_height = -1 表示锁定导航永久显示，禁用自动隐藏逻辑
+    // 大于0表示超过此高度阈值时滚动自动隐藏
+    const lockedScreenHeight = window.UI_CONFIG ? window.UI_CONFIG.nav_locked_screen_height : 800;
+    const navLocked = lockedScreenHeight === -1;
     if (navLocked) {
         nav.classList.remove('hidden');
         isNavVisible = true;
@@ -218,7 +219,7 @@ function handleWindowScrollFrame() {
         return;
     }
     // 上滑（滚动变大）→ 检查是否允许隐藏
-    const heightThreshold = window.UI_CONFIG ? window.UI_CONFIG.screen_height_threshold : 800;
+    const heightThreshold = window.UI_CONFIG ? window.UI_CONFIG.nav_locked_screen_height : 800;
     if (viewHeight >= heightThreshold) {
         lastScrollY = scrollY;
         frameTicking = false;

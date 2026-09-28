@@ -129,6 +129,11 @@
     z-index: 5;
 }
 
+/* ========== 图表隐藏（全局配置） ========== */
+.chart-hidden .chart-wrap {
+    display: none !important;
+}
+
 /* ========== K线视图 ========== */
 .chart-wrap {
     background: #ffffff;
@@ -142,11 +147,8 @@
 
     /* ---- 高度 ---- */
     height: max(
-        calc(0.9 * max(
-            var(--h4), 
-            max(var(--h3), max(var(--h2), var(--h1) - var(--switch1)) - var(--switch2)) - var(--switch3)
-        )),
-        var(--chart-placeholder-height)
+        var(--h4), 
+        max(var(--h3), max(var(--h2), var(--h1) - var(--switch1)) - var(--switch2)) - var(--switch3)
     ) !important;
 }
 
@@ -314,10 +316,10 @@
     padding: 2px;
     display: flex;
     justify-content: center;        /* 水平居中 */
-    /* align-items: center;            垂直居中 */
+    align-items: var(--chart-vertical-align-fullscreen, top);  /* 垂直对齐 */
     box-sizing: border-box;
 }
-/* 居中容器 .chart-wrap 使用断点宽度/高度 */
+/* 居中容器 .chart-wrap 使用全屏专用宽度/高度 w5~w8 / h5~h8 */
 #chartPage.pseudo-fullscreen .chart-wrap {
     position: relative;             /* 成为内部绝对定位元素的包含块 */
     max-width: none;
@@ -330,14 +332,14 @@
 
     /* ---- 宽度 ---- */
     width: max(
-        var(--w3),
-        max(var(--w2), var(--w1) - var(--switch2)) - var(--switch3)
+        var(--w8),
+        max(var(--w7), max(var(--w6), var(--w5) - var(--switch1)) - var(--switch2)) - var(--switch3)
     ) !important;
 
     /* ---- 高度 ---- */
     height: max(
-        var(--h4), 
-        max(var(--h3), max(var(--h2), var(--h1) - var(--switch1)) - var(--switch2)) - var(--switch3)
+        var(--h8), 
+        max(var(--h7), max(var(--h6), var(--h5) - var(--switch1)) - var(--switch2)) - var(--switch3)
     ) !important;
 }
 
