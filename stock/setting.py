@@ -142,6 +142,7 @@ def setting_save(request):
     PCT_FIELDS = {'commission_ratio', 'stamp_buy_ratio', 'stamp_sell_ratio',
                   'transfer_fee_sh', 'transfer_fee_sz', 'transfer_fee_bj',
                   'dividend_tax_long', 'dividend_tax_mid', 'dividend_tax_short'}
+    FLOAT_FIELDS = {'commission_min'}
     TIME_FIELDS = {'trade_am_start', 'trade_am_end', 'trade_pm_start', 'trade_pm_end'}
     INT_FIELDS = {'default_page_size', 'quote_interval',
                   'kline_ma_day', 'kline_ma_week', 'kline_ma_month',
@@ -166,6 +167,11 @@ def setting_save(request):
             if not _is_valid_number(value):
                 return JsonResponse({'success': False, 'error': '请输入有效数字'})
             save_value = str(float(value) / 100)
+        elif field in FLOAT_FIELDS:
+            # 金额类数字（如最低佣金）
+            if not _is_valid_number(value):
+                return JsonResponse({'success': False, 'error': '请输入有效数字'})
+            save_value = value
         elif field in TIME_FIELDS:
             # HH:MM 转秒
             if not re.match(r'^\d{2}:\d{2}$', value):

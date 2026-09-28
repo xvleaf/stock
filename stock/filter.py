@@ -790,8 +790,9 @@ def _do_focus(result, ema_price=None):
         return JsonResponse({'status': 'error', 'message': 'EMA价格缺失'}, status=400)
 
     plan = float(ema_price)
-    target = round(plan * _get_target_profit_ratio(), 3)
-    stop = round(plan * _get_stop_loss_ratio(), 3)
+    deci = 3 if result.cat in ('fund', 'bond') else 2
+    target = round(plan * _get_target_profit_ratio(), deci)
+    stop = round(plan * _get_stop_loss_ratio(), deci)
     qty = cash.calc_allowed_qty(plan, stop) if plan > 0 else 0
 
     # 排在关注列表最后
@@ -801,7 +802,7 @@ def _do_focus(result, ema_price=None):
     with transaction.atomic():
         new_focus = FocusStock.objects.create(
             code=result.code, name=result.name, market=result.market, cat=result.cat,
-            plan_price=decimal.Decimal(str(round(plan, 3))),
+            plan_price=decimal.Decimal(str(round(plan, deci))),
             plan_qty=qty,
             target_price=decimal.Decimal(str(target)),
             stop_price=decimal.Decimal(str(stop)),
@@ -810,7 +811,7 @@ def _do_focus(result, ema_price=None):
         )
         new_focus.save_history(action='create', comments='筛选时添加')
     return JsonResponse({'status': 'success', 'focus': 1,
-                         'plan': round(plan, 3), 'target': target, 'stop': stop, 'qty': qty})
+                         'plan': round(plan, deci), 'target': target, 'stop': stop, 'qty': qty})
 
 
 # ===================== /stocks/view 模式辅助函数 =====================
