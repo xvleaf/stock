@@ -660,7 +660,7 @@ class TransHistory(models.Model):
     ACTION_CHOICES = [
         (ACTION_BUY, '买入'),
         (ACTION_SELL, '卖出'),
-        (ACTION_EDIT, '编辑'),
+        (ACTION_EDIT, '调整'),
         (ACTION_DIVIDEND, '分红'),
     ]
     order = models.ForeignKey(TransOrder, on_delete=models.CASCADE,

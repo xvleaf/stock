@@ -12,7 +12,11 @@
 
 <div class="form-wrap" id="transViewForm">
     {# 历史指示器（汇总且有多条历史时隐藏） #}
-    <div class="d-flex justify-content-end align-items-center mb-2 {% if is_summary and pilot_total > 1 %}d-none{% endif %}" id="transPilotWrap">
+    <div class="d-flex justify-content-between align-items-center mb-2 {% if is_summary and pilot_total > 1 %}d-none{% endif %}" id="transPilotWrap">
+        <div class="d-flex flex-wrap justify-content-start small text-muted">
+            <span class="text-nowrap">交易</span>
+            <span class="text-nowrap">记录</span>
+        </div>
         <span class="small text-muted" id="transPilotIndicator"></span>
     </div>
 

@@ -195,18 +195,69 @@ def chart_view_api(request):
                     pilot_qty = ''
                     pilot_price = ''
                     is_summary = (pilot_idx == -1)
+
+                    # 字段连接辅助函数：1个直接，2个用"和"，超过2个前面用"、"最后用"和"
+                    def format_changes(changes, default='调整计划'):
+                        if not changes:
+                            return default
+                        if len(changes) == 1:
+                            return '调整' + changes[0]
+                        if len(changes) == 2:
+                            return '调整' + changes[0] + '和' + changes[1]
+                        return '调整' + '、'.join(changes[:-1]) + '和' + changes[-1]
+
                     if not is_summary and pilot_list and 0 <= pilot_idx < len(pilot_list):
                         pilot_date = pilot_list[pilot_idx][1].strftime('%Y-%m-%d') if pilot_list[pilot_idx][1] else ''
-                        # 仅 trans/view 获取操作类型、数量、价格
+                        # trans/view：获取操作类型、数量、价格；编辑操作细化修改字段
                         if param_site in ['/trans/view', '/review/trans/view']:
                             from .trans import TransHistory
                             history = TransHistory.objects.filter(id=pilot_list[pilot_idx][0]).first()
                             if history:
-                                pilot_action = history.get_action_display()
+                                if history.action == TransHistory.ACTION_EDIT:
+                                    # 编辑操作：对比上一条记录，找出修改的目标价格和止损价格
+                                    changes = []
+                                    if pilot_idx > 0:
+                                        prev_history = TransHistory.objects.filter(id=pilot_list[pilot_idx - 1][0]).first()
+                                        if prev_history:
+                                            if history.target_price != prev_history.target_price:
+                                                changes.append('目标价格')
+                                            if history.stop_price != prev_history.stop_price:
+                                                changes.append('止损价格')
+                                    pilot_action = format_changes(changes, default='调整目标和止损价格')
+                                else:
+                                    pilot_action = history.get_action_display()
                                 pilot_qty = history.qty
                                 cat = detail.get('cat', 'stock')
                                 deci = 3 if cat in ('fund', 'bond') else 2
                                 pilot_price = f"{float(history.price):.{deci}f}"
+                        # focus/view：对比上一条记录，找出修改的字段
+                        elif param_site in ['/focus/view', '/review/focus/view']:
+                            from .models.models import FocusHistory
+                            history = FocusHistory.objects.filter(id=pilot_list[pilot_idx][0]).first()
+                            if history:
+                                if history.action == FocusHistory.ACTION_CREATE:
+                                    pilot_action = '创建关注'
+                                elif history.action == FocusHistory.ACTION_CLOSE:
+                                    pilot_action = '关闭关注'
+                                elif history.action == FocusHistory.ACTION_DEAL:
+                                    pilot_action = '已交易'
+                                else:
+                                    # 编辑操作：对比上一条记录，找出修改的字段
+                                    changes = []
+                                    if pilot_idx > 0:
+                                        prev_history = FocusHistory.objects.filter(id=pilot_list[pilot_idx - 1][0]).first()
+                                        if prev_history:
+                                            if history.intent != prev_history.intent:
+                                                changes.append('交易方向')
+                                            if history.plan_price != prev_history.plan_price:
+                                                changes.append('计划报价')
+                                            if history.plan_qty != prev_history.plan_qty:
+                                                changes.append('计划数量')
+                                            if history.target_price != prev_history.target_price:
+                                                changes.append('目标价格')
+                                            if history.stop_price != prev_history.stop_price:
+                                                changes.append('止损价格')
+                                    pilot_action = format_changes(changes, default='调整计划')
                     detail['pilot_date'] = pilot_date
                     detail['pilot_action'] = pilot_action
                     detail['pilot_qty'] = pilot_qty
