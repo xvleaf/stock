@@ -145,11 +145,21 @@
     --switch2: clamp(0px, (100vw - var(--bp2) * 1px) * 9999, 9999px);
     --switch3: clamp(0px, (100vw - var(--bp3) * 1px) * 9999, 9999px);
 
-    /* ---- 高度 ---- */
+    /* ---- 高度（竖屏默认） ---- */
     height: max(
         var(--h4), 
         max(var(--h3), max(var(--h2), var(--h1) - var(--switch1)) - var(--switch2)) - var(--switch3)
     ) !important;
+}
+
+/* 横屏使用横屏高度 */
+@media (orientation: landscape) {
+    .chart-wrap {
+        height: max(
+            var(--h4l), 
+            max(var(--h3l), max(var(--h2l), var(--h1l) - var(--switch1)) - var(--switch2)) - var(--switch3)
+        ) !important;
+    }
 }
 
 .chart-kline-header {
