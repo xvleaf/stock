@@ -65,6 +65,8 @@ function _renderChartPage(res) {
 
     const newConfig = res.chart;
     setPageConfig(newConfig);
+    // 保留 navi_id（review 页面切换股票和 pilot 时需要）
+    pageConfig.navi_id = res.navi_id;
 
     applyFullscreenState();
 
@@ -116,6 +118,32 @@ function _renderChartPage(res) {
                 window.location.href = `/trans/deal/${pageConfig.market}/${pageConfig.code}`;
             });
         }
+
+        // plusBtn 关注按钮：先检查关注状态，已关注则提示，未关注则添加
+        const plusBtn = document.getElementById('plusBtn');
+        if (plusBtn && !plusBtn.dataset.bound) {
+            plusBtn.dataset.bound = 'true';
+            plusBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                try {
+                    const res = await postRequest('/chart/check-focus', {
+                        site: pageConfig.site,
+                        code: pageConfig.code,
+                        market: pageConfig.market,
+                        cat: pageConfig.cat
+                    });
+                    if (res && res.focused) {
+                        showAlert({ title: '提示', text: '股票正在关注中，未执行操作', type: 'info' });
+                        return;
+                    }
+                    // 未关注，调用 focusAction，传入返回的 ema
+                    focusAction(res.ema);
+                } catch (err) {
+                    console.error('检查关注状态失败:', err);
+                    showAlert({ title: '错误', text: '检查关注状态失败', type: 'error' });
+                }
+            });
+        }
     });
 }
 
@@ -124,7 +152,13 @@ function _renderChartPage(res) {
  * focusAction、markAction、hideAction 等都调用此函数，消除重复的 URL 构建和 postRequest 调用
  */
 function stockAction(func, extraData = {}) {
-    const url = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
+    let site = pageConfig.site;
+    // review 页面的关注操作发送到 stocks/view，使用与筛选相同的添加关注逻辑，备注为"复盘时添加"
+    if (func === 'focus' && site.startsWith('/review/')) {
+        site = '/stocks/view';
+        extraData.comments = '复盘时添加';
+    }
+    const url = `${site}/${pageConfig.market}/${pageConfig.code}`;
     return postRequest(url, { 'func': func, ...extraData });
 }
 
@@ -154,14 +188,19 @@ export async function loadChartPage(func, value) {
 
             // 若浏览器地址栏与当前股票不一致，同步历史记录（hide 后 loadChartPage 切换股票时需要）
             // plus 页面不修改 URL，避免刷新后 404
-            const expectedPath = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
+            let expectedPath = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
+            // review 页面增加 id 参数
+            if (pageConfig.site.startsWith('/review/') && pageConfig.navi_id) {
+                expectedPath += `?id=${pageConfig.navi_id}`;
+            }
             if (window.location.pathname !== expectedPath && !pageConfig.site.includes('/plus')) {
                 history.pushState({
                     site: pageConfig.site,
                     code: pageConfig.code,
                     market: pageConfig.market,
                     name: pageConfig.name,
-                    cat: pageConfig.cat
+                    cat: pageConfig.cat,
+                    navi_id: pageConfig.navi_id
                 }, '', expectedPath);
             }
         }
@@ -483,15 +522,23 @@ function applyFullscreenState() {
     }
 }
 
+let _naviSwitchLock = false;
+
 function naviSwitch(type, action) {
+    // 请求锁，防止快速点击导致并发请求
+    if (_naviSwitchLock) return Promise.resolve(false);
+    _naviSwitchLock = true;
+
     return postRequest('/chart/view', {
         func: type,
         value: action,
         site: pageConfig.site,
         code: pageConfig.code,
         market: pageConfig.market,
-        cat: pageConfig.cat
+        cat: pageConfig.cat,
+        navi_id: pageConfig.navi_id || null
     }).then(res => {
+        _naviSwitchLock = false;
         if (res && res.code) {
             // 更新 pageConfig
             pageConfig.site = res.site || pageConfig.site;
@@ -499,16 +546,22 @@ function naviSwitch(type, action) {
             pageConfig.market = res.market;
             pageConfig.name = res.name || '';
             pageConfig.cat = res.cat || 'stock';
+            pageConfig.navi_id = res.navi_id || null;
 
             // 更新浏览器地址栏（plus 页面不修改 URL，避免刷新后 404）
-            const newUrl = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;  
+            let newUrl = `${pageConfig.site}/${pageConfig.market}/${pageConfig.code}`;
+            // review 页面增加 id 参数
+            if (pageConfig.site.startsWith('/review/') && pageConfig.navi_id) {
+                newUrl += `?id=${pageConfig.navi_id}`;
+            }
             if (!pageConfig.site.includes('/plus')) {
                 history.pushState({ 
                     site: pageConfig.site, 
                     code: pageConfig.code, 
                     market: pageConfig.market,
                     name: pageConfig.name,
-                    cat: pageConfig.cat
+                    cat: pageConfig.cat,
+                    navi_id: pageConfig.navi_id
                 }, '', newUrl);
             }
             
@@ -522,6 +575,9 @@ function naviSwitch(type, action) {
             }
         }
         return false;
+    }).catch(err => {
+        _naviSwitchLock = false;
+        throw err;
     });
 }
 
@@ -549,36 +605,49 @@ function backToList() {
     window.location.href = routeMap[pageConfig.site] || '/focus/list';
 };
 
-function focusAction() {
+async function focusAction(overrideEma = null) {
+    // 兼容两种调用方式：
+    // 1. 作为事件处理函数直接绑定（addEventListener('click', focusAction)）：
+    //    浏览器会传入事件对象作为第一个参数，需要检测并忽略
+    // 2. 手动调用 focusAction(ema值)：传入数字作为 overrideEma
+    //    （如 review view 的 plusBtn 场景，先调用 /chart/check-focus 获取 EMA 再传入）
+    if (overrideEma && typeof overrideEma === 'object' && 'isTrusted' in overrideEma) {
+        overrideEma = null;
+    }
+
     const currentlyFocused = pageConfig.mark && (pageConfig.mark.focus === 1 || pageConfig.mark.focus === '1');
     const confirmText = currentlyFocused ? '确定要取消关注该股票吗？' : '确定要关注该股票吗？';
-    showConfirm({
+    const confirmed = await showConfirm({
         title: currentlyFocused ? '取消关注' : '关注',
         text: confirmText,
         confirmText: '确定',
         cancelText: '取消',
-    }).then((confirmed) => {
-        if (!confirmed) return;
-        const extraData = {};
-        if (!currentlyFocused) {
-            const ema = getCurrentEma();
-            if (ema == null) {
-                showAlert({ title: '错误', text: '未取到当前EMA值', type: 'error' });
-                return;
-            }
-            extraData.ema_price = ema;
+    });
+    if (!confirmed) return;
+
+    const extraData = {};
+    if (!currentlyFocused) {
+        // 优先使用外部传入的 EMA（plusBtn 场景），否则从已加载的 K线数据获取
+        let ema = overrideEma;
+        if (ema == null) {
+            ema = getCurrentEma();
         }
-        stockAction('focus', extraData).then(res => {
-            if (res && res.status === 'success') {
-                pageConfig.mark.focus = res.focus;
-                renderMarkButtons();
-                if (!currentlyFocused && res.plan) {
-                    showAlert({ title: '已关注', text: `计划价 ${res.plan}，目标 ${res.target}，止损 ${res.stop}，数量 ${res.qty}`, type: 'success' });
-                } else if (currentlyFocused) {
-                    showAlert({ title: '已取消关注', text: res.message || '该股票已从关注列表中移除', type: 'info' });
-                }
+        if (ema == null) {
+            showAlert({ title: '错误', text: '未取到当前EMA值', type: 'error' });
+            return;
+        }
+        extraData.ema_price = ema;
+    }
+    stockAction('focus', extraData).then(res => {
+        if (res && res.status === 'success') {
+            pageConfig.mark.focus = res.focus;
+            renderMarkButtons();
+            if (!currentlyFocused && res.plan) {
+                showAlert({ title: '已关注', text: `计划价 ${res.plan}，目标 ${res.target}，止损 ${res.stop}，数量 ${res.qty}`, type: 'success' });
+            } else if (currentlyFocused) {
+                showAlert({ title: '已取消关注', text: res.message || '该股票已从关注列表中移除', type: 'info' });
             }
-        });
+        }
     });
 }
 

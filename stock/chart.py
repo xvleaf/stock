@@ -11,7 +11,7 @@ from django.utils import timezone
 from .fetch import tushare, kline, trend, quote
 from . import func, focus
 from .models.models import (SectorList, StockList, FocusStock, FocusHistory, TransOrder,
-                            TransHistory, TransReview, FilterTask, FilterResult)
+                            TransHistory, TransReview, FilterTask, FilterResult, ReviewList)
 from .forms.forms import FocusStockForm, TransHistoryForm, CashConfigForm, ReviewForm, CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES
 
 NAVI_PARAMS_INIT = {
@@ -72,6 +72,45 @@ def chart_data_api(request):
 
 
 @require_http_methods(["POST"])
+def check_focus_api(request):
+    """检查股票是否已关注，未关注时返回最后一个 EMA 值"""
+    try:
+        params = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_error('无效JSON')
+
+    code = params.get('code')
+    market = params.get('market')
+    cat = params.get('cat', 'stock')
+    site = params.get('site', '')
+
+    if not code or not market:
+        return _json_error('缺少股票信息')
+
+    # 查询是否已关注
+    from .models.models import FocusStock
+    is_focused = FocusStock.objects.filter(
+        code=code, market=market, status=FocusStock.STATUS_WATCHING
+    ).exists()
+
+    if is_focused:
+        return JsonResponse({'focused': True})
+
+    # 未关注，获取最新 K线数据，直接取最后一个 EMA 值
+    from .fetch.kline import kline_data_for_chart
+    kline_response = kline_data_for_chart(request.session, site, cat, market, code)
+    # kline_data_for_chart 返回 JsonResponse，需要解析 content 获取数据字典
+    kline_data = json.loads(kline_response.content)
+    av = kline_data.get('av', [])
+    ema = None
+    if av:
+        last = av[-1]
+        ema = last[1] if isinstance(last, (list, tuple)) else last
+
+    return JsonResponse({'focused': False, 'ema': ema})
+
+
+@require_http_methods(["POST"])
 def _build_chart_response(request, site, code, market, name, cat, view_mode):
     """
     构建图表页面响应的共用函数：返回 (html_content, context_dict)
@@ -125,6 +164,7 @@ def chart_view_api(request):
     param_name = data.get('name')
     param_market = data.get('market')
     param_cat = data.get('cat')
+    param_navi_id = data.get('navi_id')
     
     if not all([param_func, param_code, param_market]):
         return JsonResponse({'error': '参数缺失'}, status=400)
@@ -155,20 +195,23 @@ def chart_view_api(request):
             param_code,
             param_market,
             param_func,
-            param_value
+            param_value,
+            param_navi_id
         )
         if navi_data:
             idx = navi_data['navi_params']['naviIndex']
-            code, market = navi_data['navi_list'][idx]
-            # 如果是 pilot 切换，需要知道当前选中的历史记录 ID
+            navi_id, code, market = navi_data['navi_list'][idx]
+            # 如果是 pilot 切换，需要知道当前选中的历史记录 ID 和类型
             history_id = None
+            history_type = None
             if param_func == 'pilot':
                 pilot_idx = navi_data['navi_params']['pilotIndex']
                 pilot_list = navi_data['pilot_list']
                 # pilot_idx=-1 表示汇总，不需要 history_id
                 if pilot_list and 0 <= pilot_idx < len(pilot_list):
                     history_id = pilot_list[pilot_idx][0]
-            detail = _get_stock_detail(param_site, code, market, history_id)
+                    history_type = pilot_list[pilot_idx][2] if len(pilot_list[pilot_idx]) > 2 else None
+            detail = _get_stock_detail(param_site, code, market, history_id, history_type, navi_id)
             if detail:
                 view_mode = func.get_cache(request.session, 'view', 'kline')
                 # 更新当前股票 code，供返回列表时页码定位（navi 切换是 AJAX，不经过 filter_view）
@@ -180,6 +223,7 @@ def chart_view_api(request):
                 # 将 html 和 chart 配置附加到 detail
                 detail['html'] = html_content
                 detail['chart'] = context
+                detail['navi_id'] = navi_id
                 # 统一添加 pilot 相关数据
                 detail['pilot_idx'] = navi_data['navi_params']['pilotIndex']
                 detail['pilot_total'] = navi_data['navi_params']['pilotCount']
@@ -208,21 +252,28 @@ def chart_view_api(request):
 
                     if not is_summary and pilot_list and 0 <= pilot_idx < len(pilot_list):
                         pilot_date = pilot_list[pilot_idx][1].strftime('%Y-%m-%d') if pilot_list[pilot_idx][1] else ''
-                        # trans/view：获取操作类型、数量、价格；编辑操作细化修改字段
-                        if param_site in ['/trans/view', '/review/trans/view']:
+                        # 获取 history 类型（trans/focus），兼容旧格式（只有两个元素）
+                        pilot_type = pilot_list[pilot_idx][2] if len(pilot_list[pilot_idx]) > 2 else 'trans'
+
+                        # trans 类型历史
+                        if pilot_type == 'trans':
                             from .trans import TransHistory
                             history = TransHistory.objects.filter(id=pilot_list[pilot_idx][0]).first()
                             if history:
                                 if history.action == TransHistory.ACTION_EDIT:
-                                    # 编辑操作：对比上一条记录，找出修改的目标价格和止损价格
+                                    # 编辑操作：对比上一条同类型记录，找出修改的目标价格和止损价格
                                     changes = []
                                     if pilot_idx > 0:
-                                        prev_history = TransHistory.objects.filter(id=pilot_list[pilot_idx - 1][0]).first()
-                                        if prev_history:
-                                            if history.target_price != prev_history.target_price:
-                                                changes.append('目标价格')
-                                            if history.stop_price != prev_history.stop_price:
-                                                changes.append('止损价格')
+                                        # 找上一条同类型记录
+                                        for prev_i in range(pilot_idx - 1, -1, -1):
+                                            if len(pilot_list[prev_i]) > 2 and pilot_list[prev_i][2] == 'trans':
+                                                prev_history = TransHistory.objects.filter(id=pilot_list[prev_i][0]).first()
+                                                if prev_history:
+                                                    if history.target_price != prev_history.target_price:
+                                                        changes.append('目标价格')
+                                                    if history.stop_price != prev_history.stop_price:
+                                                        changes.append('止损价格')
+                                                break
                                     pilot_action = format_changes(changes, default='调整目标和止损价格')
                                 else:
                                     pilot_action = history.get_action_display()
@@ -230,8 +281,31 @@ def chart_view_api(request):
                                 cat = detail.get('cat', 'stock')
                                 deci = 3 if cat in ('fund', 'bond') else 2
                                 pilot_price = f"{float(history.price):.{deci}f}"
-                        # focus/view：对比上一条记录，找出修改的字段
-                        elif param_site in ['/focus/view', '/review/focus/view']:
+                                detail['comments'] = history.comments or ''
+                                
+                                # 设置历史快照字段
+                                detail['price'] = float(history.avg_cost)
+                                detail['qty'] = history.position_qty
+                                detail['amount'] = float(history.avg_cost) * history.position_qty
+                                detail['profit'] = float(history.profit)
+                                detail['target_price'] = float(history.target_price)
+                                detail['stop_price'] = float(history.stop_price)
+                                detail['win_ratio'] = history.win_ratio
+                                detail['risk_amount'] = float(history.risk_amount)
+                                
+                                # 判断是否是清仓交易（交易后持仓为0，包括多头卖出清仓和空头买入清仓）
+                                is_close_trade = (history.position_qty == 0 and history.action in (TransHistory.ACTION_SELL, TransHistory.ACTION_BUY))
+                                detail['is_close_trade'] = is_close_trade
+                                
+                                # 如果是清仓交易，设置清仓特有字段
+                                if is_close_trade:
+                                    from .review import calc_weighted_return
+                                    detail['deal_price'] = float(history.price)
+                                    detail['deal_qty'] = history.qty
+                                    detail['total_profit'] = float(history.profit)
+                                    detail['profit_ratio'] = float(calc_weighted_return(history.order))
+                        # focus 类型历史
+                        else:
                             from .models.models import FocusHistory
                             history = FocusHistory.objects.filter(id=pilot_list[pilot_idx][0]).first()
                             if history:
@@ -242,33 +316,46 @@ def chart_view_api(request):
                                 elif history.action == FocusHistory.ACTION_DEAL:
                                     pilot_action = '已交易'
                                 else:
-                                    # 编辑操作：对比上一条记录，找出修改的字段
+                                    # 编辑操作：对比上一条同类型记录，找出修改的字段
                                     changes = []
                                     if pilot_idx > 0:
-                                        prev_history = FocusHistory.objects.filter(id=pilot_list[pilot_idx - 1][0]).first()
-                                        if prev_history:
-                                            if history.intent != prev_history.intent:
-                                                changes.append('交易方向')
-                                            if history.plan_price != prev_history.plan_price:
-                                                changes.append('计划报价')
-                                            if history.plan_qty != prev_history.plan_qty:
-                                                changes.append('计划数量')
-                                            if history.target_price != prev_history.target_price:
-                                                changes.append('目标价格')
-                                            if history.stop_price != prev_history.stop_price:
-                                                changes.append('止损价格')
+                                        # 找上一条同类型记录
+                                        for prev_i in range(pilot_idx - 1, -1, -1):
+                                            if len(pilot_list[prev_i]) > 2 and pilot_list[prev_i][2] == 'focus':
+                                                prev_history = FocusHistory.objects.filter(id=pilot_list[prev_i][0]).first()
+                                                if prev_history:
+                                                    if history.intent != prev_history.intent:
+                                                        changes.append('交易方向')
+                                                    if history.plan_price != prev_history.plan_price:
+                                                        changes.append('计划报价')
+                                                    if history.plan_qty != prev_history.plan_qty:
+                                                        changes.append('计划数量')
+                                                    if history.target_price != prev_history.target_price:
+                                                        changes.append('目标价格')
+                                                    if history.stop_price != prev_history.stop_price:
+                                                        changes.append('止损价格')
+                                                break
                                     pilot_action = format_changes(changes, default='调整计划')
+                                pilot_qty = ''
+                                pilot_price = ''
+                                detail['comments'] = history.comments or ''
                     detail['pilot_date'] = pilot_date
                     detail['pilot_action'] = pilot_action
                     detail['pilot_qty'] = pilot_qty
                     detail['pilot_price'] = pilot_price
+                    detail['pilot_idx'] = pilot_idx
+                    detail['pilot_total'] = len(pilot_list) if pilot_list else 0
+                    # 历史模式下附加 history_id 和 history_type
+                    if not is_summary and pilot_list and 0 <= pilot_idx < len(pilot_list):
+                        detail['history_id'] = pilot_list[pilot_idx][0]
+                        detail['history_type'] = pilot_list[pilot_idx][2] if len(pilot_list[pilot_idx]) > 2 else 'trans'
                     # 汇总模式下，focus/view 返回汇总备注
                     if is_summary and param_site in ['/focus/view', '/review/focus/view']:
                         from .models.models import FocusStock
                         focus_inst = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).first()
                         if focus_inst:
                             comments_list = []
-                            for h in focus_inst.histories.all().order_by('-edit_date'):
+                            for h in focus_inst.histories.all().order_by('-id'):
                                 if h.comments:
                                     date_str = h.edit_date.strftime('%Y-%m-%d') if h.edit_date else ''
                                     comments_list.append(f'{date_str}：{h.comments}')
@@ -318,6 +405,9 @@ def get_page_config(session, site, cat):
 
     navi_data = func.get_cache(session, f'{site}-navi-data', {})
     navi_init = get_navi_params(session, site, navi_data)
+    # review 页面始终强制汇总模式，避免缓存导致指示器位置错误
+    if site.startswith('/review/'):
+        navi_init['pilotIndex'] = -1
     mark_init = get_mark_config(session, site, navi_data)
 
     return {
@@ -429,7 +519,7 @@ def get_navi_params(session, site, navi_data):
     return navi_params
 
 
-def set_navi_data(session, site, code, market, function, action):
+def set_navi_data(session, site, code, market, function, action, navi_id=None):
     show_pilot_limited = ['/focus/view', '/trans/view', '/review/focus/view', '/review/trans/view']    
     navi_data = func.get_cache(session, f'{site}-navi-data', {})
     if (site, code, market) != navi_data.get('site_code_market', None):
@@ -443,10 +533,15 @@ def set_navi_data(session, site, code, market, function, action):
         showPilot = navi_params['showPilot']
         # 页面初始化时（function != 'pilot'），重新查询 pilot_list，确保数据最新
         if function != 'pilot' and site in show_pilot_limited:
-            pilot_list = get_pilot_list(site, code, market)
+            navi_id = navi_list[navi_idx][0] if navi_list else None
+            pilot_list = get_pilot_list(site, code, market, navi_id)
             pilot_total = len(pilot_list)
             if site in ['/trans/view', '/review/trans/view']:
-                pilot_idx = func.get_cache(session, f'{site}-pilot', -1)
+                if site.startswith('/review/'):
+                    # review 页面刷新后始终进入汇总模式
+                    pilot_idx = -1
+                else:
+                    pilot_idx = func.get_cache(session, f'{site}-pilot', -1)
                 if pilot_idx >= pilot_total:
                     pilot_idx = pilot_total - 1
                 if pilot_idx < -1:
@@ -469,11 +564,21 @@ def set_navi_data(session, site, code, market, function, action):
 
         if site in show_pilot_limited:
             showPilot = True
-            pilot_list = get_pilot_list(site, code, market)
+            # 查找当前股票的 navi_id
+            current_navi_id = None
+            for item in navi_list:
+                if item[1] == code and item[2] == market:
+                    current_navi_id = item[0]
+                    break
+            pilot_list = get_pilot_list(site, code, market, current_navi_id)
             pilot_total = len(pilot_list)
             if site in ['/trans/view', '/review/trans/view', '/focus/view', '/review/focus/view']:
                 # trans/view 和 focus/view: pilot_idx=-1 表示汇总
-                pilot_idx = func.get_cache(session, f'{site}-pilot', -1)
+                if site.startswith('/review/'):
+                    # review 页面刷新后始终进入汇总模式
+                    pilot_idx = -1
+                else:
+                    pilot_idx = func.get_cache(session, f'{site}-pilot', -1)
                 if pilot_idx >= pilot_total:
                     pilot_idx = pilot_total - 1
                 if pilot_idx < -1:
@@ -494,18 +599,32 @@ def set_navi_data(session, site, code, market, function, action):
         shift = 1 if action == 'next' else -1
     else:
         shift = 0
+    # 查找当前索引（匹配 navi_id、code 和 market，navi_list 格式为 (id, code, market)）
     try:
-        navi_idx = navi_list.index((code, market)) + shift
+        navi_idx = None
+        for i, item in enumerate(navi_list):
+            # 如果有 navi_id，优先匹配 navi_id；否则只匹配 code 和 market
+            if navi_id:
+                if item[0] == int(navi_id) and item[1] == code and item[2] == market:
+                    navi_idx = i
+                    break
+            else:
+                if item[1] == code and item[2] == market:
+                    navi_idx = i
+                    break
+        if navi_idx is None:
+            raise ValueError
+        navi_idx = navi_idx + shift
     except ValueError:
         # 股票不在导航列表中（已被 hide 或不存在）：删除旧缓存，确保 get_page_config 读到空
         # 否则旧缓存（如下一只股票的导航数据）会导致 showNavi=true 但导航列表不含当前股票，页面状态异常
         func.delete_cache(session, f'{site}-navi-data')
         return {}
-    code, market = navi_list[navi_idx]
+    navi_id, code, market = navi_list[navi_idx]
 
     # 切换股票后，重新获取新股票的 pilot_list 并重置为汇总模式
     if function == 'navi' and showPilot:
-        pilot_list = get_pilot_list(site, code, market)
+        pilot_list = get_pilot_list(site, code, market, navi_id)
         pilot_total = len(pilot_list)
         pilot_idx = -1
         func.set_cache(session, f'{site}-pilot', -1)
@@ -514,6 +633,11 @@ def set_navi_data(session, site, code, market, function, action):
         if pilot_total <= 0:
             pilot_idx = -1
         elif site in ['/trans/view', '/review/trans/view', '/focus/view', '/review/focus/view']:
+            # 先修正当前 pilot_idx 边界，防止快速点击导致越界
+            if pilot_idx < -1:
+                pilot_idx = -1
+            if pilot_idx >= pilot_total:
+                pilot_idx = pilot_total - 1
             # trans/view 和 focus/view: up=prev(更早), down=next(更晚/汇总)
             if action == 'prev':
                 if pilot_idx == -1:
@@ -526,8 +650,18 @@ def set_navi_data(session, site, code, market, function, action):
                 else:
                     pilot_idx += 1  # 历史 → 更晚的历史
         else:
+            # 先修正边界
+            if pilot_idx < 0:
+                pilot_idx = 0
+            if pilot_idx >= pilot_total:
+                pilot_idx = pilot_total - 1
             shift = 1 if action == 'next' else -1 if action == 'prev' else 0
             pilot_idx += shift
+            # 计算后再次修正边界
+            if pilot_idx < 0:
+                pilot_idx = 0
+            if pilot_idx >= pilot_total:
+                pilot_idx = pilot_total - 1
 
     # pilot 按钮可用性
     if site in ['/trans/view', '/review/trans/view', '/focus/view', '/review/focus/view']:
@@ -541,7 +675,8 @@ def set_navi_data(session, site, code, market, function, action):
 
     # kline-deadline: 历史模式下设为该笔日期，汇总模式下删除
     if pilot_idx >= 0 and pilot_list and 0 <= pilot_idx < len(pilot_list):
-        pilot_id, pilot_date = pilot_list[pilot_idx]
+        pilot_id = pilot_list[pilot_idx][0]
+        pilot_date = pilot_list[pilot_idx][1]
         deadline = pilot_date.strftime('%Y%m%d')
         func.set_cache(
             session,
@@ -586,11 +721,11 @@ def set_navi_data(session, site, code, market, function, action):
 def get_navi_list(site, session=None):
     if site == '/focus/view':
         qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).order_by('sort_order')
-        navi_list = list(qs.values_list('code', 'market')) 
+        navi_list = list(qs.values_list('id', 'code', 'market')) 
 
     elif site == '/trans/view':
         qs = TransOrder.objects.filter(status=TransOrder.STATUS_OPEN).order_by('-created_at')
-        navi_list = list(qs.values_list('code', 'market')) 
+        navi_list = list(qs.values_list('id', 'code', 'market')) 
     elif site == '/sector/view':
         # 优先使用板块清单传入的自定义 navi 列表（标记筛选后）；否则用全部板块
         custom = func.get_cache(session, 'sector-view-custom-navi') if session else None
@@ -598,7 +733,7 @@ def get_navi_list(site, session=None):
             navi_list = [tuple(x) for x in custom]
         else:
             qs = SectorList.objects.all()
-            navi_list = list(qs.values_list('code', 'market'))
+            navi_list = list(qs.values_list('id', 'code', 'market'))
     elif site == '/filter/view':
         # 优先使用对比页传入的自定义 navi 列表；否则用当前 task 全部结果
         custom = func.get_cache(session, 'filter-view-custom-navi') if session else None
@@ -607,7 +742,7 @@ def get_navi_list(site, session=None):
         else:
             task_id = func.get_cache(session, 'filter-current-task') if session else None
             qs = FilterResult.objects.filter(task_id=task_id).exclude(hide='1').order_by('sort_order', 'id')
-            navi_list = list(qs.values_list('code', 'market'))
+            navi_list = list(qs.values_list('id', 'code', 'market'))
     elif site == '/stocks/view':
         # 优先使用板块股票清单传入的自定义 navi 列表；否则用全部未 hide 股票
         custom = func.get_cache(session, 'stocks-view-custom-navi') if session else None
@@ -615,7 +750,7 @@ def get_navi_list(site, session=None):
             navi_list = [tuple(x) for x in custom]
         else:
             qs = StockList.objects.exclude(hide='1').order_by('code')
-            navi_list = list(qs.values_list('code', 'market'))
+            navi_list = list(qs.values_list('id', 'code', 'market'))
     elif site == '/refer/view':
         # 优先使用筛选对比页传入的自定义 navi 列表；否则用全部未 hide 股票
         custom = func.get_cache(session, 'refer-view-custom-navi') if session else None
@@ -623,49 +758,67 @@ def get_navi_list(site, session=None):
             navi_list = [tuple(x) for x in custom]
         else:
             qs = StockList.objects.exclude(hide='1').order_by('code')
-            navi_list = list(qs.values_list('code', 'market'))
+            navi_list = list(qs.values_list('id', 'code', 'market'))
     elif site == '/review/focus/view':
-        # 未交易关注：左右切换不同股票
-        qs = FocusStock.objects.filter(
-            status=FocusStock.STATUS_CLOSED,
-            close_reason=FocusStock.CLOSE_REASON_MANUAL
-        ).exclude(orders__isnull=False).order_by('-close_time')
-        stock_latest = {}
-        for f in qs:
-            if f.code not in stock_latest or f.close_time > stock_latest[f.code].close_time:
-                stock_latest[f.code] = f
-        codes = sorted(stock_latest.keys(), key=lambda c: stock_latest[c].close_time, reverse=True)
-        if not codes or current_code not in codes:
-            return JsonResponse({'code': current_code, 'url': f'/review/focus/view/{current_code}/'})
-        idx = codes.index(current_code)
-        if direction == 'prev' and idx > 0:
-            target = codes[idx - 1]
-        elif direction == 'next' and idx < len(codes) - 1:
-            target = codes[idx + 1]
-        else:
-            target = current_code
-        # 获取目标股票的最新轮次（总轮次数）
-        target_round = FocusStock.objects.filter(
-            code=target,
-            status=FocusStock.STATUS_CLOSED,
-            close_reason=FocusStock.CLOSE_REASON_MANUAL
-        ).exclude(orders__isnull=False).count()
-        return JsonResponse({'code': target, 'url': f'/review/focus/view/{target}/?round={target_round}'})
-    elif site == 'review/trans/view':
-        pass
+        # 从 ReviewList 中查询 focus 类型的记录（与复盘列表页面一致，不去重）
+        qs = ReviewList.objects.filter(
+            review_type=ReviewList.TYPE_FOCUS
+        ).order_by('-close_date', '-id')
+        navi_list = [(r.id, r.code, r.market) for r in qs]
+    elif site == '/review/trans/view':
+        # 从 ReviewList 中查询 trans 类型的记录（与复盘列表页面一致，不去重）
+        qs = ReviewList.objects.filter(
+            review_type=ReviewList.TYPE_TRANS
+        ).order_by('-close_date', '-id')
+        navi_list = [(r.id, r.code, r.market) for r in qs]
     else:
         navi_list = []
 
     return navi_list
 
 
-def get_pilot_list(site, code, market):
+def get_pilot_list(site, code, market, navi_id=None):
     if site == '/focus/view':
         focus = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).first()
-        pilot_list = list(focus.histories.all().order_by('edit_date').values_list('id', 'edit_date')) if focus else []
+        pilot_list = [(h.id, h.edit_date, 'focus') for h in focus.histories.all().order_by('id')] if focus else []
     elif site == '/trans/view':
         order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_OPEN).first()
-        pilot_list = list(order.histories.all().order_by('date', 'id').values_list('id', 'date')) if order else []
+        pilot_list = [(h.id, h.date, 'trans') for h in order.histories.all().order_by('id')] if order else []
+    elif site == '/review/focus/view':
+        # 根据 navi_id 查找对应的 ReviewList 记录
+        if navi_id:
+            review = ReviewList.objects.filter(id=navi_id, review_type=ReviewList.TYPE_FOCUS).first()
+            if review and review.focus_stock:
+                focus = review.focus_stock
+            else:
+                focus = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_CLOSED).order_by('-close_date').first()
+        else:
+            focus = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_CLOSED).order_by('-close_date').first()
+        pilot_list = [(h.id, h.edit_date, 'focus') for h in focus.histories.all().order_by('id')] if focus else []
+    elif site == '/review/trans/view':
+        # 复盘交易页面：关注历史始终排在交易历史前面，内部按数据库顺序排序
+        # 根据 navi_id 查找对应的 ReviewList 记录
+        if navi_id:
+            review = ReviewList.objects.filter(id=navi_id, review_type=ReviewList.TYPE_TRANS).first()
+            if review and review.trans_order:
+                order = review.trans_order
+            else:
+                order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_CLOSED).order_by('-close_date').first()
+        else:
+            order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_CLOSED).order_by('-close_date').first()
+        pilot_list = []
+        if order:
+            # 先放关注历史（按数据库顺序）
+            if order.focus_id:
+                focus = order.focus
+                if focus:
+                    focus_histories = list(focus.histories.all().order_by('id'))
+                    for h in focus_histories:
+                        pilot_list.append((h.id, h.edit_date, 'focus'))
+            # 再放交易历史（按数据库顺序）
+            trans_histories = list(order.histories.all().order_by('id'))
+            for h in trans_histories:
+                pilot_list.append((h.id, h.date, 'trans'))
     else:
         pilot_list = []
     return pilot_list
@@ -683,15 +836,31 @@ def get_cat_from_code(code, market):
     return 'stock'
 
 
-def _get_stock_detail(site, code, market, history_id=None):
-    if site in ['/focus/view', '/review/focus/view']:
+def _get_stock_detail(site, code, market, history_id=None, history_type=None, navi_id=None):
+    if site == '/focus/view':
         focus_inst = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).first()
         if not focus_inst:
             return {}
         history = None
         if history_id:
             history = focus_inst.histories.filter(id=history_id).first()
-        return focus.get_focus_data_dict(focus_inst, history)   # 直接调用统一函数
+        return focus.get_focus_data_dict(focus_inst, history)
+    elif site == '/review/focus/view':
+        # 根据 navi_id 查找对应的 ReviewList 记录
+        if navi_id:
+            review = ReviewList.objects.filter(id=navi_id, review_type=ReviewList.TYPE_FOCUS).first()
+            if review and review.focus_stock:
+                focus_inst = review.focus_stock
+            else:
+                focus_inst = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_CLOSED).order_by('-close_date').first()
+        else:
+            focus_inst = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_CLOSED).order_by('-close_date').first()
+        if not focus_inst:
+            return {}
+        history = None
+        if history_id:
+            history = focus_inst.histories.filter(id=history_id).first()
+        return focus.get_focus_data_dict(focus_inst, history)
 
     elif site == '/sector/view':
         sector = SectorList.objects.filter(code=code).first()
@@ -734,7 +903,7 @@ def _get_stock_detail(site, code, market, history_id=None):
             'name': res.name,
             'cat': res.cat,
         }
-    elif site in ['/trans/view', '/review/trans/view']:
+    elif site == '/trans/view':
         from .trans import TransOrder, get_trans_data_dict
         order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_OPEN).first()
         if not order:
@@ -743,6 +912,42 @@ def _get_stock_detail(site, code, market, history_id=None):
         if history_id:
             history = order.histories.filter(id=history_id).first()
         return get_trans_data_dict(order, history)
+    elif site == '/review/trans/view':
+        from .trans import TransOrder, get_trans_data_dict
+        from .focus import get_focus_data_dict
+        # 根据 navi_id 查找对应的 ReviewList 记录
+        if navi_id:
+            review = ReviewList.objects.filter(id=navi_id, review_type=ReviewList.TYPE_TRANS).first()
+            if review and review.trans_order:
+                order = review.trans_order
+            else:
+                order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_CLOSED).order_by('-close_date').first()
+        else:
+            order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_CLOSED).order_by('-close_date').first()
+        if not order:
+            return {}
+        # 如果是 focus 类型历史，使用 focus 数据
+        if history_type == 'focus' and order.focus_id:
+            focus_inst = order.focus
+            if focus_inst:
+                history = None
+                if history_id:
+                    history = focus_inst.histories.filter(id=history_id).first()
+                return get_focus_data_dict(focus_inst, history)
+        # 默认使用 trans 数据
+        history = None
+        if history_id:
+            history = order.histories.filter(id=history_id).first()
+        data = get_trans_data_dict(order, history)
+        # 增加复盘特有字段（仅汇总模式需要，历史模式下这些字段会被隐藏）
+        if history is None:
+            from .review import calc_weighted_return
+            last_history = order.histories.order_by('-id').first()
+            data['open_date'] = order.open_date.strftime('%Y-%m-%d') if order.open_date else ''
+            data['close_date'] = order.close_date.strftime('%Y-%m-%d') if order.close_date else ''
+            data['total_profit'] = round(float(last_history.profit), 2) if last_history else 0
+            data['profit_ratio'] = round(float(calc_weighted_return(order)), 2)
+        return data
     return {}
 
 
@@ -760,13 +965,13 @@ def _navi_switch(site, current_code, direction):
         codes = list(qs.values_list('code', flat=True))
     elif site == 'review/view':
         # 已交易复盘：左右切换不同股票
-        all_closed = TransOrder.objects.filter(status=TransOrder.STATUS_CLOSED).order_by('close_time')
+        all_closed = TransOrder.objects.filter(status=TransOrder.STATUS_CLOSED).order_by('close_date')
         stock_latest = {}
         for o in all_closed:
-            if o.code not in stock_latest or o.close_time > stock_latest[o.code].close_time:
+            if o.code not in stock_latest or o.close_date > stock_latest[o.code].close_date:
                 stock_latest[o.code] = o
         unique_stocks = list(stock_latest.values())
-        unique_stocks.sort(key=lambda x: x.close_time, reverse=True)
+        unique_stocks.sort(key=lambda x: x.close_date, reverse=True)
         codes = [s.code for s in unique_stocks]
         if not codes or current_code not in codes:
             return JsonResponse({'code': current_code, 'url': f'/review/view/{current_code}/'})
@@ -777,20 +982,18 @@ def _navi_switch(site, current_code, direction):
             target = codes[idx + 1]
         else:
             target = current_code
-        orders = TransOrder.objects.filter(code=target, status=TransOrder.STATUS_CLOSED).order_by('close_time')
+        orders = TransOrder.objects.filter(code=target, status=TransOrder.STATUS_CLOSED).order_by('close_date')
         round_num = len(orders)
         return JsonResponse({'code': target, 'url': f'/review/view/{target}/?round={round_num}'})
     elif site == '/review/focus/view':
-        # 未交易关注：左右切换不同股票
-        qs = FocusStock.objects.filter(
-            status=FocusStock.STATUS_CLOSED,
-            close_reason=FocusStock.CLOSE_REASON_MANUAL
-        ).exclude(orders__isnull=False).order_by('-close_time')
-        stock_latest = {}
-        for f in qs:
-            if f.code not in stock_latest or f.close_time > stock_latest[f.code].close_time:
-                stock_latest[f.code] = f
-        codes = sorted(stock_latest.keys(), key=lambda c: stock_latest[c].close_time, reverse=True)
+        # 从 ReviewList 中查询 focus 类型的记录
+        qs = ReviewList.objects.filter(
+            review_type=ReviewList.TYPE_FOCUS
+        ).order_by('-close_date', '-id')
+        codes = []
+        for r in qs:
+            if r.code not in codes:
+                codes.append(r.code)
         if not codes or current_code not in codes:
             return JsonResponse({'code': current_code, 'url': f'/review/focus/view/{current_code}/'})
         idx = codes.index(current_code)
@@ -800,13 +1003,7 @@ def _navi_switch(site, current_code, direction):
             target = codes[idx + 1]
         else:
             target = current_code
-        # 获取目标股票的最新轮次（总轮次数）
-        target_round = FocusStock.objects.filter(
-            code=target,
-            status=FocusStock.STATUS_CLOSED,
-            close_reason=FocusStock.CLOSE_REASON_MANUAL
-        ).exclude(orders__isnull=False).count()
-        return JsonResponse({'code': target, 'url': f'/review/focus/view/{target}/?round={target_round}'})
+        return JsonResponse({'code': target, 'url': f'/review/focus/view/{target}/'})
     else:
         codes = []
 

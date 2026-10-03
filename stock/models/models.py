@@ -12,6 +12,12 @@ WEB_SETTING_DEFAULTS = {
     'icp_website':          {'value': '',         'type': 'string', 'group': 'general', 'label': '备案官网',       'sort': 2, 'remark': '备案查询链接地址，点击备案编号跳转'},
     'default_page_size':    {'value': '10',       'type': 'int',    'group': 'general', 'label': '分页默认数量',   'sort': 3, 'remark': '所有列表每页默认显示的记录条数'},
     'quote_interval':       {'value': '60000',    'type': 'int',    'group': 'general', 'label': '行情刷新间隔',   'sort': 4, 'remark': '列表页股价和涨幅自动刷新的间隔时间，单位秒'},
+    'cash_stat_start':      {'value': '',         'type': 'string', 'group': 'general', 'label': '资金统计起始',   'sort': 5, 'remark': '资金页面统计的起始日期，空=一年前'},
+    'cash_stat_end':        {'value': '',         'type': 'string', 'group': 'general', 'label': '资金统计结束',   'sort': 6, 'remark': '资金页面统计的结束日期，空=今天'},
+    'cash_stat_end_set_day':{'value': '',         'type': 'string', 'group': 'general', 'label': '资金统计结束设置日', 'sort': 7, 'remark': '内部字段，记录结束日期设置日期'},
+    'review_stat_start':    {'value': '',         'type': 'string', 'group': 'general', 'label': '复盘统计起始',   'sort': 8, 'remark': '复盘页面统计的起始日期，空=一年前'},
+    'review_stat_end':      {'value': '',         'type': 'string', 'group': 'general', 'label': '复盘统计结束',   'sort': 9, 'remark': '复盘页面统计的结束日期，空=今天'},
+    'review_stat_end_set_day': {'value': '',      'type': 'string', 'group': 'general', 'label': '复盘统计结束设置日', 'sort': 10, 'remark': '内部字段，记录结束日期设置日期'},
     # 交易费用（10项）
     'commission_ratio':     {'value': '0.000085', 'type': 'float',  'group': 'fee', 'label': '佣金费率',       'sort': 1, 'remark': '券商佣金费率，按成交金额比例收取，买卖双向'},
     'commission_min':       {'value': '0',        'type': 'float',  'group': 'fee', 'label': '最低佣金',       'sort': 2, 'remark': '单笔交易最低佣金金额，不足按此收取'},
@@ -636,7 +642,15 @@ class TransOrder(models.Model):
 
         if position_qty == 0 and sell_qty > 0:
             self.status = self.STATUS_CLOSED
-            if not self.close_date:
+            # 从 histories 中获取最后一笔实际交易（非编辑、非分红）的日期作为平仓日期
+            last_close_date = None
+            for d in reversed(list(histories)):
+                if d.action not in (TransHistory.ACTION_EDIT, TransHistory.ACTION_DIVIDEND):
+                    last_close_date = d.date
+                    break
+            if last_close_date:
+                self.close_date = last_close_date
+            elif not self.close_date:
                 self.close_date = timezone.now()
         elif position_qty != 0:
             self.status = self.STATUS_OPEN
@@ -958,3 +972,51 @@ class FilterGlobalConfig(models.Model):
         if obj is None:
             obj = cls.objects.create(enabled_boards='', exclude_st='1')
         return obj
+
+
+class ReviewList(models.Model):
+    """复盘列表：已清仓交易 / 已关闭关注的汇总记录"""
+    TYPE_TRANS = 'trans'
+    TYPE_FOCUS = 'focus'
+    TYPE_CHOICES = [
+        (TYPE_TRANS, '交易'),
+        (TYPE_FOCUS, '关注'),
+    ]
+    RATING_CHOICES = [
+        (1, '优'),
+        (2, '良'),
+        (3, '中'),
+        (4, '差'),
+    ]
+
+    review_type = models.CharField('复盘类型', max_length=10, choices=TYPE_CHOICES, db_index=True)
+    trans_order = models.ForeignKey(TransOrder, on_delete=models.CASCADE, null=True, blank=True,
+                                    related_name='reviews', verbose_name='关联交易')
+    focus_stock = models.ForeignKey(FocusStock, on_delete=models.CASCADE, null=True, blank=True,
+                                    related_name='focus_reviews', verbose_name='关联关注')
+    code = models.CharField('股票代码', max_length=20, db_index=True)
+    market = models.CharField('股票市场', max_length=10, default='SH')
+    name = models.CharField('股票名称', max_length=50)
+    cat = models.CharField('股票类型', max_length=10, default='stock')
+    open_date = models.DateField('建仓/关注日期', null=True, blank=True)
+    close_date = models.DateField('平仓/关闭日期', null=True, blank=True, db_index=True)
+    # 交易模式字段
+    profit = models.DecimalField('收益金额', max_digits=14, decimal_places=2, default=0)
+    profit_ratio = models.DecimalField('综合收益比例(%)', max_digits=10, decimal_places=2, default=0)
+    # 关注模式字段
+    plan_price = models.DecimalField('计划报价', max_digits=10, decimal_places=3, null=True, blank=True)
+    target_price = models.DecimalField('目标价格', max_digits=10, decimal_places=3, null=True, blank=True)
+    # 通用字段
+    rating = models.IntegerField('评级', choices=RATING_CHOICES, null=True, blank=True)
+    comments = models.TextField('备注', blank=True, default='')
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'models_review_list'
+        verbose_name = '复盘列表'
+        verbose_name_plural = verbose_name
+        ordering = ['-close_date', '-id']
+
+    def __str__(self):
+        return f'{self.get_review_type_display()}-{self.name}({self.code})'

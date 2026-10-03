@@ -13,7 +13,7 @@ from django.db import transaction
 from .fetch import quote, tushare
 from . import func, chart, cash
 from .models.models import (StockList, FilterTask, FilterResult, FocusStock,
-                            FilterGlobalConfig, BOARD_DEFS, BOARD_LABELS, board_of_code)
+                            FilterGlobalConfig, BOARD_DEFS, BOARD_LABELS, board_of_code, ReviewList)
 from django.core.cache import cache
 
 # 筛选进行中的全局锁（防止并发重复筛选）
@@ -490,7 +490,7 @@ def filter_list(request):
     # 记录来源，供 view 返回列表时定位
     func.set_view_back(request.session, '/filter/list')
     # 标记筛选后的全量列表作为 view 的自定义 navi（跨页切换）
-    custom_navi = [(r.code, r.market) for r in results_qs]
+    custom_navi = [(r.id, r.code, r.market) for r in results_qs]
     func.set_cache(request.session, 'filter-view-custom-navi', custom_navi)
     # 失效旧导航缓存，确保 view 页面用新的 custom_navi 重新生成 navi（标记筛选后 next 正确）
     func.delete_cache(request.session, '/filter/view-navi-data')
@@ -720,17 +720,19 @@ def _handle_hide(request, result, task, code, market):
     custom = func.get_cache(request.session, 'filter-view-custom-navi')
     if custom:
         custom_list = [tuple(x) for x in custom]
-        try:
-            idx = custom_list.index((code, market))
-        except ValueError:
-            idx = -1
-        remaining = [x for x in custom_list if x != (code, market)]
+        # 查找当前索引（匹配 code 和 market，格式为 (id, code, market)）
+        idx = -1
+        for i, item in enumerate(custom_list):
+            if item[1] == code and item[2] == market:
+                idx = i
+                break
+        remaining = [x for x in custom_list if x[1] != code or x[2] != market]
         if 0 <= idx < len(remaining):
-            nc, nm = remaining[idx]
+            nid, nc, nm = remaining[idx]
             nres = FilterResult.objects.filter(code=nc, market=nm).order_by('-task_id').first()
             resp['next'] = {'code': nc, 'market': nm, 'name': nres.name if nres else ''}
         elif remaining:
-            pc, pm = remaining[-1]
+            pid, pc, pm = remaining[-1]
             pres = FilterResult.objects.filter(code=pc, market=pm).order_by('-task_id').first()
             resp['prev'] = {'code': pc, 'market': pm, 'name': pres.name if pres else ''}
     else:
@@ -754,12 +756,12 @@ def _handle_hide(request, result, task, code, market):
     func.delete_cache(request.session, '/filter/view-navi-data')
     # 更新自定义 navi 列表（对比页进入）：移除被 hide 的股票
     if custom:
-        custom_list = [tuple(x) for x in custom if tuple(x) != (code, market)]
+        custom_list = [tuple(x) for x in custom if x[1] != code or x[2] != market]
         func.set_cache(request.session, 'filter-view-custom-navi', custom_list)
     return JsonResponse(resp)
 
 
-def _do_focus(result, ema_price=None):
+def _do_focus(result, ema_price=None, comments='筛选时添加'):
     """
     关注/取消关注（双向）。
     - 未关注：建关注记录，plan_price=前端传来的当前 EMA 值；
@@ -779,10 +781,28 @@ def _do_focus(result, ema_price=None):
             existing.close_date = timezone.now().date()
             existing.save()
             existing.save_history(action='close', comments='筛选时关闭')
+            # 创建复盘记录
+            ReviewList.objects.update_or_create(
+                focus_stock=existing,
+                defaults={
+                    'review_type': ReviewList.TYPE_FOCUS,
+                    'code': existing.code,
+                    'market': existing.market,
+                    'name': existing.name,
+                    'cat': existing.cat,
+                    'open_date': existing.focus_date,
+                    'close_date': existing.close_date,
+                    'plan_price': existing.plan_price,
+                    'target_price': existing.target_price,
+                }
+            )
         return JsonResponse({'status': 'success', 'focus': 0, 'msg': '已取消关注'})
 
     if ema_price is None:
         return JsonResponse({'status': 'error', 'message': 'EMA价格缺失'}, status=400)
+    # 兼容前端误传对象的情况
+    if isinstance(ema_price, dict):
+        ema_price = ema_price.get('ema_price') or ema_price.get('price')
     # 兼容前端误传 Highstock [时间戳, 值] 数组
     if isinstance(ema_price, (list, tuple)):
         ema_price = ema_price[1] if len(ema_price) >= 2 else None
@@ -809,7 +829,7 @@ def _do_focus(result, ema_price=None):
             allowed_qty=qty,
             sort_order=max_order + 1,
         )
-        new_focus.save_history(action='create', comments='筛选时添加')
+        new_focus.save_history(action='create', comments=comments)
     return JsonResponse({'status': 'success', 'focus': 1,
                          'plan': round(plan, deci), 'target': target, 'stop': stop, 'qty': qty})
 
@@ -837,17 +857,19 @@ def _handle_hide_stocks(request, code, market):
     custom = func.get_cache(request.session, 'stocks-view-custom-navi')
     if custom:
         custom_list = [tuple(x) for x in custom]
-        try:
-            idx = custom_list.index((code, market))
-        except ValueError:
-            idx = -1
-        remaining = [x for x in custom_list if x != (code, market)]
+        # 查找当前索引（匹配 code 和 market，格式为 (id, code, market)）
+        idx = -1
+        for i, item in enumerate(custom_list):
+            if item[1] == code and item[2] == market:
+                idx = i
+                break
+        remaining = [x for x in custom_list if x[1] != code or x[2] != market]
         if 0 <= idx < len(remaining):
-            nc, nm = remaining[idx]
+            nid, nc, nm = remaining[idx]
             nstock = StockList.objects.filter(code=nc, market=nm).first()
             resp['next'] = {'code': nc, 'market': nm, 'name': nstock.name if nstock else ''}
         elif remaining:
-            pc, pm = remaining[-1]
+            pid, pc, pm = remaining[-1]
             pstock = StockList.objects.filter(code=pc, market=pm).first()
             resp['prev'] = {'code': pc, 'market': pm, 'name': pstock.name if pstock else ''}
     # 隐藏该股票：同步 StockList，以及所有历史结果中的同代码记录
@@ -862,14 +884,14 @@ def _handle_hide_stocks(request, code, market):
     func.delete_cache(request.session, '/stocks/view-navi-data')
     # 更新自定义 navi 列表：移除被 hide 的股票
     if custom:
-        custom_list = [tuple(x) for x in custom if tuple(x) != (code, market)]
+        custom_list = [tuple(x) for x in custom if x[1] != code or x[2] != market]
         func.set_cache(request.session, 'stocks-view-custom-navi', custom_list)
     return JsonResponse(resp)
 
 
-def _do_focus_stocks(stock, ema_price=None):
+def _do_focus_stocks(stock, ema_price=None, comments='筛选时添加'):
     """/stocks/view 模式关注/取消关注（复用 _do_focus 逻辑，传入 StockList 对象）"""
-    return _do_focus(stock, ema_price)
+    return _do_focus(stock, ema_price, comments=comments)
 
 
 def _handle_hide_refer(request, code, market):
@@ -881,17 +903,19 @@ def _handle_hide_refer(request, code, market):
     custom = func.get_cache(request.session, 'refer-view-custom-navi')
     if custom:
         custom_list = [tuple(x) for x in custom]
-        try:
-            idx = custom_list.index((code, market))
-        except ValueError:
-            idx = -1
-        remaining = [x for x in custom_list if x != (code, market)]
+        # 查找当前索引（匹配 code 和 market，格式为 (id, code, market)）
+        idx = -1
+        for i, item in enumerate(custom_list):
+            if item[1] == code and item[2] == market:
+                idx = i
+                break
+        remaining = [x for x in custom_list if x[1] != code or x[2] != market]
         if 0 <= idx < len(remaining):
-            nc, nm = remaining[idx]
+            nid, nc, nm = remaining[idx]
             nstock = StockList.objects.filter(code=nc, market=nm).first()
             resp['next'] = {'code': nc, 'market': nm, 'name': nstock.name if nstock else ''}
         elif remaining:
-            pc, pm = remaining[-1]
+            pid, pc, pm = remaining[-1]
             pstock = StockList.objects.filter(code=pc, market=pm).first()
             resp['prev'] = {'code': pc, 'market': pm, 'name': pstock.name if pstock else ''}
     # 隐藏该股票：同步 StockList，以及所有历史结果中的同代码记录
@@ -906,7 +930,7 @@ def _handle_hide_refer(request, code, market):
     func.delete_cache(request.session, '/refer/view-navi-data')
     # 更新自定义 navi 列表：移除被 hide 的股票
     if custom:
-        custom_list = [tuple(x) for x in custom if tuple(x) != (code, market)]
+        custom_list = [tuple(x) for x in custom if x[1] != code or x[2] != market]
         func.set_cache(request.session, 'refer-view-custom-navi', custom_list)
     return JsonResponse(resp)
 
@@ -938,7 +962,7 @@ def filter_view(request, market, code):
             elif func_name == 'hide':
                 return _handle_hide_stocks(request, code, market)
             elif func_name == 'focus':
-                return _do_focus_stocks(stock, data.get('ema_price'))
+                return _do_focus_stocks(stock, data.get('ema_price'), data.get('comments', '筛选时添加'))
             else:
                 return JsonResponse({'status': 'error', 'message': '未知操作'})
 
@@ -1238,8 +1262,8 @@ def refer_list(request):
         code_getter=lambda obj: obj['code']
     )
 
-    # 全量过滤后的列表作为 view 自定义 navi（可跨页）
-    custom_navi = [(r['code'], r['market']) for r in rows]
+    # 全量过滤后的列表作为 view 自定义 navi（可跨页，用索引作临时 id）
+    custom_navi = [(idx, r['code'], r['market']) for idx, r in enumerate(rows)]
     func.set_cache(request.session, 'refer-view-custom-navi', custom_navi)
     func.delete_cache(request.session, '/refer/view-navi-data')
     func.set_view_back(request.session, '/refer/list')

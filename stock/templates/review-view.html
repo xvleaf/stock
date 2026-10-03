@@ -1,0 +1,424 @@
+{% extends "base-view.html" %}
+{% block title %}复盘详情{% endblock %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'stock/css/view.css' %}">
+{% endblock %}
+
+{% block content %}
+{# K 线/分时图 #}
+<div class="d-none" id="chartPageContainer"></div>
+
+<div class="form-wrap" id="{% if review_type == 'trans' %}transViewForm{% else %}focusForm{% endif %}">
+    {# 历史指示器（汇总且有多条历史时隐藏） #}
+    <div class="d-flex justify-content-between align-items-center mb-2 {% if is_summary and pilot_total > 1 %}d-none{% endif %}" id="{% if review_type == 'trans' %}transPilotWrap{% else %}focusPilotWrap{% endif %}">
+        <div class="d-flex flex-wrap justify-content-start small text-muted">
+            <span class="text-nowrap" id="pilotLabelFirst">{% if review_type == 'trans' %}交易{% else %}关注{% endif %}</span>
+            <span class="text-nowrap">记录</span>
+        </div>
+        <span class="small text-muted" id="{% if review_type == 'trans' %}transPilotIndicator{% else %}focusPilotIndicator{% endif %}"></span>
+    </div>
+
+    {% if review_type == 'trans' %}
+    {# ===== 交易模式：与 trans-view.html 字段完全一致 ===== #}
+    <div id="transForm">
+        {# 第1行：股票类型/市场/代码/名称 #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票类型</label>
+                    <input type="text" class="form-control readonly-field" id="trans_cat" value="{{ cat_display }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票市场</label>
+                    <input type="text" class="form-control readonly-field" id="trans_market" value="{{ market_display }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票代码</label>
+                    <input type="text" class="form-control readonly-field" id="trans_code" value="{{ order.code }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票名称</label>
+                    <input type="text" class="form-control readonly-field" id="trans_name" value="{{ order.name }}" readonly>
+                </div>
+            </div>
+        </div>
+
+        {# 第2行：持仓价格/持仓数量/持仓金额/当前收益（交易模式下仅历史模式显示，清仓交易隐藏） #}
+        <div class="row trans-history-only trans-normal-history d-none">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">持仓价格</label>
+                    <input type="text" class="form-control readonly-field" id="trans_price" value="{{ initial.price }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">持仓数量</label>
+                    <input type="text" class="form-control readonly-field" id="trans_qty" value="{{ initial.qty }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">持仓金额</label>
+                    <input type="text" class="form-control readonly-field" id="trans_amount" value="{{ initial.amount }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">当前收益</label>
+                    <input type="text" class="form-control readonly-field {% if order.profit > 0 %}text-danger{% elif order.profit < 0 %}text-success{% endif %}" id="trans_profit" value="{{ initial.profit }}" readonly>
+                </div>
+            </div>
+        </div>
+
+        {# 第3行：目标价格/止损价格/盈利机会/风险资金（仅历史模式显示，清仓交易隐藏） #}
+        <div class="row trans-history-only trans-normal-history d-none">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">目标价格</label>
+                    <input type="text" class="form-control readonly-field" id="trans_target_price" value="{{ initial.target_price }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">止损价格</label>
+                    <input type="text" class="form-control readonly-field" id="trans_stop_price" value="{{ initial.stop_price }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">盈利机会</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control readonly-field" id="trans_win_ratio" value="{{ initial.win_ratio }}" readonly>
+                        <span class="input-group-text">%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">风险资金</label>
+                    <input type="text" class="form-control readonly-field" id="trans_risk_amount" value="{{ initial.risk_amount }}" readonly>
+                </div>
+            </div>
+        </div>
+
+        {# 清仓交易特有字段：成交价格/成交数量/全部收益/收益比例（仅清仓交易历史显示） #}
+        <div class="row trans-close-only d-none">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">成交价格</label>
+                    <input type="text" class="form-control readonly-field" id="trans_deal_price" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">成交数量</label>
+                    <input type="text" class="form-control readonly-field" id="trans_deal_qty" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">全部收益</label>
+                    <input type="text" class="form-control readonly-field" id="trans_total_profit" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">收益比例</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control readonly-field" id="trans_profit_ratio" readonly>
+                        <span class="input-group-text">%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# 复盘特有字段：建仓日期/平仓日期/盈利金额/收益比例（汇总模式显示，历史模式隐藏） #}
+        <div class="row review-only-fields">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">建仓日期</label>
+                    <input type="text" class="form-control readonly-field" id="reviewOpenDate" value="{{ order.open_date|date:'Y-m-d' }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">平仓日期</label>
+                    <input type="text" class="form-control readonly-field" id="reviewCloseDate" value="{{ order.close_date|date:'Y-m-d' }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">全部收益</label>
+                    <input type="text" class="form-control readonly-field {% if order.profit > 0 %}text-danger{% elif order.profit < 0 %}text-success{% endif %}" id="reviewProfit" value="{{ order.profit }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">收益比例</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control readonly-field {% if profit_ratio > 0 %}text-danger{% elif profit_ratio < 0 %}text-success{% endif %}" id="reviewProfitRatio" value="{{ profit_ratio }}" readonly>
+                        <span class="input-group-text">%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# 备注 + 评级（评级与备注标签在同一行，评级仅汇总模式显示） #}
+        <div class="mb-3">
+            <div class="d-flex align-items-center mb-1">
+                <label class="form-label mb-0">备注</label>
+                <div class="ms-auto" id="reviewRatingWrap">
+                    <select class="form-select form-select-sm d-inline-block" id="reviewRating" style="width:auto;">
+                        <option value="">未评级</option>
+                        <option value="1" {% if review and review.rating == 1 %}selected{% endif %}>优</option>
+                        <option value="2" {% if review and review.rating == 2 %}selected{% endif %}>良</option>
+                        <option value="3" {% if review and review.rating == 3 %}selected{% endif %}>中</option>
+                        <option value="4" {% if review and review.rating == 4 %}selected{% endif %}>差</option>
+                    </select>
+                </div>
+            </div>
+            <textarea class="form-control" rows="3" id="trans_comments" style="resize:none;">{% if review %}{{ review.comments }}{% endif %}</textarea>
+        </div>
+    </div>
+
+    {# ===== 交易模式下的关注历史字段（默认隐藏，切换到关注历史时显示） ===== #}
+    <div id="focusFieldsInTrans" class="d-none">
+        {# 第1行：股票类型/市场/代码/名称 #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票类型</label>
+                    <input type="text" name="cat_choice" class="form-control readonly-field" id="id_cat_choice" value="{{ cat_display }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票市场</label>
+                    <input type="text" name="market_choice" class="form-control readonly-field" id="id_market_choice" value="{{ market_display }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票代码</label>
+                    <input type="text" class="form-control readonly-field" id="id_code" value="{{ order.code }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票名称</label>
+                    <input type="text" class="form-control readonly-field" id="id_name" value="{{ order.name }}" readonly>
+                </div>
+            </div>
+        </div>
+
+        {# 第2行：更新日期/交易方向/计划报价/计划数量 #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">更新日期</label>
+                    <input type="text" class="form-control readonly-field" id="id_focus_date" value="" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">交易方向</label>
+                    <input type="text" class="form-control readonly-field" id="id_intent_choice" value="" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">计划报价</label>
+                    <input type="text" class="form-control readonly-field" id="id_plan_price" value="" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">计划数量</label>
+                    <input type="text" class="form-control readonly-field" id="id_plan_qty" value="" readonly>
+                </div>
+            </div>
+        </div>
+
+        {# 第3行：目标价格/止损价格/盈利机会/允许数量 #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">目标价格</label>
+                    <input type="text" class="form-control readonly-field" id="id_target_price" value="" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">止损价格</label>
+                    <input type="text" class="form-control readonly-field" id="id_stop_price" value="" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">盈利机会</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control readonly-field" id="id_win_ratio" value="" readonly>
+                        <span class="input-group-text">%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">允许数量</label>
+                    <input type="text" class="form-control readonly-field" id="id_allowed_qty" value="" readonly>
+                </div>
+            </div>
+        </div>
+
+        {# 备注（关注历史模式下使用 id_comments） #}
+        <div class="mb-3">
+            <div class="d-flex align-items-center mb-1">
+                <label class="form-label mb-0">备注</label>
+            </div>
+            <textarea class="form-control" rows="3" id="id_comments" style="resize:none;" readonly></textarea>
+        </div>
+    </div>
+
+    {% else %}
+    {# ===== 关注模式：与 focus-view.html 字段完全一致 ===== #}
+    <div id="focusForm">
+        {# 第1行：股票类型/市场/代码/名称 #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票类型</label>
+                    <input type="text" name="cat_choice" class="form-control readonly-field" id="id_cat_choice" value="{{ cat_display }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票市场</label>
+                    <input type="text" name="market_choice" class="form-control readonly-field" id="id_market_choice" value="{{ market_display }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票代码</label>
+                    <input type="text" class="form-control readonly-field" id="id_code" value="{{ focus.code }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">股票名称</label>
+                    <input type="text" class="form-control readonly-field" id="id_name" value="{{ focus.name }}" readonly>
+                </div>
+            </div>
+        </div>
+
+        {# 第2行：更新日期/交易方向/计划报价/计划数量 #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">更新日期</label>
+                    <input type="text" class="form-control readonly-field" id="id_focus_date" value="{{ initial.focus_date }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">交易方向</label>
+                    <input type="text" class="form-control readonly-field" id="id_intent_choice" value="{{ initial.intent_display }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">计划报价</label>
+                    <input type="text" class="form-control readonly-field" id="id_plan_price" value="{{ initial.plan_price }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">计划数量</label>
+                    <input type="text" class="form-control readonly-field" id="id_plan_qty" value="{{ initial.plan_qty }}" readonly>
+                </div>
+            </div>
+        </div>
+
+        {# 第3行：目标价格/止损价格/盈利机会/允许数量 #}
+        <div class="row">
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">目标价格</label>
+                    <input type="text" class="form-control readonly-field" id="id_target_price" value="{{ initial.target_price }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">止损价格</label>
+                    <input type="text" class="form-control readonly-field" id="id_stop_price" value="{{ initial.stop_price }}" readonly>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">盈利机会</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control readonly-field" id="id_win_ratio" value="{{ initial.win_ratio }}" readonly>
+                        <span class="input-group-text">%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="mb-3">
+                    <label class="form-label">允许数量</label>
+                    <input type="text" class="form-control readonly-field" id="id_allowed_qty" value="{{ initial.allowed_qty }}" readonly>
+                </div>
+            </div>
+        </div>
+
+        {# 备注 + 评级（评级与备注标签在同一行，评级仅汇总模式显示） #}
+        <div class="mb-3">
+            <div class="d-flex align-items-center mb-1">
+                <label class="form-label mb-0">备注</label>
+                <div class="ms-auto" id="reviewRatingWrap">
+                    <select class="form-select form-select-sm d-inline-block" id="reviewRating" style="width:auto;">
+                        <option value="">未评级</option>
+                        <option value="1" {% if review and review.rating == 1 %}selected{% endif %}>优</option>
+                        <option value="2" {% if review and review.rating == 2 %}selected{% endif %}>良</option>
+                        <option value="3" {% if review and review.rating == 3 %}selected{% endif %}>中</option>
+                        <option value="4" {% if review and review.rating == 4 %}selected{% endif %}>差</option>
+                    </select>
+                </div>
+            </div>
+            <textarea class="form-control" rows="3" id="id_comments" style="resize:none;">{% if review %}{{ review.comments }}{% endif %}</textarea>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'base/js/jquery-3.7.0.min.js' %}"></script>
+<script src="{% static 'base/lib/Highcharts/js/highstock.js' %}"></script>
+<script type="module">
+    import { baseInit } from "{% static 'base/js/base.js' %}";
+    import { initReviewView } from "{% static 'stock/js/review.js' %}";
+
+    document.addEventListener('DOMContentLoaded', () => {
+        baseInit();
+        initReviewView({
+            review_type: '{{ review_type }}',
+            review_id: {% if review %}{{ review.id }}{% else %}null{% endif %},
+            history_count: {{ history_count }},
+            history_list: {{ history_list|safe }},
+            prev_item: {% if prev_item %}{'id': {{ prev_item.id }}, 'code': '{{ prev_item.code }}', 'market': '{{ prev_item.market }}'}{% else %}null{% endif %},
+            next_item: {% if next_item %}{'id': {{ next_item.id }}, 'code': '{{ next_item.code }}', 'market': '{{ next_item.market }}'}{% else %}null{% endif %},
+            site: '{{ site }}',
+            init_chart: {{ init_chart|safe }}
+        });
+    });
+</script>
+{% endblock %}

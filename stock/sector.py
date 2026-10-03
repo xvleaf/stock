@@ -64,7 +64,7 @@ def sector_list(request):
 
     func.set_view_back(request.session, '/sector/list')
     # 标记筛选后的全量列表作为 view 的自定义 navi（跨页切换）
-    custom_navi = [(r.code, r.market) for r in sector_qs]
+    custom_navi = [(r.id, r.code, r.market) for r in sector_qs]
     func.set_cache(request.session, 'sector-view-custom-navi', custom_navi)
     # 失效旧导航缓存，确保 view 页面用新的 custom_navi 重新生成 navi
     func.delete_cache(request.session, '/sector/view-navi-data')
@@ -194,9 +194,9 @@ def stocks_list(request, market, code):
             'mark': mark,
         })
 
-    # 设置返回来源和自定义 navi（板块股票全量列表，供 view 页面 navi 跨页切换）
+    # 设置返回来源和自定义 navi（板块股票全量列表，供 view 页面 navi 跨页切换，用索引作临时 id）
     func.set_view_back(request.session, site)
-    custom_navi = [(s['code'], s['market']) for s in stocks]
+    custom_navi = [(idx, s['code'], s['market']) for idx, s in enumerate(stocks)]
     func.set_cache(request.session, 'stocks-view-custom-navi', custom_navi)
     func.delete_cache(request.session, '/stocks/view-navi-data')
 
@@ -282,7 +282,7 @@ def stock_sectors(request, market, code):
     func.set_view_back(request.session, back_url)
 
     # 标记筛选后的全量列表作为 view 的自定义 navi
-    custom_navi = [(r.code, r.market) for r in sector_qs]
+    custom_navi = [(r.id, r.code, r.market) for r in sector_qs]
     func.set_cache(request.session, 'sector-view-custom-navi', custom_navi)
     func.delete_cache(request.session, '/sector/view-navi-data')
 

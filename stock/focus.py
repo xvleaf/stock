@@ -10,7 +10,7 @@ from django.utils import timezone
 from .fetch import quote, tushare, kline, trend
 from .forms.forms import CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES, FocusStockForm
 from . import cash, func, chart
-from .models.models import CashConfig, StockList, FocusStock
+from .models.models import CashConfig, StockList, FocusStock, FocusHistory, ReviewList
 from django.db import connection, transaction
 
 
@@ -163,8 +163,8 @@ def focus_view(request, market, code):
         
         return redirect('focus_view', market=market, code=code)
     else:
-        # 历史记录（所有操作按时间排序）
-        histories = list(focus.histories.all().order_by('edit_date'))
+        # 历史记录（按数据库顺序排序）
+        histories = list(focus.histories.all().order_by('id'))
         # 进入页面时强制重置为汇总模式（pilot_idx=-1）
         func.set_cache(request.session, f'{site}-pilot', -1)
         func.delete_cache(request.session, f'{site}-navi-data')
@@ -296,7 +296,23 @@ def focus_close(request, market, code):
         focus.save()
         focus.save_history(action='close', comments=close_comments)
         func.delete_cache(request.session, '/focus/view-navi-data')
-        print(focus.close_date)
+
+        # 创建复盘记录
+        ReviewList.objects.update_or_create(
+            focus_stock=focus,
+            defaults={
+                'review_type': ReviewList.TYPE_FOCUS,
+                'code': focus.code,
+                'market': focus.market,
+                'name': focus.name,
+                'cat': focus.cat,
+                'open_date': focus.focus_date,
+                'close_date': focus.close_date,
+                'plan_price': focus.plan_price,
+                'target_price': focus.target_price,
+            }
+        )
+
         return JsonResponse({'status': 'success', 'message': '已关闭'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message':  str(e)})
@@ -365,5 +381,30 @@ def focus_calc(request):
         'allowed_qty': allowed_qty,
         'win_ratio': win_ratio,
     })
+
+
+@require_http_methods(["POST"])
+def save_history_comment(request):
+    """保存关注历史记录的备注"""
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': '无效的JSON'}, status=400)
+
+    history_id = data.get('history_id')
+    comments = data.get('comments', '') or ''
+
+    if not history_id:
+        return JsonResponse({'error': '缺少历史记录ID'}, status=400)
+
+    try:
+        history = FocusHistory.objects.get(id=history_id)
+    except FocusHistory.DoesNotExist:
+        return JsonResponse({'error': '历史记录不存在'}, status=404)
+
+    history.comments = comments
+    history.save(update_fields=['comments'])
+
+    return JsonResponse({'success': True})
 
 

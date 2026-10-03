@@ -1,5 +1,5 @@
 from django.urls import path
-from . import chart, func, sector, focus, cash, filter, trans, setting
+from . import chart, func, sector, focus, cash, filter, trans, setting, review
 
 urlpatterns = [
     # ---- 板块 ----
@@ -29,9 +29,11 @@ urlpatterns = [
     path('focus/close/<str:market>/<str:code>', focus.focus_close, name='focus_close'),
     path('focus/view/<str:market>/<str:code>', focus.focus_view, name='focus_view'),
     path('focus/edit/<str:market>/<str:code>', focus.focus_edit, name='focus_edit'),
+    path('focus/save-history-comment', focus.save_history_comment, name='focus_save_history_comment'),
     # ---- 图表 ----
     path('chart/data', chart.chart_data_api, name='chart_data_api'),
     path('chart/view', chart.chart_view_api, name='chart_view_api'),
+    path('chart/check-focus', chart.check_focus_api, name='chart_check_focus'),
     # ---- 资金 ----
     path('cash', cash.cash_view, name='cash'),
     path('cash/history', cash.cash_history_api, name='cash_history'),
@@ -51,6 +53,14 @@ urlpatterns = [
     path('trans/dividend/calc/<str:market>/<str:code>', trans.calc_dividend_tax, name='calc_dividend_tax'),
     path('trans/view/<str:market>/<str:code>', trans.trans_view, name='trans_view'),
     path('trans/edit/<str:market>/<str:code>', trans.trans_edit, name='trans_edit'),
+    path('trans/save-history-comment', trans.save_history_comment, name='trans_save_history_comment'),
 
     path('api/stock-name', func.stock_name_api, name='stock_name_api'),
+
+    # ---- 复盘 ----
+    path('review/<str:review_type>/list', review.review_list, name='review_list'),
+    path('review/trans/view/<str:market>/<str:code>', review.review_trans_view, name='review_trans_view'),
+    path('review/focus/view/<str:market>/<str:code>', review.review_focus_view, name='review_focus_view'),
+    path('review/save', review.review_save, name='review_save'),
+    path('review/save-history-comment', review.save_history_comment, name='save_history_comment'),
 ]

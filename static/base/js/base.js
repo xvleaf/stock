@@ -18,8 +18,8 @@ let isBaseInited = false;
 let baseGlobalAbort = null;
 // 路由匹配优先级，长前缀放前面
 const NAV_ACTIVE_RULES = [
-    { selector: 'a.nav-link[href="/review/trans/list"]', prefixes: ['/review/trans'] },
-    { selector: '#reviewDropdown', prefixes: ['/review', '/setting', '/files', '/admin', '/logout'] },
+    { selector: '#reviewDropdown', prefixes: ['/review'] },
+    { selector: '#settingDropdown', prefixes: ['/setting', '/files', '/admin', '/logout'] },
     { selector: '#focusDropdown', prefixes: ['/focus', '/fund', '/sector', '/filter', '/stocks', '/refer', '/focus/view'] },
     { selector: 'a.nav-link[href="/trans/list"]', prefixes: ['/trans'] },
     { selector: 'a.nav-link[href="/cash"]', prefixes: ['/cash'] },

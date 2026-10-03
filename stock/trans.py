@@ -11,8 +11,8 @@ from django.utils import timezone
 from django.db import transaction
 
 from .models.models import (
-    CashConfig, CashHistory, FocusStock, TransOrder, TransHistory,
-    DividendRecord,
+    CashConfig, CashHistory, FocusStock, FocusHistory, TransOrder, TransHistory,
+    DividendRecord, ReviewList,
 )
 from .forms.forms import CAT_CHOICES, MARKET_CHOICES
 from . import cash as cash_utils
@@ -24,6 +24,30 @@ from .fetch import quote
 
 def _q(value, places='0.01'):
     return Decimal(str(value)).quantize(Decimal(places), rounding=ROUND_HALF_UP)
+
+
+def _create_or_update_review(order):
+    """交易清仓时创建或更新复盘记录"""
+    if order.status != TransOrder.STATUS_CLOSED:
+        return
+    # 计算综合收益比例
+    from .review import calc_weighted_return
+    profit_ratio = calc_weighted_return(order)
+    # 创建或更新 ReviewList
+    ReviewList.objects.update_or_create(
+        trans_order=order,
+        defaults={
+            'review_type': ReviewList.TYPE_TRANS,
+            'code': order.code,
+            'market': order.market,
+            'name': order.name,
+            'cat': order.cat,
+            'open_date': order.open_date,
+            'close_date': order.close_date,
+            'profit': order.profit,
+            'profit_ratio': profit_ratio,
+        }
+    )
 
 
 def trans_deal(request, market, code):
@@ -279,6 +303,8 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
                 focus.close_reason = FocusStock.CLOSE_REASON_BOUGHT
                 focus.close_date = deal_date
                 focus.save()
+                # 创建已交易历史记录
+                focus.save_history(action=FocusHistory.ACTION_DEAL, comments=f'买入{stock_name}{qty}股@{float(price):.{deci}f}元')
 
         else:
             # 卖出
@@ -389,6 +415,11 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
                 date=deal_date,
             )
 
+    # 清仓时创建/更新复盘记录
+    if order and order.pk:
+        order.refresh_from_db()
+        _create_or_update_review(order)
+
     return JsonResponse({'status': 'success', 'redirect': f'/trans/view/{market}/{code}'})
 
 
@@ -470,9 +501,9 @@ def get_trans_data_dict(order, history=None):
 
     if history is None:
         # 当前持仓汇总
-        # 收集所有历史记录中的备注
+        # 收集所有历史记录中的备注（按数据库id倒序，即近期到远期）
         comments_list = []
-        for h in order.histories.all().order_by('-date', '-id'):
+        for h in order.histories.all().order_by('-id'):
             if h.comments:
                 date_str = h.date.strftime('%Y-%m-%d') if h.date else ''
                 comments_list.append(f'{date_str}：{h.comments}')
@@ -542,7 +573,7 @@ def trans_view(request, market, code):
             return JsonResponse({'status': 'success'})
 
     # 历史记录（所有操作按时间排序）
-    histories = list(order.histories.all().order_by('date', 'id'))
+    histories = list(order.histories.all().order_by('id'))
     # 进入页面时强制重置为汇总模式（pilot_idx=-1）
     func.set_cache(request.session, f'{site}-pilot', -1)
     func.delete_cache(request.session, f'{site}-navi-data')
@@ -1139,3 +1170,28 @@ def calc_dividend_tax(request, market, code):
         'total_tax': str(total_tax),
         'details': details,
     })
+
+
+@require_http_methods(["POST"])
+def save_history_comment(request):
+    """保存交易历史记录的备注"""
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': '无效的JSON'}, status=400)
+
+    history_id = data.get('history_id')
+    comments = data.get('comments', '') or ''
+
+    if not history_id:
+        return JsonResponse({'error': '缺少历史记录ID'}, status=400)
+
+    try:
+        history = TransHistory.objects.get(id=history_id)
+    except TransHistory.DoesNotExist:
+        return JsonResponse({'error': '历史记录不存在'}, status=404)
+
+    history.comments = comments
+    history.save(update_fields=['comments'])
+
+    return JsonResponse({'success': True})

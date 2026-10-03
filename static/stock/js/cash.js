@@ -12,11 +12,7 @@ let adjustModalInstance = null;
 
 // ===================== 图表初始化 =====================
 export function initCashChart() {
-    const startEl = document.getElementById('filterStartDate');
-    const endEl = document.getElementById('filterEndDate');
-    const start = (startEl?.textContent || '').replace(/\s/g, '').trim();
-    const end = (endEl?.textContent || '').replace(/\s/g, '').trim();
-    const url = `${HISTORY_URL}?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+    const url = HISTORY_URL;
 
     fetch(url)
         .then(r => r.json())
@@ -269,60 +265,6 @@ function renderChart(data) {
             { name: '收益', data: toValues(data.profit || []), rawData: data.profit || [], color: '#dc2626', lineWidth: 1.5 },
         ],
         credits: { enabled: false },
-    });
-}
-
-// ===================== 日期筛选（失焦自动触发） =====================
-export function initDateFilter() {
-    const startEl = document.getElementById('filterStartDate');
-    const endEl = document.getElementById('filterEndDate');
-    if (!startEl && !endEl) return;
-
-    // 记录初始值，只有真正变化时才触发
-    let origStart = (startEl?.textContent || '').replace(/\s/g, '').trim();
-    let origEnd = (endEl?.textContent || '').replace(/\s/g, '').trim();
-
-    function doFilter() {
-        const start = (startEl?.textContent || '').replace(/\s/g, '').trim();
-        const end = (endEl?.textContent || '').replace(/\s/g, '').trim();
-        // 值未变化则不触发
-        if (start === origStart && end === origEnd) return;
-        // 格式校验
-        if (start && !/^\d{4}-\d{2}-\d{2}$/.test(start)) {
-            showAlert({ title: '提示', text: '开始日期格式应为 YYYY-MM-DD', type: 'warning' });
-            if (startEl) startEl.textContent = origStart;
-            return;
-        }
-        if (end && !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
-            showAlert({ title: '提示', text: '结束日期格式应为 YYYY-MM-DD', type: 'warning' });
-            if (endEl) endEl.textContent = origEnd;
-            return;
-        }
-        fetch('/cash', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCsrfToken(),
-            },
-            body: JSON.stringify({ start_date: start, end_date: end }),
-        }).then(() => {
-            window.location.reload();
-        }).catch(() => {
-            window.location.reload();
-        });
-    }
-
-    // 失焦时触发筛选
-    [startEl, endEl].forEach(el => {
-        if (!el) return;
-        el.addEventListener('blur', doFilter);
-        // 回车也触发
-        el.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                el.blur();
-            }
-        });
     });
 }
 

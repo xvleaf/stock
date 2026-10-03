@@ -14,7 +14,7 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.http import require_http_methods
 from django.db import transaction
-from .models.models import CashConfig, CashHistory, TransOrder, TransHistory, FocusStock, DividendRecord
+from .models.models import CashConfig, CashHistory, TransOrder, TransHistory, FocusStock, DividendRecord, ReviewList
 from .forms.forms import CashConfigForm
 from . import func
 
@@ -32,7 +32,7 @@ def cash_view(request):
         CashHistory.EVENT_BUY, CashHistory.EVENT_SELL,
         CashHistory.EVENT_ADJUST, CashHistory.EVENT_DIVIDEND
     ) else None
-    # 分页 / 每页数量 / 日期范围（POST 提交时更新 session）
+    # 分页 / 每页数量（POST 提交时更新 session）
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -42,14 +42,9 @@ def cash_view(request):
             func.set_cache(request.session, 'cash-history-page', int(data['page']))
         if 'per_page' in data:
             func.set_cache(request.session, 'cash-per-page', int(data['per_page']))
-        if 'start_date' in data:
-            func.set_cache(request.session, 'cash-start-date', str(data['start_date']))
-        # 结束日期存入 session，同时记录设置日期（仅当天有效，跨天自动失效）
-        if 'end_date' in data and data['end_date']:
-            func.set_cache(request.session, 'cash-end-date', str(data['end_date']))
-            func.set_cache(request.session, 'cash-end-date-set-day', datetime.date.today().strftime('%Y-%m-%d'))
         return JsonResponse({'status': 'ok'})
-    # 日期范围：起始日期持久化；结束日期当天有效，跨天自动恢复为当天
+    # 日期范围：从 WebSetting 获取，结束日期仅当天有效，跨天自动恢复为当天
+    from .fetch.config import get_config, set_config
     today = datetime.date.today()
     today_str = today.strftime('%Y-%m-%d')
     # 默认起始日期：去年今天 + 1天（Python日期运算自动处理大小月/闰年进位）
@@ -58,18 +53,17 @@ def cash_view(request):
     except ValueError:
         _last_year_today = today.replace(year=today.year - 1, day=28)
     default_start = (_last_year_today + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
-    start_str = str(func.get_cache(request.session, 'cash-start-date', default_start))
-    # 结束日期：检查设置日期是否为今天，是则用存储值，否则清除并用当天
-    end_set_day = str(func.get_cache(request.session, 'cash-end-date-set-day', ''))
+    # 起始日期：从 WebSetting 获取，空则使用默认值
+    start_str = str(get_config('cash_stat_start', '') or default_start)
+    # 结束日期：检查设置日期是否为今天，是则用存储值，否则自动更新为今天
+    end_set_day = str(get_config('cash_stat_end_set_day', ''))
     if end_set_day == today_str:
-        end_str = str(func.get_cache(request.session, 'cash-end-date', today_str))
+        end_str = str(get_config('cash_stat_end', '') or today_str)
     else:
-        # 跨天了，清除结束日期相关 session
-        if 'cash-end-date' in request.session:
-            del request.session['cash-end-date']
-        if 'cash-end-date-set-day' in request.session:
-            del request.session['cash-end-date-set-day']
+        # 跨天了，自动更新结束日期为今天
         end_str = today_str
+        set_config('cash_stat_end', today_str)
+        set_config('cash_stat_end_set_day', today_str)
     try:
         start_date = datetime.datetime.strptime(start_str, '%Y-%m-%d').date()
     except (ValueError, TypeError):
@@ -102,9 +96,26 @@ def cash_view(request):
 
 @require_http_methods(["GET"])
 def cash_history_api(request):
-    """返回资金历史数据（供前端 Highcharts 绘制），支持 start/end 日期范围过滤"""
-    start_str = request.GET.get('start', '')
-    end_str = request.GET.get('end', '')
+    """返回资金历史数据（供前端 Highcharts 绘制），日期范围从 WebSetting 获取"""
+    from .fetch.config import get_config, set_config
+    today = datetime.date.today()
+    today_str = today.strftime('%Y-%m-%d')
+    # 默认起始日期：去年今天 + 1天
+    try:
+        _last_year_today = today.replace(year=today.year - 1)
+    except ValueError:
+        _last_year_today = today.replace(year=today.year - 1, day=28)
+    default_start = (_last_year_today + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+    # 起始日期：从 WebSetting 获取，空则使用默认值
+    start_str = str(get_config('cash_stat_start', '') or default_start)
+    # 结束日期：检查设置日期是否为今天，是则用存储值，否则自动更新为今天
+    end_set_day = str(get_config('cash_stat_end_set_day', ''))
+    if end_set_day == today_str:
+        end_str = str(get_config('cash_stat_end', '') or today_str)
+    else:
+        end_str = today_str
+        set_config('cash_stat_end', today_str)
+        set_config('cash_stat_end_set_day', today_str)
     qs = CashHistory.objects.all().order_by('date', 'id')
     if start_str:
         try:
@@ -321,7 +332,9 @@ def cash_revoke(request):
             if not deal:
                 return JsonResponse({'error': '交易记录不存在'}, status=400)
 
-            # 记录删除前的 risk
+            # 记录删除前的状态（必须在删除前判断）
+            order.refresh_from_db()
+            was_closed = (order.status == TransOrder.STATUS_CLOSED)
             risk_before = order.risk_amount
 
             # 删除该笔交易记录
@@ -329,13 +342,14 @@ def cash_revoke(request):
 
             remaining = order.histories.exclude(action=TransHistory.ACTION_EDIT).count()
             if remaining == 0:
-                # 首次交易被撤回：恢复 focus 状态，删除 order（同时删除所有 edit 记录）
+                # 首次交易被撤回：恢复 focus 状态，删除 order（同时删除所有 edit 记录和 ReviewList）
                 focus = order.focus
                 if focus and focus.status == FocusStock.STATUS_CLOSED and focus.close_reason == FocusStock.CLOSE_REASON_BOUGHT:
                     focus.status = FocusStock.STATUS_WATCHING
                     focus.close_reason = ''
                     focus.close_date = None
                     focus.save()
+                # ReviewList 会因为 on_delete=CASCADE 自动删除
                 order.delete()
                 config.stock = Decimal('0')
                 risk_after = Decimal('0')
@@ -356,6 +370,9 @@ def cash_revoke(request):
                 order.save()
                 config.stock = order.position_cost_no_fee
                 risk_after = order.risk_amount
+                # 撤销前已清仓 → 撤销后恢复持仓，删除对应的 ReviewList
+                if was_closed:
+                    ReviewList.objects.filter(trans_order=order).delete()
 
             # 恢复 CashConfig
             if latest.event == CashHistory.EVENT_BUY:

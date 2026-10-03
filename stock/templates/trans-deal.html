@@ -195,8 +195,7 @@
 
 {% block extra_js %}
 <script src="{% static 'base/js/jquery-3.7.0.min.js' %}"></script>
-<script src="https://cdn.jsdelivr.net/npm/highcharts@10.3.3/highcharts.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/highcharts@10.3.3/modules/stock.min.js"></script>
+<script src="{% static 'base/lib/Highcharts/js/highstock.js' %}"></script>
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
     import { initTransDeal } from "{% static 'stock/js/trans.js' %}";

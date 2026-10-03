@@ -155,11 +155,14 @@ def setting_save(request):
                   'mobile_breakpoint', 'bp1', 'bp2', 'bp3',
                   'w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7', 'w8',
                   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8',
+                  'h1l', 'h2l', 'h3l', 'h4l',
                   'cash_chart_height', 'trend_main_ratio', 'kline_main_ratio'}
     BOOL_FIELDS = {'stock_chart_visible'}
     TEXT_FIELDS = {'icp_number', 'icp_website',
                    'kline_start_date_day', 'kline_start_date_week', 'kline_start_date_month',
-                   'chart_vertical_align_fullscreen'}
+                   'chart_vertical_align_fullscreen',
+                   'cash_stat_start', 'cash_stat_end', 'cash_stat_end_set_day',
+                   'review_stat_start', 'review_stat_end', 'review_stat_end_set_day'}
 
     try:
         if field in PCT_FIELDS:

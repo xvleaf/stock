@@ -41,18 +41,22 @@
                         <span>交易</span>
                     </a>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/review/trans/list">
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" id="reviewDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <iconify-icon icon="fa-solid:history" style="width:1em; height:1em;" class="me-1"></iconify-icon>
                         <span>复盘</span>
                     </a>
+                    <ul class="dropdown-menu" aria-labelledby="reviewDropdown">
+                        <li><a class="dropdown-item" href="/review/trans/list">交易复盘</a></li>
+                        <li><a class="dropdown-item" href="/review/focus/list">关注复盘</a></li>
+                    </ul>
                 </li>
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" id="reviewDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <a class="nav-link dropdown-toggle" id="settingDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <iconify-icon icon="fa-solid:cog" style="width:1em; height:1em;" class="me-1"></iconify-icon>
                         <span>设置</span>
                     </a>
-                    <ul class="dropdown-menu" aria-labelledby="reviewDropdown">
+                    <ul class="dropdown-menu" aria-labelledby="settingDropdown">
                         <li><a class="dropdown-item" href="/setting">参数设置</a></li>
                         <li><a class="dropdown-item" href="/files">文件管理</a></li>
                         <li><a class="dropdown-item" href="/admin">后台管理</a></li>

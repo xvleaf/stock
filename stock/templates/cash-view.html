@@ -103,15 +103,6 @@
     <div class="cash-history">
         <div class="d-flex justify-content-between align-items-center mb-2">
             <h6 class="mb-0">资金变化记录</h6>
-            <div class="d-flex gap-2 align-items-center">
-                <span class="text-muted" style="font-size:0.875rem;">
-                    <span class="page-jump-input" contenteditable="true" id="filterStartDate" style="display:inline;outline:none;cursor:text;border:none;background:transparent;padding:0;color:inherit;">{{ start_date }}</span>
-                </span>
-                <span class="text-muted small">至</span>
-                <span class="text-muted" style="font-size:0.875rem;">
-                    <span class="page-jump-input" contenteditable="true" id="filterEndDate" style="display:inline;outline:none;cursor:text;border:none;background:transparent;padding:0;color:inherit;">{{ end_date }}</span>
-                </span>
-            </div>
         </div>
         <div class="table-responsive">
             <table class="table table-hover" style="min-width: 760px;">
@@ -239,13 +230,12 @@
 <script src="{% static 'base/lib/Highcharts/js/highstock.js' %}"></script>
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
-    import { initCashChart, adjustCash, initDateFilter, initAdjustModal, initQuotaModal, initRevokeBtn, initInitModal } from "{% static 'stock/js/cash.js' %}";
+    import { initCashChart, adjustCash, initAdjustModal, initQuotaModal, initRevokeBtn, initInitModal } from "{% static 'stock/js/cash.js' %}";
     import { initPagination } from "{% static 'stock/js/list.js' %}";
 
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         initCashChart();
-        initDateFilter();
         initAdjustModal();
         initQuotaModal();
         initRevokeBtn();

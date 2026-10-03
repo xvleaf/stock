@@ -1,0 +1,98 @@
+{% extends "base-view.html" %}
+{% block title %}复盘清单{% endblock %}
+{% block content %}
+<!-- 表格悬浮固定表头 -->
+<div id="fixedHeader">
+    <div class="fixed-header-inner">
+        <div class="fixed-header-row" id="fixedHeaderRow">
+        </div>
+    </div>
+</div>
+
+<div class="table-responsive" id="tableWrap">
+    <table class="table table-stock table-hover" id="stockTable">
+        <thead id="originalThead">
+            {% if review_type == 'trans' %}
+            <tr>
+                <th style="width: 15%;">代码</th>
+                <th style="width: 20%;">名称</th>
+                <th style="width: 15%;">建仓日期</th>
+                <th style="width: 15%;">平仓日期</th>
+                <th style="width: 15%;">持仓天数</th>
+                <th style="width: 20%;">收益</th>
+            </tr>
+            {% else %}
+            <tr>
+                <th style="width: 15%;">代码</th>
+                <th style="width: 20%;">名称</th>
+                <th style="width: 15%;">关注日期</th>
+                <th style="width: 15%;">关闭日期</th>
+                <th style="width: 15%;">计划报价</th>
+                <th style="width: 20%;">目标价格</th>
+            </tr>
+            {% endif %}
+        </thead>
+        <tbody id="stockBody">
+            {% for item in list %}
+            <tr data-code="{{ item.code }}.{{ item.market }}">
+                <td style="width: 15%;">
+                    {% if review_type == 'trans' %}
+                    <a class="table-code-text" href="/review/trans/view/{{ item.market }}/{{ item.code }}?id={{ item.id }}">{{ item.code }}</a>
+                    {% else %}
+                    <a class="table-code-text" href="/review/focus/view/{{ item.market }}/{{ item.code }}?id={{ item.id }}">{{ item.code }}</a>
+                    {% endif %}
+                </td>
+                <td style="width: 20%;">
+                    <span>{{ item.name }}</span>
+                </td>
+                {% if review_type == 'trans' %}
+                <td style="width: 15%;">
+                    <span>{{ item.open_date|date:"Y-m-d" }}</span>
+                </td>
+                <td style="width: 15%;">
+                    <span>{{ item.close_date|date:"Y-m-d" }}</span>
+                </td>
+                <td style="width: 15%;">
+                    <span>{% if item.hold_days %}{{ item.hold_days }}天{% else %}--{% endif %}</span>
+                </td>
+                <td style="width: 20%;">
+                    <span class="{% if item.profit > 0 %}text-danger{% elif item.profit < 0 %}text-success{% endif %}">{{ item.profit }}</span>
+                </td>
+                {% else %}
+                <td style="width: 15%;">
+                    <span>{{ item.open_date|date:"Y-m-d" }}</span>
+                </td>
+                <td style="width: 15%;">
+                    <span>{{ item.close_date|date:"Y-m-d" }}</span>
+                </td>
+                <td style="width: 15%;">
+                    <span>{{ item.plan_price }}</span>
+                </td>
+                <td style="width: 20%;">
+                    <span>{{ item.target_price }}</span>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 统一底部分页控件 -->
+{% include "page-navi.html" %}
+{% endblock %}
+
+{% block extra_js %}
+{% load static %}
+<script type="module">
+    import { baseInit } from "{% static 'base/js/base.js' %}";
+    import { tableHeaderInit } from "{% static 'stock/js/list.js' %}";
+    import { initReviewList } from "{% static 'stock/js/review.js' %}";
+
+    document.addEventListener('DOMContentLoaded', () => {
+        baseInit();
+        tableHeaderInit();
+        initReviewList('/review/{{ review_type }}/list', '{{ review_type }}');
+    });
+</script>
+{% endblock %}

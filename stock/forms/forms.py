@@ -213,8 +213,11 @@ class CashConfigForm(forms.ModelForm):
 class ReviewForm(forms.ModelForm):
     """复盘表单（仅备注+评分）"""
     RATING_CHOICES = [
-        ('', '未评分'), (1, '★'), (2, '★★'),
-        (3, '★★★'), (4, '★★★★'), (5, '★★★★★'),
+        ('', '未评级'),
+        (1, '优'),
+        (2, '良'),
+        (3, '中'),
+        (4, '差'),
     ]
     rating = forms.IntegerField(
         label='评分', required=False,

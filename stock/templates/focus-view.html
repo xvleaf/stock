@@ -125,10 +125,7 @@
 
 {% block extra_js %}
 <script src="{% static 'base/js/jquery-3.7.0.min.js' %}"></script>
-<!-- 先引入 Highcharts 核心 -->
-<script src="https://cdn.jsdelivr.net/npm/highcharts@10.3.3/highcharts.min.js"></script>
-<!-- 再引入 Stock 模块 -->
-<script src="https://cdn.jsdelivr.net/npm/highcharts@10.3.3/modules/stock.min.js"></script>
+<script src="{% static 'base/lib/Highcharts/js/highstock.js' %}"></script>
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
     import { initFocusView } from "{% static 'stock/js/focus.js' %}";

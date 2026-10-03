@@ -85,6 +85,8 @@ export function updateFormData(data) {
     const fieldMap = {
         'id_code_input': 'code',
         'id_name_input': 'name',
+        'id_code': 'code',
+        'id_name': 'name',
         'id_focus_date': 'focus_date',
         'id_plan_price': 'plan_price',
         'id_plan_qty': 'plan_qty',
@@ -95,10 +97,20 @@ export function updateFormData(data) {
         'id_comments': 'comments',
     };
 
+    // focus金额字段也需要按cat类型格式化
+    const focusAmountFields = ['id_plan_price', 'id_target_price', 'id_stop_price'];
+    const focusCat = data.cat || 'stock';
+    const focusDeci = (focusCat === 'fund' || focusCat === 'bond') ? 3 : 2;
+
     for (const [id, key] of Object.entries(fieldMap)) {
         const el = document.getElementById(id);
         if (el && data[key] !== undefined) {
-            el.value = data[key];
+            let value = data[key];
+            // 金额字段按cat类型格式化
+            if (focusAmountFields.includes(id) && value !== '' && value !== null && !isNaN(value)) {
+                value = parseFloat(value).toFixed(focusDeci);
+            }
+            el.value = value;
         }
     }
 
@@ -162,12 +174,29 @@ export function updateFormData(data) {
         'trans_win_ratio': 'win_ratio',
         'trans_risk_amount': 'risk_amount',
         'trans_comments': 'comments',
+        // 清仓交易特有字段
+        'trans_deal_price': 'deal_price',
+        'trans_deal_qty': 'deal_qty',
+        'trans_total_profit': 'total_profit',
+        'trans_profit_ratio': 'profit_ratio',
     };
+
+    // 需要按cat类型格式化的金额字段
+    const amountFields = ['trans_price', 'trans_amount', 'trans_profit', 'trans_target_price', 
+                          'trans_stop_price', 'trans_risk_amount', 'trans_deal_price', 'trans_total_profit'];
+    // 根据cat类型确定小数点位数（fund/bond为3位，其他为2位）
+    const cat = data.cat || 'stock';
+    const deci = (cat === 'fund' || cat === 'bond') ? 3 : 2;
 
     for (const [id, key] of Object.entries(transFieldMap)) {
         const el = document.getElementById(id);
         if (el && data[key] !== undefined) {
-            el.value = data[key];
+            let value = data[key];
+            // 金额字段按cat类型格式化
+            if (amountFields.includes(id) && value !== '' && value !== null && !isNaN(value)) {
+                value = parseFloat(value).toFixed(deci);
+            }
+            el.value = value;
         }
     }
 
@@ -217,21 +246,87 @@ export function updateFormData(data) {
         document.querySelectorAll('#transViewForm .readonly-field').forEach(el => {
             el.style.color = '#6c757d';
         });
+        // 历史模式隐藏复盘特有字段
+        document.querySelectorAll('.review-only-fields').forEach(el => el.classList.add('d-none'));
+        // 历史模式显示仅历史模式的字段
+        document.querySelectorAll('.trans-history-only').forEach(el => el.classList.remove('d-none'));
+        // 历史模式隐藏评级下拉框（review 页面）
+        const reviewRatingWrap = document.getElementById('reviewRatingWrap');
+        if (reviewRatingWrap) reviewRatingWrap.classList.add('d-none');
     } else {
         document.querySelectorAll('#transViewForm .readonly-field').forEach(el => {
             el.style.color = '';
         });
+        // 汇总模式显示复盘特有字段
+        document.querySelectorAll('.review-only-fields').forEach(el => el.classList.remove('d-none'));
+        // 汇总模式隐藏仅历史模式的字段
+        document.querySelectorAll('.trans-history-only').forEach(el => el.classList.add('d-none'));
+        // 汇总模式显示评级下拉框（review 页面）
+        const reviewRatingWrap = document.getElementById('reviewRatingWrap');
+        if (reviewRatingWrap) reviewRatingWrap.classList.remove('d-none');
+    }
+
+    // 清仓交易字段显示控制（必须在 trans-history-only 处理之后执行）
+    const isHistoryMode = data.is_summary === false || (data.pilot_idx !== undefined && data.pilot_idx >= 0);
+    if (isHistoryMode) {
+        if (data.is_close_trade) {
+            // 清仓交易：隐藏普通历史字段，显示清仓特有字段
+            document.querySelectorAll('.trans-normal-history').forEach(el => el.classList.add('d-none'));
+            document.querySelectorAll('.trans-close-only').forEach(el => el.classList.remove('d-none'));
+        } else {
+            // 非清仓交易：显示普通历史字段，隐藏清仓特有字段
+            document.querySelectorAll('.trans-normal-history').forEach(el => el.classList.remove('d-none'));
+            document.querySelectorAll('.trans-close-only').forEach(el => el.classList.add('d-none'));
+        }
+    } else {
+        // 汇总模式：隐藏清仓特有字段
+        document.querySelectorAll('.trans-close-only').forEach(el => el.classList.add('d-none'));
     }
 
     // 历史模式下文字变灰，汇总模式恢复（focus）
     if (data.is_summary === false || (data.pilot_idx !== undefined && data.pilot_idx >= 0)) {
         document.querySelectorAll('#focusForm input, #focusForm select, #focusForm textarea').forEach(el => {
+            // 备注输入框不变灰，保持可编辑
+            if (el.id === 'id_comments') return;
             el.style.color = '#6c757d';
         });
+        // 历史模式隐藏评级下拉框（review 页面）
+        const reviewRatingWrap = document.getElementById('reviewRatingWrap');
+        if (reviewRatingWrap) reviewRatingWrap.classList.add('d-none');
+        // 历史模式隐藏复盘特有字段
+        document.querySelectorAll('.review-only-fields').forEach(el => el.classList.add('d-none'));
     } else {
         document.querySelectorAll('#focusForm input, #focusForm select, #focusForm textarea').forEach(el => {
             el.style.color = '';
         });
+        // 汇总模式显示评级下拉框（review 页面）
+        const reviewRatingWrap = document.getElementById('reviewRatingWrap');
+        if (reviewRatingWrap) reviewRatingWrap.classList.remove('d-none');
+        // 汇总模式显示复盘特有字段
+        document.querySelectorAll('.review-only-fields').forEach(el => el.classList.remove('d-none'));
+    }
+
+    // 复盘特有字段更新（建仓日期、平仓日期、全部收益、收益比例）
+    const reviewFieldMap = {
+        'reviewOpenDate': 'open_date',
+        'reviewCloseDate': 'close_date',
+        'reviewProfit': 'total_profit',
+        'reviewProfitRatio': 'profit_ratio',
+    };
+    for (const [id, key] of Object.entries(reviewFieldMap)) {
+        const el = document.getElementById(id);
+        if (el && data[key] !== undefined) {
+            el.value = data[key];
+            // 根据正负值设置颜色（全部收益和收益比例）
+            if (id === 'reviewProfit' || id === 'reviewProfitRatio') {
+                el.classList.remove('text-danger', 'text-success');
+                if (parseFloat(data[key]) > 0) {
+                    el.classList.add('text-danger');
+                } else if (parseFloat(data[key]) < 0) {
+                    el.classList.add('text-success');
+                }
+            }
+        }
     }
 
     // 更新 pilot 按钮状态
@@ -255,6 +350,145 @@ export function updateFormData(data) {
             }
         }
     }
+
+    // 存储 history_id 和 history_type 到表单 data 属性，供 review.js 使用
+    const transForm = document.getElementById('transViewForm');
+    const focusForm = document.getElementById('focusForm');
+    const targetForm = transForm || focusForm;
+    if (targetForm) {
+        if (data.history_id !== undefined) {
+            targetForm.dataset.historyId = data.history_id;
+        }
+        if (data.history_type !== undefined) {
+            targetForm.dataset.historyType = data.history_type;
+        }
+        // 汇总模式时清除
+        if (data.is_summary === true || data.pilot_idx === -1) {
+            delete targetForm.dataset.historyId;
+            delete targetForm.dataset.historyType;
+        }
+    }
+
+    // 复盘交易页面：根据 history_type 切换显示 trans 字段还是 focus 字段
+    if (transForm) {
+        const transFields = document.getElementById('transForm');
+        const focusFieldsInTrans = document.getElementById('focusFieldsInTrans');
+        const isFocusHistory = data.history_type === 'focus' && data.is_summary !== true && data.pilot_idx !== -1;
+        if (transFields) transFields.classList.toggle('d-none', isFocusHistory);
+        if (focusFieldsInTrans) focusFieldsInTrans.classList.toggle('d-none', !isFocusHistory);
+
+        // 指示器左侧标签切换：关注历史显示"关注记录"，交易历史显示"交易记录"
+        const pilotLabelFirst = document.getElementById('pilotLabelFirst');
+        if (pilotLabelFirst) {
+            pilotLabelFirst.textContent = isFocusHistory ? '关注' : '交易';
+        }
+    }
+
+    // 汇总模式时恢复备注为汇总页面的值（从初始值或 ReviewList 中获取）
+    if (data.is_summary === true || data.pilot_idx === -1) {
+        if (transForm && window._reviewSummaryComments !== undefined) {
+            const transComments = document.getElementById('trans_comments');
+            if (transComments) transComments.value = window._reviewSummaryComments;
+        }
+        if (focusForm && window._reviewSummaryComments !== undefined) {
+            const idComments = document.getElementById('id_comments');
+            if (idComments) idComments.value = window._reviewSummaryComments;
+        }
+        // 汇总模式移除备注失焦保存事件
+        _unbindHistoryCommentSave();
+    } else {
+        // 历史模式绑定备注失焦保存（非复盘页面）
+        const isReviewPage = window.location.pathname.startsWith('/review/');
+        if (!isReviewPage) {
+            _bindHistoryCommentSave(data);
+        }
+    }
+}
+
+// 历史模式备注失焦保存（focus-view / trans-view）
+let _historyCommentHandler = null;
+let _historyCommentOriginal = '';
+let _historyCommentEl = null;
+
+function _bindHistoryCommentSave(data) {
+    // 确定备注输入框和接口
+    const transComments = document.getElementById('trans_comments');
+    const idComments = document.getElementById('id_comments');
+    const el = transComments || idComments;
+    if (!el) return;
+
+    // 如果已经绑定了同一个元素，只更新原始值
+    if (_historyCommentEl === el && _historyCommentHandler) {
+        _historyCommentOriginal = el.value;
+        return;
+    }
+
+    // 先移除旧的
+    _unbindHistoryCommentSave();
+
+    // 保存原始值
+    _historyCommentOriginal = el.value;
+    _historyCommentEl = el;
+
+    _historyCommentHandler = async () => {
+        if (!_historyCommentEl) return;
+        const newValue = _historyCommentEl.value;
+        // 内容没变不弹窗
+        if (newValue === _historyCommentOriginal) return;
+
+        const confirmed = await showConfirm({
+            title: '确认修改备注',
+            text: '确定要保存备注修改吗？',
+            confirmText: '确定',
+            cancelText: '取消',
+        });
+
+        if (confirmed) {
+            const form = document.getElementById('transViewForm') || document.getElementById('focusForm');
+            const historyId = form ? form.dataset.historyId : null;
+            const isTrans = !!document.getElementById('transViewForm');
+            const url = isTrans ? '/trans/save-history-comment' : '/focus/save-history-comment';
+
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    },
+                    body: JSON.stringify({
+                        history_id: historyId,
+                        comments: newValue,
+                    }),
+                });
+                const result = await res.json();
+                if (result.success) {
+                    _historyCommentOriginal = newValue;
+                    showAlert({ title: '已保存', text: '备注已更新', type: 'success' });
+                } else {
+                    showAlert({ title: '保存失败', text: result.error || '未知错误', type: 'error' });
+                    _historyCommentEl.value = _historyCommentOriginal;
+                }
+            } catch (e) {
+                showAlert({ title: '保存失败', text: '网络错误', type: 'error' });
+                _historyCommentEl.value = _historyCommentOriginal;
+            }
+        } else {
+            // 取消时恢复原始值
+            _historyCommentEl.value = _historyCommentOriginal;
+        }
+    };
+
+    el.addEventListener('blur', _historyCommentHandler);
+}
+
+function _unbindHistoryCommentSave() {
+    if (_historyCommentEl && _historyCommentHandler) {
+        _historyCommentEl.removeEventListener('blur', _historyCommentHandler);
+    }
+    _historyCommentHandler = null;
+    _historyCommentEl = null;
+    _historyCommentOriginal = '';
 }
 
 export function initScrollFold() {

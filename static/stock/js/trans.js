@@ -42,9 +42,6 @@ export function initTransDeal(opts = {}) {
     const dividendTaxBody = document.getElementById('dividendTaxBody');
     let confirmedDividendTax = 0;
     let dividendTaxChecked = false; // 防止重复弹窗
-    // 保存上一次非清仓状态的目标/止损价格
-    let lastTargetPrice = targetInput ? targetInput.value : '0';
-    let lastStopPrice = stopInput ? stopInput.value : '0';
 
     // 判断是否达到清仓/反手条件（支持多头和空头）
     function isClearCondition() {
@@ -139,24 +136,8 @@ export function initTransDeal(opts = {}) {
     function onIntentOrQtyChange() {
         dividendTaxChecked = false;
 
-        // 清仓或反手时，目标价格和止损价格自动设为0；取消时恢复
-        if (isClearCondition()) {
-            if (targetInput && targetInput.value !== '0') {
-                lastTargetPrice = targetInput.value;
-            }
-            if (stopInput && stopInput.value !== '0') {
-                lastStopPrice = stopInput.value;
-            }
-            if (targetInput) targetInput.value = '0';
-            if (stopInput) stopInput.value = '0';
-        } else {
-            if (targetInput && targetInput.value === '0') {
-                targetInput.value = lastTargetPrice;
-            }
-            if (stopInput && stopInput.value === '0') {
-                stopInput.value = lastStopPrice;
-            }
-        }
+        // 触发后台重新计算（盈利机会、风险资金、预计收益等）
+        scheduleCalc();
 
         // 延迟检查，等其他计算完成
         setTimeout(checkDividendTax, 100);
@@ -236,10 +217,8 @@ export function initTransDeal(opts = {}) {
         calcTimer = setTimeout(requestCalc, 300);
     }
 
-    // 事件绑定
-    if (intentSelect) intentSelect.addEventListener('change', scheduleCalc);
+    // 事件绑定（intentSelect 和 qtyInput 已在 onIntentOrQtyChange 中绑定，避免重复触发）
     priceInput.addEventListener('blur', scheduleCalc);
-    qtyInput.addEventListener('blur', scheduleCalc);
     targetInput.addEventListener('blur', scheduleCalc);
     stopInput.addEventListener('blur', scheduleCalc);
     feeInput.addEventListener('blur', scheduleCalc);
