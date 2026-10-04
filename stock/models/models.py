@@ -188,7 +188,8 @@ class CashHistory(models.Model):
         db_table = 'models_cash_history'
         verbose_name = '资金历史'
         verbose_name_plural = verbose_name
-        ordering = ['-date', '-id']
+        # 资金历史仅按 id 排序（不按日期），撤销/取最新均以创建顺序为准
+        ordering = ['-id']
 
     def __str__(self):
         return f'{self.date:%Y-%m-%d} {self.get_event_display()} {self.change:+}'
@@ -522,6 +523,13 @@ class TransOrder(models.Model):
                 if d.qty > 0 and position_qty != 0:
                     # 送股：按比例增加持仓数量，成本不变，均价摊薄
                     position_qty += d.qty
+                    # 送股同时累加到累计买卖数量，保证 buy_qty - sell_qty == position_qty
+                    # 否则 recalculate 重算 buy_qty/sell_qty 会丢失送股数，
+                    # 导致 position_qty（property）偏小、avg_cost 偏大（未摊薄送股）
+                    if position_qty > 0:
+                        buy_qty += d.qty
+                    else:
+                        sell_qty += d.qty
                 continue
             if d.intent == TransHistory.INTENT_BUY:
                 if position_qty >= 0:
@@ -736,7 +744,7 @@ class DividendRecord(models.Model):
     DIVIDEND_CASH = 'cash'
     DIVIDEND_BONUS = 'bonus'
     DIVIDEND_CHOICES = [
-        (DIVIDEND_CASH, '现金分红'),
+        (DIVIDEND_CASH, '分红'),
         (DIVIDEND_BONUS, '送股'),
     ]
     order = models.ForeignKey(TransOrder, on_delete=models.CASCADE,

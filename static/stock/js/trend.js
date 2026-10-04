@@ -192,7 +192,9 @@ function renderTrendChart() {
             animation: false,
             useHTML: true,
             backgroundColor: '#fff', // 设置整个 tooltip 背景色
-            borderRadius: 8,          // Highcharts 自带的圆角
+            borderColor: '#d9d9d9',  // 外框颜色：与 kline .kline-tip 的边框色一致
+            borderWidth: 1,          // 外框宽度：与 kline 一致（1px）
+            borderRadius: 16,        // 圆角与 kline 一致
             style: {
                 fontSize: '13px'       // 全局字体大小
             },

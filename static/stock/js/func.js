@@ -214,9 +214,20 @@ export function updateFormData(data) {
             }
         }
         if (!isSummary || data.pilot_total === 1) {
-            const qtyPriceStr = (data.pilot_qty && data.pilot_price !== '') ? `${data.pilot_qty}股@${data.pilot_price}元` : '';
+            // 分红：现金+送股描述与 tooltip 一致；非分红沿用 qty@price
             const dateStr = data.pilot_date ? ` [${data.pilot_date}` : '';
-            const actionStr = data.pilot_action ? ` ${data.pilot_action}${qtyPriceStr}]` : (data.pilot_date ? ']' : '');
+            let actionStr;
+            if (data.pilot_dividend_amount !== undefined && data.pilot_dividend_amount !== '') {
+                const cash = Number(data.pilot_dividend_amount);
+                const bonus = Number(data.pilot_qty || 0);
+                if (cash > 0 && bonus > 0) actionStr = ` 分红${cash.toFixed(2)}元，送股${bonus}股]`;
+                else if (cash > 0) actionStr = ` 分红${cash.toFixed(2)}元]`;
+                else if (bonus > 0) actionStr = ` 送股${bonus}股]`;
+                else actionStr = data.pilot_date ? ']' : '';
+            } else {
+                const qtyPriceStr = (data.pilot_qty && data.pilot_price !== '') ? `${data.pilot_qty}股@${data.pilot_price}元` : '';
+                actionStr = data.pilot_action ? ` ${data.pilot_action}${qtyPriceStr}]` : (data.pilot_date ? ']' : '');
+            }
             const idx = isSummary ? 1 : (data.pilot_idx + 1);
             pilotIndicator.textContent = `第 ${idx} / ${data.pilot_total} 笔${dateStr}${actionStr}`;
         }

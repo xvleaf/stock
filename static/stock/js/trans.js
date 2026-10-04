@@ -279,6 +279,7 @@ export function initTransView(opts = {}) {
     const pilotAction = opts.pilot_action || '';
     const pilotQty = opts.pilot_qty || '';
     const pilotPrice = opts.pilot_price || '';
+    const pilotDividendAmount = opts.pilot_dividend_amount !== undefined ? opts.pilot_dividend_amount : '';
     const initChart = opts.initChart || {};
 
     setPageConfig(initChart);
@@ -291,9 +292,20 @@ export function initTransView(opts = {}) {
     if (isSummary && pilotTotal === 1) {
         const pilotIndicator = document.getElementById('transPilotIndicator');
         if (pilotIndicator) {
-            const qtyPriceStr = (pilotQty && pilotPrice !== '') ? `${pilotQty}股@${pilotPrice}元` : '';
+            // 分红：现金+送股描述与 tooltip 一致；非分红沿用 qty@price
             const dateStr = pilotDate ? ` [${pilotDate}` : '';
-            const actionStr = pilotAction ? ` ${pilotAction}${qtyPriceStr}]` : (pilotDate ? ']' : '');
+            let actionStr;
+            if (pilotDividendAmount !== '' && pilotDividendAmount !== undefined) {
+                const cash = Number(pilotDividendAmount);
+                const bonus = Number(pilotQty || 0);
+                if (cash > 0 && bonus > 0) actionStr = ` 分红${cash.toFixed(2)}元，送股${bonus}股]`;
+                else if (cash > 0) actionStr = ` 分红${cash.toFixed(2)}元]`;
+                else if (bonus > 0) actionStr = ` 送股${bonus}股]`;
+                else actionStr = pilotDate ? ']' : '';
+            } else {
+                const qtyPriceStr = (pilotQty && pilotPrice !== '') ? `${pilotQty}股@${pilotPrice}元` : '';
+                actionStr = pilotAction ? ` ${pilotAction}${qtyPriceStr}]` : (pilotDate ? ']' : '');
+            }
             pilotIndicator.textContent = `第 1 / 1 笔${dateStr}${actionStr}`;
         }
     }
@@ -367,10 +379,13 @@ export function initTransView(opts = {}) {
                 });
             }
 
-            // 确认按钮
+            // 确认按钮（【修改】增加防重复提交：后台未返回确认数据前，忽略重复点击）
+            let dividendSubmitting = false;
             const confirmBtn = document.getElementById('dividendModalConfirm');
             if (confirmBtn) {
                 confirmBtn.addEventListener('click', () => {
+                    // 【修改】上一请求未返回（后台未确认）时，忽略本次点击，避免重复分红
+                    if (dividendSubmitting) return;
                     const date = dateInput ? dateInput.value.trim() : '';
                     const remark = remarkInput ? remarkInput.value.trim() : '';
                     const cashAmount = perShareInput ? parseFloat(perShareInput.value) : NaN;
@@ -396,10 +411,16 @@ export function initTransView(opts = {}) {
                         bonus_qty: hasBonus ? bonusQty : 0,
                     };
 
+                    // 进入提交状态：置防重标志并禁用按钮，直至后端返回
+                    dividendSubmitting = true;
+                    confirmBtn.disabled = true;
                     postRequest(`/trans/dividend/${initChart.market}/${initChart.code}`, payload)
                         .then(res => {
                             if (res.error) {
                                 showAlert({ title: '失败', text: res.error, type: 'error' });
+                                // 后端确认失败，恢复可重试
+                                dividendSubmitting = false;
+                                confirmBtn.disabled = false;
                                 return;
                             }
                             dividendModal.hide();
@@ -408,6 +429,9 @@ export function initTransView(opts = {}) {
                         })
                         .catch(() => {
                             showAlert({ title: '失败', text: '分红登记失败', type: 'error' });
+                            // 请求异常，恢复可重试
+                            dividendSubmitting = false;
+                            confirmBtn.disabled = false;
                         });
                 });
             }

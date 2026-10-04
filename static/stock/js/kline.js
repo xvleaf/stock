@@ -194,23 +194,17 @@ function renderklineData() {
     const mainRatio = window.UI_CONFIG ? window.UI_CONFIG.kline_main_ratio : 80;
     const subRatio = 100 - mainRatio;
 
-    // 注入 tooltip 两侧小三角样式：
-    // 背景/边框/圆角全部由 .kline-tip 自身承担，.highcharts-tooltip 容器透明无边框，
-    // 保证三角与边框属于同一元素，左右严格对称、根部不越界
+    // 注入 tooltip 基础样式：
+    // 背景/边框/圆角全部由 .kline-tip 自身承担，.highcharts-tooltip 容器透明无边框。
+    // 【修改】已取消 tooltip 两侧小三角箭头：不再注入 .kline-tip::before 的
+    // .kline-tip-left / .kline-tip-right 箭头 SVG 样式，同时移除仅服务于箭头
+    // 绝对定位的 position:relative（.kline-tip 内为静态流内元素，无其他依赖）
     if (!document.getElementById('kline-tooltip-arrow-style')) {
         const st = document.createElement('style');
         st.id = 'kline-tooltip-arrow-style';
         st.textContent =
             '.highcharts-tooltip{overflow:visible!important;border:0!important;background:transparent!important;box-shadow:none!important;padding:0!important;}' +
-            '.kline-tip{position:relative;padding:10px 12px;background:#fff;border:1px solid #d9d9d9;border-radius:16px;}' +
-            /* V形小三角：SVG data URI 画两条斜边（无底边），尖朝K线。
-               斜边 #999（原 #d9d9d9 与白底对比度仅1.2:1不可见；#999 实测清晰）。
-               无底边 → 不再伸入框内，tooltip 圆角边框连续、无凹陷。
-               盒宽8px：尖端距框8px（与原 border 三角一致），斜边终点贴框缘。
-               左右镜像：right:100%（框右缘→三角在左）/ left:100%（框左缘→三角在右） */
-            '.kline-tip::before{content:"";position:absolute;top:50%;width:8px;height:18px;transform:translateY(-50%);}' +
-            '.kline-tip-left::before{right:100%;background:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%228%22%20height%3D%2218%22%3E%3Cpath%20d%3D%22M0%209%20L8%200.5%20M0%209%20L8%2017.5%22%20stroke%3D%22%23999%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E") no-repeat center/100% 100%;}' +
-            '.kline-tip-right::before{left:100%;background:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%228%22%20height%3D%2218%22%3E%3Cpath%20d%3D%22M8%209%20L0%200.5%20M8%209%20L0%2017.5%22%20stroke%3D%22%23999%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E") no-repeat center/100% 100%;}';
+            '.kline-tip{padding:10px 12px;background:#fff;border:1px solid #d9d9d9;border-radius:16px;}';
         document.head.appendChild(st);
     }
 
@@ -372,33 +366,29 @@ function renderklineData() {
                                 } else if (p._type === 'sell') {
                                     tradeHtml += `<div>${t.date} 卖出${t.qty}股@${Number(t.price).toFixed(klineData.deci)}元</div>`;
                                 } else {
-                                    // 分红格式：xxxx-xx-xx 分红xx元，送股xx股
+                                    // 分红格式：现金>0 显示"分红xx元，送股xx股"；现金=0 仅显示"送股xx股"
                                     const amountStr = Number(t.amount).toLocaleString('zh-CN', {minimumFractionDigits:2});
-                                    const bonusStr = t.bonus_qty > 0 ? `，送股${t.bonus_qty}股` : '';
-                                    tradeHtml += `<div>${t.date} 分红${amountStr}元${bonusStr}</div>`;
+                                    const hasCash = Number(t.amount) > 0;
+                                    const hasBonus = t.bonus_qty > 0;
+                                    if (hasCash && hasBonus) {
+                                        tradeHtml += `<div>${t.date} 分红${amountStr}元，送股${t.bonus_qty}股</div>`;
+                                    } else if (hasCash) {
+                                        tradeHtml += `<div>${t.date} 分红${amountStr}元</div>`;
+                                    } else if (hasBonus) {
+                                        tradeHtml += `<div>${t.date} 送股${t.bonus_qty}股</div>`;
+                                    }
                                 }
                             });
                         }
 
-                        if (count > 1) {
-                            tradeHtml += '<div style="border-top:1px dashed #ddd;margin:4px 0;"></div>';
-                            if (p._type === 'divd') {
-                                const totalBonusStr = p.total_bonus_qty > 0 ? `，送股${p.total_bonus_qty}股` : '';
-                                tradeHtml += `<div style="font-weight:bold;">合计分红：${Number(p.total_amount).toLocaleString('zh-CN', {minimumFractionDigits:2})}元${totalBonusStr}</div>`;
-                            } else {
-                                tradeHtml += `<div style="font-weight:bold;">合计：${p.total_qty}股，${Number(p.total_amount).toLocaleString('zh-CN', {minimumFractionDigits:2})}元</div>`;
-                            }
-                        }
+                        // 【修改】已取消交易标记的合计行（含其配套的虚线分隔线）：
+                        // 仅保留每笔交易明细；「（共N笔）」标题所需的 count 变量仍保留使用
                     });
                     tradeHtml += '</div>';
                 }
 
-                // 三角方向：K线在左半区→框在右侧→三角在框左缘(tip-left)；反之 tip-right
-                const tipChart = klinePointItem.series.chart;
-                const tipClass = (point.plotX < tipChart.plotWidth / 2) ? 'kline-tip-left' : 'kline-tip-right';
-
                 return `
-                    <div class="kline-tip ${tipClass}">
+                    <div class="kline-tip">
                         <b>${dateStr}</b>
                         <table>
                             <tr>

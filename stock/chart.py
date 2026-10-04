@@ -238,6 +238,7 @@ def chart_view_api(request):
                     pilot_action = ''
                     pilot_qty = ''
                     pilot_price = ''
+                    pilot_dividend_amount = ''  # 分红现金金额，前端用于与 tooltip 一致描述
                     is_summary = (pilot_idx == -1)
 
                     # 字段连接辅助函数：1个直接，2个用"和"，超过2个前面用"、"最后用"和"
@@ -281,6 +282,8 @@ def chart_view_api(request):
                                 cat = detail.get('cat', 'stock')
                                 deci = 3 if cat in ('fund', 'bond') else 2
                                 pilot_price = f"{float(history.price):.{deci}f}"
+                                # 分红时携带现金分红金额，供前端 transPilotIndicator 与 tooltip 一致描述
+                                pilot_dividend_amount = float(history.dividend_amount) if history.action == TransHistory.ACTION_DIVIDEND else ''
                                 detail['comments'] = history.comments or ''
                                 
                                 # 设置历史快照字段
@@ -343,6 +346,7 @@ def chart_view_api(request):
                     detail['pilot_action'] = pilot_action
                     detail['pilot_qty'] = pilot_qty
                     detail['pilot_price'] = pilot_price
+                    detail['pilot_dividend_amount'] = pilot_dividend_amount
                     detail['pilot_idx'] = pilot_idx
                     detail['pilot_total'] = len(pilot_list) if pilot_list else 0
                     # 历史模式下附加 history_id 和 history_type

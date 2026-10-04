@@ -658,12 +658,14 @@ def trans_view(request, market, code):
     pilot_action = ''
     pilot_qty = ''
     pilot_price = ''
+    pilot_dividend_amount = ''
     if is_summary and len(histories) == 1:
         h0 = histories[0]
         pilot_date = h0.date.strftime('%Y-%m-%d') if h0.date else ''
         pilot_action = h0.get_action_display()
         pilot_qty = h0.qty
         pilot_price = f"{float(h0.price):.{deci}f}" if h0.price else ''
+        pilot_dividend_amount = float(h0.dividend_amount) if h0.action == TransHistory.ACTION_DIVIDEND else ''
 
     return render(request, 'trans-view.html', {
         'order': order,
@@ -675,6 +677,7 @@ def trans_view(request, market, code):
         'pilot_action': pilot_action,
         'pilot_qty': pilot_qty,
         'pilot_price': pilot_price,
+        'pilot_dividend_amount': pilot_dividend_amount,
         'chart': json.dumps(chart_init),
         'cash': CashConfig.get_config().cash,
         'available': CashConfig.get_config().allowance - CashConfig.get_config().risk,
@@ -974,7 +977,7 @@ def trans_dividend(request, market, code):
     bonus_qty = int(data.get('bonus_qty', 0) or 0)
 
     if cash_amount <= 0 and bonus_qty <= 0:
-        return JsonResponse({'error': '现金分红和送股数量不能同时为0'}, status=400)
+        return JsonResponse({'error': '分红金额和送股数量不能同时为0'}, status=400)
 
     position_qty = abs(order.position_qty)
     if position_qty <= 0:
@@ -1029,13 +1032,23 @@ def trans_dividend(request, market, code):
         )
 
         # 5. 写入交易历史（现金分红和送股都需要，用于历史切换和撤销恢复）
+        # 备注：现金分红与送股同时登记时完整显示两者
+        if remark:
+            deal_comments = remark
+        else:
+            _parts = []
+            if cash_amount > 0:
+                _parts.append(f'分红{cash_amount}元')
+            if qty_change > 0:
+                _parts.append(f'送股{qty_change}股')
+            deal_comments = '，'.join(_parts)
         deal = TransHistory.objects.create(
             order=order, action=TransHistory.ACTION_DIVIDEND,
             intent=order.intent, date=div_date,
             price=0, qty=qty_change, amount=0, fee=0,
             dividend_amount=cash_amount,
             target_price=order.target_price, stop_price=order.stop_price,
-            comments=remark or (f'现金分红{cash_amount}元' if cash_amount > 0 else f'送股{qty_change}股'),
+            comments=deal_comments,
         )
 
         # 6. 统一 recalculate（重新计算均价、盈利机会、风险资金；position_cost 扣除累计现金分红）
@@ -1051,7 +1064,16 @@ def trans_dividend(request, market, code):
         deal.save(update_fields=['profit', 'win_ratio', 'risk_amount', 'position_qty', 'avg_cost', 'avg_cost_no_fee'])
 
         # 8. 写入资金历史（change 为现金分红金额，送股时为0；current_profit 为0，分红不算收益）
-        full_remark = remark or (f'{order.name}现金分红{cash_amount}元' if cash_amount > 0 else f'{order.name}送股{qty_change}股')
+        # 【修改】资金历史备注：同时分红+送股时完整显示两者
+        if remark:
+            full_remark = remark
+        else:
+            _parts = []
+            if cash_amount > 0:
+                _parts.append(f'分红{cash_amount}元')
+            if qty_change > 0:
+                _parts.append(f'送股{qty_change}股')
+            full_remark = f'{order.name}{"，".join(_parts)}'
         CashHistory.snapshot(
             event=CashHistory.EVENT_DIVIDEND,
             change=cash_amount,
@@ -1122,8 +1144,10 @@ def calc_dividend_tax(request, market, code):
                     ratio = Decimal(h.qty) / Decimal(total)
                     for b in batches:
                         b['qty'] = int(b['qty'] * (1 + ratio))
-            # 现金分红：快照批次分布（通过日期匹配DividendRecord）
-            if h.qty == 0 and div_idx < len(cash_dividends):
+            # 现金分红：快照批次分布（通过日期匹配DividendRecord）。
+            # 用 h.dividend_amount>0 判断是否含现金分红（兼容现金+送股同时登记，
+            # 此时 h.qty>0 仍应生成现金快照；原 h.qty==0 判断会丢失该快照）
+            if h.dividend_amount > 0 and div_idx < len(cash_dividends):
                 div = cash_dividends[div_idx]
                 dividend_snapshots.append({
                     'div_date': div.date,

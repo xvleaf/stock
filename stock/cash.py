@@ -75,7 +75,8 @@ def cash_view(request):
         end_date = today
         end_str = end_date.strftime('%Y-%m-%d')
     # 历史记录按日期范围过滤 + 分页（每页条数独立存储，不影响其他页面）
-    history_qs = CashHistory.objects.filter(date__gte=start_date, date__lte=end_date).order_by('-date', '-id')
+    # 资金变化记录仅按 id 排序（不按日期），保证与创建顺序一致
+    history_qs = CashHistory.objects.filter(date__gte=start_date, date__lte=end_date).order_by('-id')
     cash_per_page = int(func.get_cache(request.session, 'cash-per-page', str(func._get_default_page_size())))
     pg = func.paginate_queryset(request, history_qs, 'cash-history-page', per_page=cash_per_page)
     items = list(pg['items'])
@@ -116,7 +117,8 @@ def cash_history_api(request):
         end_str = today_str
         set_config('cash_stat_end', today_str)
         set_config('cash_stat_end_set_day', today_str)
-    qs = CashHistory.objects.all().order_by('date', 'id')
+    # 【资金历史图数据也仅按 id 排序（id 递增即创建顺序）
+    qs = CashHistory.objects.all().order_by('id')
     if start_str:
         try:
             qs = qs.filter(date__gte=datetime.datetime.strptime(start_str, '%Y-%m-%d').date())
