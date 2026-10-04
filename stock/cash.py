@@ -89,7 +89,7 @@ def cash_view(request):
         'current_page': pg['current_page'],
         'total_pages': pg['total_pages'],
         'per_page': pg['per_page'],
-        'result_total': pg['total_count'],
+        'total_count': pg['total_count'],
         'start_date': start_str,
         'end_date': end_str,
     })
