@@ -227,7 +227,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'base/lib/Highcharts/js/highstock.js' %}"></script>
+<script src="{% static 'base/lib/Highcharts/highcharts.min.js' %}"></script>
+<script src="{% static 'base/lib/Highcharts/modules/stock.min.js' %}"></script>
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
     import { initCashChart, adjustCash, initAdjustModal, initQuotaModal, initRevokeBtn, initInitModal } from "{% static 'stock/js/cash.js' %}";

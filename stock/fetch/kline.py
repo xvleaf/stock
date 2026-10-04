@@ -1,12 +1,14 @@
 import os
 import pandas as pd
 import datetime
+from collections import defaultdict
 from django.http import JsonResponse
 from . import tushare
 from .config import (get_kline_start_date, get_kline_ma_period, get_kline_mv_period,
                      get_kline_ema_k, get_kline_ema_d, get_kline_density)
 import akshare as ak
 from stock import func
+from stock.models.models import TransHistory, TransOrder, DividendRecord
 
 
 def _get_kline_ma_config(freq):
@@ -167,7 +169,7 @@ def kline_data_for_chart(session, site, cat, market, code):
             deadline = func.date_to_timestamp(dt)
 
     # 一次性返回完整数据
-    result = _handle_kline_full(df, freq, right, k, d, deci, deadline)
+    result = _handle_kline_full(df, freq, right, k, d, deci, deadline, code, market)
 
     return JsonResponse(result)
 
@@ -183,7 +185,7 @@ def set_kline_params(session, key, value):
     func.set_cache(session, 'kline_params', kline_params)
 
 
-def _handle_kline_full(df, freq, right, k, d, deci, deadline):
+def _handle_kline_full(df, freq, right, k, d, deci, deadline, code, market):
     ohlc = []
     volume = []
 
@@ -208,8 +210,8 @@ def _handle_kline_full(df, freq, right, k, d, deci, deadline):
     ma = _calc_simple_ma_line(df, 'close', window=ma_config['ma'], deci=deci)
     mv = _calc_simple_ma_line(df, 'vol', window=ma_config['mv'], deci=0)
 
-    # 交易信号预留
-    deal = {'long': [], 'short': [], 'dual': [], 'divd': []}
+    # 交易信号：买入/卖出/分红标记
+    deal = _build_trade_markers(df, code, market, deci, freq)
 
     return {
         'ohlc': ohlc,
@@ -229,6 +231,218 @@ def _handle_kline_full(df, freq, right, k, d, deci, deadline):
         'right': right,
         'freq': freq,
     }
+
+
+def _build_trade_markers(df, code, market, deci, freq='D'):
+    """
+    构建K线图交易标记数据（买入/卖出/分红），支持日线/周线/月线
+
+    参数:
+        df: K线数据 DataFrame，包含 trade_date, high, low 列
+        code: 股票代码
+        market: 股票市场
+        deci: 价格小数位数
+        freq: K线周期 'D'日线 'W'周线 'M'月线
+
+    返回:
+        dict: {
+            'buy':  买入标记列表 [{x, y, date, trades: [{price, qty, amount}]}],
+            'sell': 卖出标记列表,
+            'divd': 分红标记列表 [{x, y, date, trades: [{amount, qty, per_share}]}]
+        }
+
+    标记位置:
+        买入：K线下方（low * 0.97）
+        卖出：K线上方（high * 1.03）
+        分红：K线上方（high * 1.01，在卖出下方）
+
+    周线/月线处理：
+        将交易日期映射到对应周/月的K线日期，同一根K线内的多笔交易合并显示
+    """
+    result = {'buy': [], 'sell': [], 'divd': []}
+
+    if df is None or df.empty:
+        return result
+
+    # 建立K线日期到 high/low 的映射，并收集所有K线日期
+    kline_dates = []
+    date_hl = {}
+    for _, row in df.iterrows():
+        td = row['trade_date']
+        if hasattr(td, 'strftime'):
+            date_str = td.strftime('%Y-%m-%d')
+        else:
+            # 处理 'YYYYMMDD' 字符串格式，转为 'YYYY-MM-DD'
+            s = str(td)[:10]
+            if len(s) == 8 and s.isdigit():
+                date_str = f'{s[:4]}-{s[4:6]}-{s[6:8]}'
+            else:
+                date_str = s
+        kline_dates.append(date_str)
+        date_hl[date_str] = {
+            'high': float(row['high']),
+            'low': float(row['low'])
+        }
+
+    # kline_dates 已按日期升序排列
+    # 查询该股票的所有交易订单
+    try:
+        orders = TransOrder.objects.filter(code=code, market=market)
+        histories = TransHistory.objects.filter(
+            order__in=orders
+        ).select_related('order').order_by('date', 'id')
+        # 查询分红记录（现金分红/送股），按 order_id 和 date 建立映射
+        dividend_records = DividendRecord.objects.filter(
+            order__in=orders
+        ).order_by('date', 'id')
+        # key: (order_id, date_str), value: {'cash_amount': float, 'bonus_qty': int}
+        divd_record_map = defaultdict(lambda: {'cash_amount': 0.0, 'bonus_qty': 0})
+        for dr in dividend_records:
+            key = (dr.order_id, dr.date.strftime('%Y-%m-%d'))
+            if dr.dividend_type == DividendRecord.DIVIDEND_CASH:
+                divd_record_map[key]['cash_amount'] += float(dr.amount)
+            elif dr.dividend_type == DividendRecord.DIVIDEND_BONUS:
+                divd_record_map[key]['bonus_qty'] += dr.qty_change
+    except Exception as e:
+        print(f'[_build_trade_markers] 查询交易历史失败: {e}')
+        return result
+
+    # 按K线日期和类型分组（周线/月线会合并同一根K线内的多笔交易）
+    buy_by_kline = defaultdict(list)
+    sell_by_kline = defaultdict(list)
+    divd_by_kline = defaultdict(list)
+
+    for h in histories:
+        trade_date = h.date.strftime('%Y-%m-%d')
+        # 找到交易日期之后最近的一个K线日期（>= 交易日期）
+        # K线日期通常是该周期的最后一个交易日（如周五/月末）
+        kline_date = None
+        for d in kline_dates:
+            if d >= trade_date:
+                kline_date = d
+                break
+        # 如果没有找到（交易日期晚于最后一根K线），用最后一根
+        if kline_date is None and kline_dates:
+            kline_date = kline_dates[-1]
+        if kline_date is None or kline_date not in date_hl:
+            continue
+        if h.action == TransHistory.ACTION_BUY:
+            buy_by_kline[kline_date].append(h)
+        elif h.action == TransHistory.ACTION_SELL:
+            sell_by_kline[kline_date].append(h)
+        elif h.action == TransHistory.ACTION_DIVIDEND:
+            divd_by_kline[kline_date].append(h)
+
+    # 构建买入标记
+    for kline_date, items in buy_by_kline.items():
+        ts = func.date_to_timestamp(kline_date.replace('-', ''))
+        y = round(date_hl[kline_date]['low'] * 0.98, deci)
+        trades = []
+        total_qty = 0
+        total_amount = 0.0
+        for h in items:
+            price = float(h.price)
+            qty = h.qty
+            amount = float(h.amount)
+            trades.append({
+                'price': price,
+                'qty': qty,
+                'amount': amount,
+                'date': h.date.strftime('%Y-%m-%d')
+            })
+            total_qty += qty
+            total_amount += amount
+        result['buy'].append({
+            'x': ts,
+            'y': y,
+            'date': kline_date,
+            'trades': trades,
+            'total_qty': total_qty,
+            'total_amount': round(total_amount, 2)
+        })
+
+    # 构建卖出标记
+    for kline_date, items in sell_by_kline.items():
+        ts = func.date_to_timestamp(kline_date.replace('-', ''))
+        y = round(date_hl[kline_date]['high'] * 1.02, deci)
+        trades = []
+        total_qty = 0
+        total_amount = 0.0
+        total_fee = 0.0
+        total_div_tax = 0.0
+        for h in items:
+            price = float(h.price)
+            qty = h.qty
+            amount = float(h.amount)
+            fee = float(h.fee)
+            div_tax = float(h.dividend_tax)
+            trades.append({
+                'price': price,
+                'qty': qty,
+                'amount': amount,
+                'fee': fee,
+                'div_tax': div_tax,
+                'date': h.date.strftime('%Y-%m-%d')
+            })
+            total_qty += qty
+            total_amount += amount
+            total_fee += fee
+            total_div_tax += div_tax
+        sell_point = {
+            'x': ts,
+            'y': y,
+            'date': kline_date,
+            'trades': trades,
+            'total_qty': total_qty,
+            'total_amount': round(total_amount, 2),
+            'total_fee': round(total_fee, 2),
+            'total_div_tax': round(total_div_tax, 2)
+        }
+        # 同一天有分红时，卖出图标隐藏，由分红点的星号图标统一显示
+        if kline_date in divd_by_kline:
+            sell_point['dataLabels'] = {'enabled': False}
+        result['sell'].append(sell_point)
+
+    # 构建分红标记
+    for kline_date, items in divd_by_kline.items():
+        ts = func.date_to_timestamp(kline_date.replace('-', ''))
+        y = round(date_hl[kline_date]['high'] * 1.02, deci)
+        trades = []
+        total_amount = 0.0
+        total_bonus_qty = 0
+        for h in items:
+            trade_date = h.date.strftime('%Y-%m-%d')
+            # 从 DividendRecord 中获取现金分红金额和送股股数
+            divd_info = divd_record_map.get((h.order_id, trade_date), {'cash_amount': 0.0, 'bonus_qty': 0})
+            amount = divd_info['cash_amount']
+            bonus_qty = divd_info['bonus_qty']
+            qty = h.position_qty
+            per_share = round(amount / qty, 4) if qty > 0 else 0
+            trades.append({
+                'amount': amount,
+                'qty': qty,
+                'per_share': per_share,
+                'bonus_qty': bonus_qty,
+                'date': trade_date
+            })
+            total_amount += amount
+            total_bonus_qty += bonus_qty
+        has_sell = kline_date in sell_by_kline
+        point_data = {
+            'x': ts,
+            'y': y,
+            'date': kline_date,
+            'trades': trades,
+            'total_amount': round(total_amount, 2),
+            'total_bonus_qty': total_bonus_qty,
+            'icon': 'tabler:hexagon-asterisk' if has_sell else 'tabler:hexagon-letter-d'
+        }
+        # 若同一天有卖出，隐藏分红圆点 marker，星号图标放在正常卖出位置（不叠放）
+        if has_sell:
+            point_data['marker'] = {'enabled': False}
+        result['divd'].append(point_data)
+
+    return result
 
 
 def _calc_ema_track_line(df, k, d, deci):

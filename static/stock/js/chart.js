@@ -509,6 +509,13 @@ function applyFullscreenState() {
         void chartPage.offsetHeight;
     }
 
+    // 伪全屏切换使图表容器在文档中的位置发生变化，必须重置 Highcharts 的
+    // pointer.chartPosition 缓存（图表初始化时测量一次后永不刷新），
+    // 否则 tooltip 的事件坐标换算整体偏移，悬停判定失败导致 tooltip 不显示。
+    if (window.klineChart) {
+        window.klineChart.pointer.chartPosition = undefined;
+    }
+
     // 控制 trendParam 的显示模式
     const trendParam = document.getElementById('trendParam');
     if (trendParam) {

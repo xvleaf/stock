@@ -121,7 +121,8 @@
 
 {% block extra_js %}
 <script src="{% static 'base/js/jquery-3.7.0.min.js' %}"></script>
-<script src="{% static 'base/lib/Highcharts/js/highstock.js' %}"></script>
+<script src="{% static 'base/lib/Highcharts/highcharts.min.js' %}"></script>
+<script src="{% static 'base/lib/Highcharts/modules/stock.min.js' %}"></script>
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
     import { initTransEdit } from "{% static 'stock/js/trans.js' %}";

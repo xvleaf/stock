@@ -949,9 +949,9 @@ def trans_calc(request):
 @require_http_methods(["POST"])
 def trans_dividend(request, market, code):
     """
-    分红登记：支持同时登记现金分红和送股转增
+    分红登记：支持同时登记现金分红和送股
     POST JSON: {cash_amount, bonus_qty, date, remark}
-    cash_amount > 0 时进行现金分红，bonus_qty > 0 时进行送股转增，两者可同时
+    cash_amount > 0 时进行现金分红，bonus_qty > 0 时进行送股，两者可同时
     折减成本方案：现金分红将股票市值转为现金，不算收益；目标价/止损价同步除权调整
     """
     order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_OPEN).first()
@@ -995,14 +995,14 @@ def trans_dividend(request, market, code):
             config.total = _q(config.cash + config.stock)
             # 不修改 config.profit 和 order.profit（分红不算收益）
 
-        # 2. 送股转增：数量增加，config.stock 不变
+        # 2. 送股：数量增加，config.stock 不变
         if qty_change > 0:
             if order.intent == TransOrder.INTENT_BUY:
                 order.buy_qty += qty_change
             else:
                 order.sell_qty += qty_change
 
-        # 3. 调整目标价和止损价（先现金分红下调，再送股转增同比例下调）
+        # 3. 调整目标价和止损价（先现金分红下调，再送股同比例下调）
         if per_share > 0:
             if order.target_price > 0:
                 order.target_price = _q(order.target_price - per_share)
@@ -1028,7 +1028,7 @@ def trans_dividend(request, market, code):
             remark=remark,
         )
 
-        # 5. 写入交易历史（现金分红和送股转增都需要，用于历史切换和撤销恢复）
+        # 5. 写入交易历史（现金分红和送股都需要，用于历史切换和撤销恢复）
         deal = TransHistory.objects.create(
             order=order, action=TransHistory.ACTION_DIVIDEND,
             intent=order.intent, date=div_date,
@@ -1115,7 +1115,7 @@ def calc_dividend_tax(request, market, code):
                     batches[0]['qty'] -= remain
                     remain = 0
         elif h.action == TransHistory.ACTION_DIVIDEND:
-            # 送股转增：按比例增加所有批次数量
+            # 送股：按比例增加所有批次数量
             if h.qty > 0:
                 total = sum(b['qty'] for b in batches)
                 if total > 0:

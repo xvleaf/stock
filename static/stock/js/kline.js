@@ -104,9 +104,85 @@ function syncVolumeColor(chart) {
     });
 }
 
+/**
+ * 交易标记（点+线段+BSD图标 一体组合）HTML 覆盖层渲染。
+ * 背景：Highcharts 10.3.3 的 useHTML 校验（warning #33）拒绝非白名单标签
+ *   （iconify-icon 自定义标签 / 内联 svg / img 均被拒），dataLabels 无法显示图标。
+ * 方案：每个交易标记生成一个绝对定位的 flex 容器（覆盖层内，z-index:2 < tooltip 3），
+ *   内部纵向排列 圆点(6px)+线段(5px)+六边形图标(14px)，align-items:center →
+ *   三者中心线天然共线，不再有两套渲染器的对齐问题。
+ *   容器锚点 = 圆点中心 = 交易点像素 (px,py)，一次 Axis.toPixels() 定位。
+ * 结构：
+ *   买入（点在K线低点，图标在点下方）：点 → 线段 → 六边形B
+ *   卖出/纯分红（点在K线高点，图标在点上方）：六边形S/D → 线段 → 点（镜像）
+ *   同日卖出+分红：六边形D 紧挨 六边形S 上方（D蓝、S绿）→ 线段 → 点（不再用星号）
+ * 颜色：买入红 #ef4444 / 卖出绿 #22c55e / 分红蓝 #3b82f6（点、线、图标同色）
+ * 每次 chart render 事件触发（缩放/密度变化/resize 均触发），自动同步定位。
+ */
+function renderDealOverlay(chart, deal) {
+    if (!chart || !deal) return;
+    const container = chart.container;
+    let overlay = container.querySelector('#deal-icon-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'deal-icon-overlay';
+        overlay.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2;';
+        container.appendChild(overlay);
+    }
+    overlay.innerHTML = '';
+    // 组合内三个部件的 HTML（flex 纵向排列，align-items:center → 中心线天然共线）
+    const dotHtml = function (color) {
+        return '<div style="width:6px;height:6px;border-radius:50%;background:' + color + ';border:1px solid #fff;box-sizing:border-box;"></div>';
+    };
+    const lineHtml = function (color) {
+        return '<div style="width:1px;height:5px;background:' + color + ';"></div>';
+    };
+    const iconHtml = function (icon, color) {
+        return '<iconify-icon icon="' + icon + '" style="display:block;width:14px;height:14px;color:' + color + ';"></iconify-icon>';
+    };
+    // 三类标记；divd 需按是否同日卖出+分红走不同分支
+    const groups = [
+        { data: deal.buy,  icon: 'tabler:hexagon-letter-b', color: '#ef4444' },
+        { data: deal.sell, icon: 'tabler:hexagon-letter-s', color: '#22c55e' },
+        { data: deal.divd, icon: 'tabler:hexagon-letter-d', color: '#3b82f6' }
+    ];
+    groups.forEach(function (g) {
+        if (!g.data || g.data.length === 0) return;
+        g.data.forEach(function (d) {
+            // 像素坐标（相对图表容器，含轴区域；与覆盖层 inset:0 对齐）
+            const px = chart.xAxis[0].toPixels(d.x);
+            const py = chart.yAxis[0].toPixels(d.y);
+            if (px == null || py == null || isNaN(px) || isNaN(py)) return;
+            let content, top;
+            if (g.data === deal.buy) {
+                // 买入：点在上（锚点=点中心=py），线段、B图标在点下方
+                content = dotHtml(g.color) + lineHtml(g.color) + iconHtml(g.icon, g.color);
+                top = py - 3;
+            } else if (g.data === deal.divd && d.icon && d.icon.indexOf('asterisk') !== -1) {
+                // 同日卖出+分红：D(蓝)紧挨S(绿)上方，点/线段用卖出绿；总高39，锚点=点中心
+                content = iconHtml('tabler:hexagon-letter-d', '#3b82f6')
+                    + iconHtml('tabler:hexagon-letter-s', '#22c55e')
+                    + lineHtml('#22c55e')
+                    + dotHtml('#22c55e');
+                top = py - 36;
+            } else {
+                // 卖出 / 纯分红：图标在上，线段、点在下（锚点=点中心=py）
+                content = iconHtml(g.icon, g.color) + lineHtml(g.color) + dotHtml(g.color);
+                top = py - 22;
+            }
+            const el = document.createElement('div');
+            el.style.cssText = 'position:absolute;left:' + px + 'px;top:' + top + 'px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;';
+            el.innerHTML = content;
+            overlay.appendChild(el);
+        });
+    });
+}
+
 function renderklineData() {
     const { ohlc, volume, tp, fl, up, av, lw, ma, mv, deal, deadline: rawDeadline, deci, freq } = klineData;
     if (ohlc.length === 0) return;
+    // 当前悬停的 candlestick 点（formatter 缓存，供 tooltip positioner 精确定位）
+    let tipAnchor = null;
     // 前端计算显示区间，宽度与原请求参数保持一致
     const showResult = calcShowValues(
         [...ohlc], [...volume], freq, rawDeadline
@@ -117,6 +193,27 @@ function renderklineData() {
     setPriceDecimal(deci);
     const mainRatio = window.UI_CONFIG ? window.UI_CONFIG.kline_main_ratio : 80;
     const subRatio = 100 - mainRatio;
+
+    // 注入 tooltip 两侧小三角样式：
+    // 背景/边框/圆角全部由 .kline-tip 自身承担，.highcharts-tooltip 容器透明无边框，
+    // 保证三角与边框属于同一元素，左右严格对称、根部不越界
+    if (!document.getElementById('kline-tooltip-arrow-style')) {
+        const st = document.createElement('style');
+        st.id = 'kline-tooltip-arrow-style';
+        st.textContent =
+            '.highcharts-tooltip{overflow:visible!important;border:0!important;background:transparent!important;box-shadow:none!important;padding:0!important;}' +
+            '.kline-tip{position:relative;padding:10px 12px;background:#fff;border:1px solid #d9d9d9;border-radius:16px;}' +
+            /* V形小三角：SVG data URI 画两条斜边（无底边），尖朝K线。
+               斜边 #999（原 #d9d9d9 与白底对比度仅1.2:1不可见；#999 实测清晰）。
+               无底边 → 不再伸入框内，tooltip 圆角边框连续、无凹陷。
+               盒宽8px：尖端距框8px（与原 border 三角一致），斜边终点贴框缘。
+               左右镜像：right:100%（框右缘→三角在左）/ left:100%（框左缘→三角在右） */
+            '.kline-tip::before{content:"";position:absolute;top:50%;width:8px;height:18px;transform:translateY(-50%);}' +
+            '.kline-tip-left::before{right:100%;background:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%228%22%20height%3D%2218%22%3E%3Cpath%20d%3D%22M0%209%20L8%200.5%20M0%209%20L8%2017.5%22%20stroke%3D%22%23999%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E") no-repeat center/100% 100%;}' +
+            '.kline-tip-right::before{left:100%;background:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%228%22%20height%3D%2218%22%3E%3Cpath%20d%3D%22M8%209%20L0%200.5%20M8%209%20L0%2017.5%22%20stroke%3D%22%23999%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E") no-repeat center/100% 100%;}';
+        document.head.appendChild(st);
+    }
+
     Highcharts.setOptions({
         lang: { rangeSelectorZoom: '' },
         global: { useUTC: false, timezone: 'Asia/Shanghai' },
@@ -129,7 +226,17 @@ function renderklineData() {
             borderWidth: 0,
             plotBorderColor: '#cfd1ee',
             plotBorderWidth: 1,
-            events: { render: function () { syncVolumeColor(this); } }
+            events: {
+                render: function () {
+                    // 任何重绘（reflow/resize/布局变化）后重置坐标缓存，
+                    // 保证 pointer 的 chartPosition 始终与当前布局一致，
+                    // 否则 tooltip 事件坐标换算偏移、悬停判定失败（tooltip 不显示）
+                    this.pointer.chartPosition = undefined;
+                    syncVolumeColor(this);
+                    // 每次渲染/重绘后同步交易标记覆盖层（缩放、密度变化、resize 均触发 render）
+                    renderDealOverlay(this, deal);
+                }
+            }
         },
         navigator: { enabled: false },
         scrollbar: { enabled: false },
@@ -167,21 +274,131 @@ function renderklineData() {
         ],
         tooltip: {
             shared: true,
-            split: true,
+            split: false,
             animation: false,
             useHTML: true,
-            backgroundColor: '#fff', // 设置整个 tooltip 背景色
-            borderRadius: 16,          // Highcharts 自带的圆角
+            outside: true, // 渲染到图表容器外：tooltip 可溢出绘制区（边缘蜡烛/三角），坐标用页面像素；层叠由覆盖层 z-index(2) < tooltip 容器(3) 保证
+            shape: 'rect', // 主体由 .kline-tip 的 CSS 绘制；此处容器透明无边框
+            borderWidth: 0, // 边框由 .kline-tip 承担
+            backgroundColor: 'transparent', // 背景由 .kline-tip 承担
+            shadow: false, // 阴影由 .kline-tip 自行控制
+            padding: 0, // 内边距交给 .kline-tip 控制
             style: {
                 fontSize: '13px'       // 全局字体大小
             },
+            // tooltip 显示在当前K线的左侧或右侧（依据点在绘图区的位置），小三角指向该K线
+            positioner: function (labelWidth, labelHeight, point) {
+                const chart = this.chart;
+                const plotLeft = chart.plotLeft, plotTop = chart.plotTop;
+                const plotWidth = chart.plotWidth, plotHeight = chart.plotHeight;
+                // 优先用 formatter 缓存的 candlestick 锚点（plotX/plotY 精确），未缓存时退回当前点
+                let anchor = (tipAnchor && tipAnchor.series) ? tipAnchor : point;
+                const plotX = anchor.plotX, plotY = anchor.plotY;
+                // 用实际渲染的 tooltip 宽度修正 labelWidth（HTML 内容测量可能不准，导致右侧定位过远）
+                let w = labelWidth;
+                const tipEl = chart.tooltip && chart.tooltip.label && chart.tooltip.label.element;
+                if (tipEl) {
+                    const rw = tipEl.getBoundingClientRect().width;
+                    if (rw > 0) w = rw;
+                }
+                const gap = 12;
+                let vx; // 期望的 tooltip 位置（相对图表容器）
+                // 点在左半区→提示框放右侧；点在右半区→放左侧
+                if (plotX < plotWidth / 2) {
+                    vx = plotLeft + plotX + gap;
+                } else {
+                    vx = plotLeft + plotX - w - gap;
+                }
+                // 垂直方向跟随K线并限制在绘图区内
+                let vy = plotTop + (plotY || 0) - labelHeight / 2;
+                vy = Math.max(plotTop, Math.min(vy, plotTop + plotHeight - labelHeight));
+                // Highcharts outside:true 的位置链路（源码）：
+                //   updatePosition: m.x += pointer.chartPosition.left - distance
+                //   xSetter: label内部平移 distance；e.style.left = m.x（body 文档坐标）
+                // 即 distance 在 updatePosition 减去、又在 xSetter 内部加回，互相抵消，
+                // 最终 tooltip 视口位置 = positioner.x + 缓存chartPosition.left - 滚动偏移。
+                // chartPosition 是首次测量即缓存的容器视口坐标，页面滚动/布局变化后可能过期、
+                // 甚至为 0。因此用实时容器位置（getBoundingClientRect）反推返回值：
+                //   positioner = 期望视口坐标 + 滚动偏移 - 缓存chartPosition
+                // 使最终位置恒等于「期望视口坐标」，与缓存是否正确无关。
+                const cRect = chart.container.getBoundingClientRect();
+                const cp = chart.pointer && chart.pointer.chartPosition;
+                const x = vx + cRect.left + (window.pageXOffset || 0) - ((cp && cp.left) || 0);
+                const y = vy + cRect.top + (window.pageYOffset || 0) - ((cp && cp.top) || 0);
+                return { x: x, y: y };
+            },
             formatter: function () {
-                const point = this.points[0].point;
+                // 防御性检查：某些情况下 this.points 可能不存在
+                if (!this.points || this.points.length === 0) return '';
+                // 找到K线系列（candlestick）的点，避免交易标记点导致报错
+                const klinePointItem = this.points.find(p => p.series.type === 'candlestick');
+                if (!klinePointItem) return '';
+                const point = klinePointItem.point;
+                tipAnchor = point; // 缓存当前K线锚点，供 positioner 精确定位
                 renderKlineMetrics(point.index);
                 const date = new Date(point.x);
-                const dateStr = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+                // 月份和日期补零，确保格式为 YYYY-MM-DD，与后端 d.date 一致
+                const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+                // 主动根据日期字符串查询交易标记（避免时间戳精度/时区不一致问题）
+                let tradeHtml = '';
+                const allTradeMarkers = [
+                    { data: deal.buy, type: 'buy', color: '#ef4444', label: '买入' },
+                    { data: deal.sell, type: 'sell', color: '#22c55e', label: '卖出' },
+                    { data: deal.divd, type: 'divd', color: '#3b82f6', label: '分红' }
+                ];
+                const matchedMarkers = [];
+                allTradeMarkers.forEach(tm => {
+                    if (tm.data && tm.data.length > 0) {
+                        // 用日期字符串比较，而非时间戳严格比较
+                        const matched = tm.data.find(d => d.date === dateStr);
+                        if (matched) {
+                            matchedMarkers.push({ ...matched, _type: tm.type, _color: tm.color, _label: tm.label });
+                        }
+                    }
+                });
+
+                if (matchedMarkers.length > 0) {
+                    tradeHtml = '<div style="border-top:1px solid #ddd;margin-top:6px;padding-top:6px;">';
+                    matchedMarkers.forEach(p => {
+                        const count = p.trades ? p.trades.length : 1;
+                        tradeHtml += `<div style="font-weight:bold;color:${p._color};margin-bottom:4px;">${p._label}（共${count}笔）</div>`;
+
+                        if (p.trades) {
+                            p.trades.forEach(t => {
+                                // 每笔交易显示实际交易日期（t.date）
+                                if (p._type === 'buy') {
+                                    tradeHtml += `<div>${t.date} 买入${t.qty}股@${Number(t.price).toFixed(klineData.deci)}元</div>`;
+                                } else if (p._type === 'sell') {
+                                    tradeHtml += `<div>${t.date} 卖出${t.qty}股@${Number(t.price).toFixed(klineData.deci)}元</div>`;
+                                } else {
+                                    // 分红格式：xxxx-xx-xx 分红xx元，送股xx股
+                                    const amountStr = Number(t.amount).toLocaleString('zh-CN', {minimumFractionDigits:2});
+                                    const bonusStr = t.bonus_qty > 0 ? `，送股${t.bonus_qty}股` : '';
+                                    tradeHtml += `<div>${t.date} 分红${amountStr}元${bonusStr}</div>`;
+                                }
+                            });
+                        }
+
+                        if (count > 1) {
+                            tradeHtml += '<div style="border-top:1px dashed #ddd;margin:4px 0;"></div>';
+                            if (p._type === 'divd') {
+                                const totalBonusStr = p.total_bonus_qty > 0 ? `，送股${p.total_bonus_qty}股` : '';
+                                tradeHtml += `<div style="font-weight:bold;">合计分红：${Number(p.total_amount).toLocaleString('zh-CN', {minimumFractionDigits:2})}元${totalBonusStr}</div>`;
+                            } else {
+                                tradeHtml += `<div style="font-weight:bold;">合计：${p.total_qty}股，${Number(p.total_amount).toLocaleString('zh-CN', {minimumFractionDigits:2})}元</div>`;
+                            }
+                        }
+                    });
+                    tradeHtml += '</div>';
+                }
+
+                // 三角方向：K线在左半区→框在右侧→三角在框左缘(tip-left)；反之 tip-right
+                const tipChart = klinePointItem.series.chart;
+                const tipClass = (point.plotX < tipChart.plotWidth / 2) ? 'kline-tip-left' : 'kline-tip-right';
+
                 return `
-                    <div>
+                    <div class="kline-tip ${tipClass}">
                         <b>${dateStr}</b>
                         <table>
                             <tr>
@@ -197,6 +414,7 @@ function renderklineData() {
                                 <td style="padding-left:10px">成交 ${(klineData.volume[point.index][1] / 10000).toFixed(0)}万</td>
                             </tr>
                         </table>
+                        ${tradeHtml}
                     </div>
                 `;
             }
@@ -217,15 +435,8 @@ function renderklineData() {
             // MA20 均线（橙色）
             { type: 'spline', data: ma, yAxis: 0, color: 'orange', lineWidth: 1, enableMouseTracking: false },
             // 成交量均线（黑色，副图）
-            { type: 'spline', data: mv, yAxis: 1, color: '#000', lineWidth: 1, enableMouseTracking: false },
-            // 交易信号：买入
-            { type: 'scatter', data: deal.long, yAxis: 0, color: 'red', enableMouseTracking: false, marker: { symbol: 'triangle', radius: 4 } },
-            // 交易信号：卖出
-            { type: 'scatter', data: deal.short, yAxis: 0, color: 'green', enableMouseTracking: false, marker: { symbol: 'triangle-down', radius: 4 } },
-            // 交易信号：双向
-            { type: 'scatter', data: deal.dual, yAxis: 0, color: 'orange', enableMouseTracking: false, marker: { symbol: 'diamond', radius: 4 } },
-            // 交易信号：分红
-            { type: 'scatter', data: deal.divd, yAxis: 0, color: 'blue', enableMouseTracking: false, marker: { symbol: 'diamond', radius: 4 } }
+            { type: 'spline', data: mv, yAxis: 1, color: '#000', lineWidth: 1, enableMouseTracking: false }
+            // 交易信号 buy/sell/divd 不再使用 scatter 系列：点+线段+图标由覆盖层 renderDealOverlay 一体渲染
         ]
     });
 }

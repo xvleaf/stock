@@ -278,7 +278,7 @@ def cash_revoke(request):
             config.save()
             latest.delete()
         elif latest.event == CashHistory.EVENT_DIVIDEND:
-            # 撤回分红（支持同时包含现金分红和送股转增）
+            # 撤回分红（支持同时包含现金分红和送股）
             order = latest.order
             if not order:
                 return JsonResponse({'error': '关联交易订单不存在'}, status=400)

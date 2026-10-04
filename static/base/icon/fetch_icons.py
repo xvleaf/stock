@@ -76,6 +76,8 @@ TABLER_ICONS = [
     "menu-2", "current-location", "current-location-filled",
     "hexagon-number-1", "hexagon-number-1-filled",
     "hexagon-number-2", "hexagon-number-2-filled", "hexagon-minus",
+    # K线交易标记类（BSD：买入B/卖出S/分红D + 同日卖出+分红星号）
+    "hexagon-letter-b", "hexagon-letter-s", "hexagon-letter-d",
     # 全屏类
     "maximize", "maximize-off",
 ]
@@ -83,12 +85,12 @@ TABLER_ICONS = [
 # Font Awesome 6 Solid（图标前缀：fa6-solid:）
 # 图标名称不含前缀，例如 "gear" 对应 <iconify-icon icon="fa6-solid:gear">
 FA6_SOLID_ICONS = [
-    "chart-line",        # 筛选（导航栏）
+    "chart-line",       # 筛选（导航栏）
     "square-check",      # 关注（导航栏）
     "sack-dollar",       # 交易（导航栏）
     "circle-nodes",      # Logo（导航栏）
-    "clock-rotate-left", # 复盘（导航栏）
-    "gear",              # 设置（导航栏）
+    "clock-rotate-left", # 复盘（导航栏，原 fa-solid:history）
+    "gear",              # 设置（导航栏，原 fa-solid:cog）
 ]
 
 

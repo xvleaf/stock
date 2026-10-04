@@ -520,7 +520,7 @@ class TransOrder(models.Model):
                     position_cost -= d.dividend_amount
                     position_cost_no_fee -= d.dividend_amount
                 if d.qty > 0 and position_qty != 0:
-                    # 送股转增：按比例增加持仓数量，成本不变，均价摊薄
+                    # 送股：按比例增加持仓数量，成本不变，均价摊薄
                     position_qty += d.qty
                 continue
             if d.intent == TransHistory.INTENT_BUY:
@@ -732,12 +732,12 @@ class TransHistory(models.Model):
 
 # ===================== 分红记录 =====================
 class DividendRecord(models.Model):
-    """股票分红记录（现金分红/送股转增）"""
+    """股票分红记录（现金分红/送股）"""
     DIVIDEND_CASH = 'cash'
     DIVIDEND_BONUS = 'bonus'
     DIVIDEND_CHOICES = [
         (DIVIDEND_CASH, '现金分红'),
-        (DIVIDEND_BONUS, '送股转增'),
+        (DIVIDEND_BONUS, '送股'),
     ]
     order = models.ForeignKey(TransOrder, on_delete=models.CASCADE,
                               related_name='dividends', verbose_name='所属交易')
