@@ -14,6 +14,7 @@ class SectorList(models.Model):
         db_table = 'models_secotr_list'
         verbose_name = '板块列表'
         verbose_name_plural = verbose_name
+        ordering = ['code']
 
     def __str__(self):
         return f'{self.name}({self.code})'
@@ -31,6 +32,7 @@ class StockSector(models.Model):
         verbose_name = '板块关联'
         verbose_name_plural = verbose_name
         unique_together = ('stock_code', 'stock_market', 'sector_code', 'sector_market')
+        ordering = ['stock_code']
 
     def __str__(self):
         return f'{self.stock_code}-{self.sector_code}'

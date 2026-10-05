@@ -11,6 +11,25 @@ from .models import (
     FilterTask, FilterResult, FilterConfig, ReviewList,
 )
 
+# ===================== 模型显示顺序（admin 首页） =====================
+MODEL_ORDER = [
+    'websetting',
+    'cashconfig',
+    'cashhistory',
+    'stocklist',
+    'sectorlist',
+    'stocksector',
+    'focusstock',
+    'focushistory',
+    'transorder',
+    'transhistory',
+    'dividendrecord',
+    'filtertask',
+    'filterresult',
+    'filterconfig',
+    'reviewlist',
+]
+
 
 class SetupAwareAdminSite(admin.AdminSite):
     """无超管时，admin 登录入口重定向到管理员初始化页"""
@@ -20,6 +39,15 @@ class SetupAwareAdminSite(admin.AdminSite):
         if not User.objects.filter(is_superuser=True).exists():
             return redirect(reverse('admin_setup'))
         return super().login(request, extra_context)
+
+    def get_app_list(self, request, app_label=None):
+        app_list = super().get_app_list(request, app_label)
+        for app in app_list:
+            app['models'].sort(
+                key=lambda m: MODEL_ORDER.index(m['object_name'].lower())
+                if m['object_name'].lower() in MODEL_ORDER else len(MODEL_ORDER)
+            )
+        return app_list
 
 
 class SingletonAdmin(admin.ModelAdmin):
@@ -50,7 +78,7 @@ class SingletonAdmin(admin.ModelAdmin):
 # ===================== 全站参数（Key-Value）=====================
 @admin.register(WebSetting)
 class WebSettingAdmin(admin.ModelAdmin):
-    list_display = ('key', 'value', 'value_type', 'group_name', 'label', 'sort_order')
+    list_display = ('id', 'key', 'value', 'value_type', 'group_name', 'label', 'remark')
     search_fields = ('key', 'label')
     list_filter = ('group_name', 'value_type')
 
@@ -80,7 +108,7 @@ class StockListAdmin(admin.ModelAdmin):
 class SectorListAdmin(admin.ModelAdmin):
     list_display = ('code', 'name', 'market', 'cat', 'mark')
     search_fields = ('code', 'name')
-    list_filter = ('market', 'cat')
+    list_filter = ('market', 'cat', 'mark')
 
 
 @admin.register(StockSector)
@@ -143,7 +171,7 @@ class FilterTaskAdmin(admin.ModelAdmin):
 class FilterResultAdmin(admin.ModelAdmin):
     list_display = ('task', 'code', 'name', 'market', 'mark', 'hide')
     search_fields = ('code', 'name')
-    list_filter = ('mark', 'market')
+    list_filter = ('mark', 'hide', 'market')
 
 
 @admin.register(FilterConfig)

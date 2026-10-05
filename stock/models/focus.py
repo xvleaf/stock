@@ -18,6 +18,7 @@ class StockList(models.Model):
         db_table = 'models_stock_list'
         verbose_name = '股票列表'
         verbose_name_plural = verbose_name
+        ordering = ['code']
 
     def __str__(self):
         return f'{self.name}({self.code})'

@@ -5,16 +5,16 @@ from django.db import models
 # 默认配置定义：key -> {value, type, group, label, sort, remark}
 WEB_SETTING_DEFAULTS = {
     # 通用设置（4项）
-    'icp_number':           {'value': '',         'type': 'string', 'group': 'general', 'label': '备案编号',       'sort': 1, 'remark': '网站ICP备案编号，显示在页面底部'},
-    'icp_website':          {'value': '',         'type': 'string', 'group': 'general', 'label': '备案官网',       'sort': 2, 'remark': '备案查询链接地址，点击备案编号跳转'},
-    'default_page_size':    {'value': '10',       'type': 'int',    'group': 'general', 'label': '分页默认数量',   'sort': 3, 'remark': '所有列表每页默认显示的记录条数'},
-    'quote_interval':       {'value': '60000',    'type': 'int',    'group': 'general', 'label': '行情刷新间隔',   'sort': 4, 'remark': '列表页股价和涨幅自动刷新的间隔时间，单位秒'},
-    'cash_stat_start':      {'value': '',         'type': 'string', 'group': 'general', 'label': '资金统计起始',   'sort': 5, 'remark': '资金页面统计的起始日期，空=一年前'},
-    'cash_stat_end':        {'value': '',         'type': 'string', 'group': 'general', 'label': '资金统计结束',   'sort': 6, 'remark': '资金页面统计的结束日期，空=今天'},
-    'cash_stat_end_set_day':{'value': '',         'type': 'string', 'group': 'general', 'label': '资金统计结束设置日', 'sort': 7, 'remark': '内部字段，记录结束日期设置日期'},
-    'review_stat_start':    {'value': '',         'type': 'string', 'group': 'general', 'label': '复盘统计起始',   'sort': 8, 'remark': '复盘页面统计的起始日期，空=一年前'},
-    'review_stat_end':      {'value': '',         'type': 'string', 'group': 'general', 'label': '复盘统计结束',   'sort': 9, 'remark': '复盘页面统计的结束日期，空=今天'},
-    'review_stat_end_set_day': {'value': '',      'type': 'string', 'group': 'general', 'label': '复盘统计结束设置日', 'sort': 10, 'remark': '内部字段，记录结束日期设置日期'},
+    'icp_number':           {'value': '辽ICP备18008686号',           'type': 'string', 'group': 'general', 'label': '备案编号',  'sort': 1, 'remark': '网站ICP备案编号，显示在页面底部'},
+    'icp_website':          {'value': 'https://beian.miit.gov.cn',  'type': 'string', 'group': 'general', 'label': '备案官网', 'sort': 2, 'remark': '备案查询链接地址，点击备案编号跳转'},
+    'default_page_size':    {'value': '10',                         'type': 'int',    'group': 'general', 'label': '分页默认数量',   'sort': 3, 'remark': '所有列表每页默认显示的记录条数'},
+    'quote_interval':       {'value': '60000',                      'type': 'int',    'group': 'general', 'label': '行情刷新间隔',   'sort': 4, 'remark': '列表页股价和涨幅自动刷新的间隔时间，单位秒'},
+    'cash_stat_start':      {'value': '2020-01-01',                 'type': 'string', 'group': 'general', 'label': '资金统计起始',   'sort': 5, 'remark': '资金页面统计的起始日期，空=一年前'},
+    'cash_stat_end':        {'value': '2100-12-30',                 'type': 'string', 'group': 'general', 'label': '资金统计结束',   'sort': 6, 'remark': '资金页面统计的结束日期，空=今天'},
+    'cash_stat_end_set_day':{'value': '2020-01-01',                 'type': 'string', 'group': 'general', 'label': '资金统计结束设置日', 'sort': 7, 'remark': '内部字段，记录结束日期设置日期'},
+    'review_stat_start':    {'value': '2020-01-01',                 'type': 'string', 'group': 'general', 'label': '复盘统计起始',   'sort': 8, 'remark': '复盘页面统计的起始日期，空=一年前'},
+    'review_stat_end':      {'value': '2100-12-31',                 'type': 'string', 'group': 'general', 'label': '复盘统计结束',   'sort': 9, 'remark': '复盘页面统计的结束日期，空=今天'},
+    'review_stat_end_set_day': {'value': '2020-01-01',              'type': 'string', 'group': 'general', 'label': '复盘统计结束设置日', 'sort': 10, 'remark': '内部字段，记录结束日期设置日期'},
     # 交易费用（10项）
     'commission_ratio':     {'value': '0.000085', 'type': 'float',  'group': 'fee', 'label': '佣金费率',       'sort': 1, 'remark': '券商佣金费率，按成交金额比例收取，买卖双向'},
     'commission_min':       {'value': '0',        'type': 'float',  'group': 'fee', 'label': '最低佣金',       'sort': 2, 'remark': '单笔交易最低佣金金额，不足按此收取'},
@@ -105,7 +105,7 @@ class WebSetting(models.Model):
         db_table = 'models_web_setting'
         verbose_name = '网站配置'
         verbose_name_plural = verbose_name
-        ordering = ['group_name', 'sort_order']
+        ordering = ['id', 'group_name', 'sort_order']
 
     def __str__(self):
         return f'{self.key}={self.value}'
