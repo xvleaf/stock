@@ -1,14 +1,27 @@
 # -*- coding: utf-8 -*-
+"""项目根 URL 配置（全站路由集中于此）"""
 from django.contrib import admin
 from django.urls import path
 from django.views.generic import RedirectView
 from django.contrib.auth import views as auth_views
 
-from stock.views import chart, api, sector, focus, cash, filter, trans, setting, review
+from stock.views import chart, sector, focus, cash, filter, trans, setting, review
+from stock.fetch import tushare
+from stock.admin import SetupAwareAdminSite
+
+# 将默认 admin 站点切换为“无超管时引导初始化”的站点（保留 stock/admin.py 全部注册）
+admin.site.__class__ = SetupAwareAdminSite
 
 urlpatterns = [
-    path('admin', admin.site.urls),
+    # ---- 登录 / 登出 ----
+    path('login', auth_views.LoginView.as_view(template_name='web-login.html'), name='login'),
     path('logout', auth_views.LogoutView.as_view(), name='logout'),
+    # 管理员初始化（必须放在 admin include 之前）
+    path('admin/setup', setting.admin_setup, name='admin_setup'),
+    # 无尾斜杠入口：include 按字符串拼接子路由，前缀必须保留 '/'，
+    # 故 /admin 重定向到 /admin/（admin 子页面均为标准 /admin/xxx/ 路径）
+    path('admin', RedirectView.as_view(url='/admin/', permanent=False)),
+    path('admin/', admin.site.urls),
     # ---- 默认页 ----
     path('', RedirectView.as_view(url='/focus', permanent=False), name='home'),
 
@@ -64,7 +77,7 @@ urlpatterns = [
     path('trans/edit/<str:market>/<str:code>', trans.trans_edit, name='trans_edit'),
     path('trans/save-history-comment', trans.save_history_comment, name='trans_save_history_comment'),
 
-    path('api/stock-name', api.stock_name_api, name='stock_name_api'),
+    path('api/stock-name', tushare.get_stock_name, name='get_stock_name'),
 
     # ---- 复盘 ----
     path('review/<str:review_type>/list', review.review_list, name='review_list'),

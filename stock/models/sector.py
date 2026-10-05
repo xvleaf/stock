@@ -28,6 +28,8 @@ class StockSector(models.Model):
 
     class Meta:
         db_table = 'models_stock_sector'
+        verbose_name = '板块关联'
+        verbose_name_plural = verbose_name
         unique_together = ('stock_code', 'stock_market', 'sector_code', 'sector_market')
 
     def __str__(self):

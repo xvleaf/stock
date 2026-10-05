@@ -190,6 +190,9 @@ def get_ui_config():
     return {
         # 通用布局
         'stock_chart_visible': cfg.get('stock_chart_visible', True),
+        # ICP 备案（页脚展示）
+        'icp_number': cfg.get('icp_number', ''),
+        'icp_website': cfg.get('icp_website', ''),
         'nav_locked_screen_height': cfg.get('nav_locked_screen_height', 800),
         'gap_height': cfg.get('gap_height', 2),
         'nav_height': cfg.get('nav_height', 50),

@@ -103,7 +103,7 @@ class WebSetting(models.Model):
 
     class Meta:
         db_table = 'models_web_setting'
-        verbose_name = '全站参数配置'
+        verbose_name = '网站配置'
         verbose_name_plural = verbose_name
         ordering = ['group_name', 'sort_order']
 

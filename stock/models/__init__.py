@@ -2,7 +2,7 @@ from .setting import WebSetting, WEB_SETTING_DEFAULTS
 from .cash import CashConfig, CashHistory
 from .sector import SectorList, StockSector
 from .focus import StockList, FocusStock, FocusHistory
-from .trans import TransOrder, TransHistory, DividendRecord, TransReview
+from .trans import TransOrder, TransHistory, DividendRecord
 from .filter import (
     FilterTask,
     FilterResult,

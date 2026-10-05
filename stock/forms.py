@@ -1,6 +1,6 @@
 from django import forms
 from django.utils import timezone
-from .models import CashConfig, FocusStock, TransHistory, TransReview
+from .models import CashConfig, FocusStock, TransHistory
 
 
 CAT_CHOICES = [
@@ -209,33 +209,3 @@ class CashConfigForm(forms.ModelForm):
             'allowance': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
         }
 
-
-class ReviewForm(forms.ModelForm):
-    """复盘表单（仅备注+评分）"""
-    RATING_CHOICES = [
-        ('', '未评级'),
-        (1, '优'),
-        (2, '良'),
-        (3, '中'),
-        (4, '差'),
-    ]
-    rating = forms.IntegerField(
-        label='评分', required=False,
-        widget=forms.Select(attrs={'class': 'form-select'}, choices=RATING_CHOICES),
-    )
-
-    def clean_rating(self):
-        val = self.cleaned_data.get('rating')
-        return val if val else None
-
-    class Meta:
-        model = TransReview
-        fields = ['rating', 'comments']
-        widgets = {
-            'comments': forms.Textarea(attrs={
-                'class': 'form-control', 'rows': 3, 'style': 'resize:none;',
-            }),
-        }
-        labels = {
-            'comments': '备注',
-        }

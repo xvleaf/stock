@@ -5,9 +5,35 @@
 - 使用 WebSetting Key-Value 表存储
 """
 import re
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.http import JsonResponse
 from ..fetch.config import get_all_config, set_config, clear_web_setting_cache
+
+
+def admin_setup(request):
+    """管理员初始化：无超管时创建首个管理员账户；已存在超管则重定向后台"""
+    from django.contrib.auth.models import User
+    from django.contrib.auth import login as auth_login
+    from django.contrib.auth.forms import UserCreationForm
+
+    # 已有超管：初始化页永久停用，统一进入后台
+    if User.objects.filter(is_superuser=True).exists():
+        return redirect('/admin')
+
+    if request.method == 'POST':
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save(commit=False)
+            user.is_staff = True
+            user.is_superuser = True
+            user.save()
+            # 创建后自动登录并进入后台
+            auth_login(request, user)
+            return redirect('/admin')
+    else:
+        form = UserCreationForm()
+
+    return render(request, 'admin-setup.html', {'form': form})
 
 
 def _seconds_to_hms(seconds):

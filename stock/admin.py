@@ -1,13 +1,25 @@
 # -*- coding: utf-8 -*-
 """Django Admin 后台注册：全部模型可查改"""
 from django.contrib import admin
+from django.shortcuts import redirect
+from django.urls import reverse
 
 from .models import (
     WebSetting, CashConfig, CashHistory, SectorList, StockSector,
     StockList, FocusStock, FocusHistory,
-    TransOrder, TransHistory, DividendRecord, TransReview,
+    TransOrder, TransHistory, DividendRecord,
     FilterTask, FilterResult, FilterConfig, ReviewList,
 )
+
+
+class SetupAwareAdminSite(admin.AdminSite):
+    """无超管时，admin 登录入口重定向到管理员初始化页"""
+
+    def login(self, request, extra_context=None):
+        from django.contrib.auth.models import User
+        if not User.objects.filter(is_superuser=True).exists():
+            return redirect(reverse('admin_setup'))
+        return super().login(request, extra_context)
 
 
 class SingletonAdmin(admin.ModelAdmin):
@@ -33,6 +45,27 @@ class SingletonAdmin(admin.ModelAdmin):
         if not change and self.model is CashConfig:
             obj.pk = 1
         super().save_model(request, obj, form, change)
+
+
+# ===================== 全站参数（Key-Value）=====================
+@admin.register(WebSetting)
+class WebSettingAdmin(admin.ModelAdmin):
+    list_display = ('key', 'value', 'value_type', 'group_name', 'label', 'sort_order')
+    search_fields = ('key', 'label')
+    list_filter = ('group_name', 'value_type')
+
+
+# ===================== 资金 =====================
+@admin.register(CashConfig)
+class CashConfigAdmin(SingletonAdmin):
+    list_display = ('total', 'cash', 'stock', 'allowance', 'risk', 'profit', 'updated_at')
+
+
+@admin.register(CashHistory)
+class CashHistoryAdmin(admin.ModelAdmin):
+    list_display = ('date', 'event', 'total', 'cash', 'stock', 'change', 'current_profit')
+    list_filter = ('event',)
+    date_hierarchy = 'date'
 
 
 # ===================== 基础数据 =====================
@@ -98,25 +131,6 @@ class DividendRecordAdmin(admin.ModelAdmin):
     date_hierarchy = 'date'
 
 
-@admin.register(TransReview)
-class TransReviewAdmin(admin.ModelAdmin):
-    list_display = ('order', 'focus', 'rating')
-    list_filter = ('rating',)
-
-
-# ===================== 资金 =====================
-@admin.register(CashConfig)
-class CashConfigAdmin(SingletonAdmin):
-    list_display = ('total', 'cash', 'stock', 'allowance', 'risk', 'profit', 'updated_at')
-
-
-@admin.register(CashHistory)
-class CashHistoryAdmin(admin.ModelAdmin):
-    list_display = ('date', 'event', 'total', 'cash', 'stock', 'change', 'current_profit')
-    list_filter = ('event',)
-    date_hierarchy = 'date'
-
-
 # ===================== 筛选 =====================
 @admin.register(FilterTask)
 class FilterTaskAdmin(admin.ModelAdmin):
@@ -146,11 +160,3 @@ class ReviewListAdmin(admin.ModelAdmin):
     search_fields = ('code', 'name')
     list_filter = ('review_type', 'rating')
     date_hierarchy = 'close_date'
-
-
-# ===================== 全站参数（Key-Value）=====================
-@admin.register(WebSetting)
-class WebSettingAdmin(admin.ModelAdmin):
-    list_display = ('key', 'value', 'value_type', 'group_name', 'label', 'sort_order')
-    search_fields = ('key', 'label')
-    list_filter = ('group_name', 'value_type')

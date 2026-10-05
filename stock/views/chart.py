@@ -12,8 +12,8 @@ from ..fetch import tushare, kline, trend, quote
 from . import focus
 from .. import utils
 from ..models import (SectorList, StockList, FocusStock, FocusHistory, TransOrder,
-                            TransHistory, TransReview, FilterTask, FilterResult, ReviewList)
-from ..forms import FocusStockForm, TransHistoryForm, CashConfigForm, ReviewForm, CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES
+                            TransHistory, FilterTask, FilterResult, ReviewList)
+from ..forms import FocusStockForm, TransHistoryForm, CashConfigForm, CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES
 
 NAVI_PARAMS_INIT = {
     'showNavi': False,

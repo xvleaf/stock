@@ -77,7 +77,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                'stock.context_processors.ui_config',
+                'stock.contexts.ui_config',
             ],
         },
     },
@@ -148,6 +148,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # 自定义登录后默认访问地址
 LOGIN_REDIRECT_URL = 'focus'
+
+# 自定义登录页（@login_required 等场景使用；admin 仍使用自带登录页）
+LOGIN_URL = 'login'
+
+# 退出登录后跳转自定义登录页（默认对 staff 用户会跳 admin 登出页，这里统一到本站登录页）
+LOGOUT_REDIRECT_URL = 'login'
 
 # 曾为解决 DEBUG=False 时由 Django 直接服务静态文件、JS 被返回 text/plain，
 # 浏览器因 nosniff 拒绝执行的问题而设为 False；生产环境静态文件由 Nginx 服务（Content-Type 正确），
