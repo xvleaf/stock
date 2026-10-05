@@ -7,8 +7,8 @@ from . import tushare
 from .config import (get_kline_start_date, get_kline_ma_period, get_kline_mv_period,
                      get_kline_ema_k, get_kline_ema_d, get_kline_density)
 import akshare as ak
-from stock import func
-from stock.models.models import TransHistory, TransOrder
+from .. import utils
+from ..models import TransHistory, TransOrder
 
 
 def _get_kline_ma_config(freq):
@@ -126,7 +126,7 @@ def kline_data_for_chart(session, site, cat, market, code):
     df = df.dropna(subset=['open', 'high', 'low', 'close', 'vol'])
     df = df.sort_values('trade_date').reset_index(drop=True)
 
-    deadline_params = func.get_cache(session, 'kline-deadline')
+    deadline_params = utils.get_cache(session, 'kline-deadline')
     if deadline_params and (site, code, market) == deadline_params.get('site_code_market', None):
         deadline = deadline_params.get('deadline', -1)
         # 转换为字符串用于存储（确保 JSON 可序列化）
@@ -143,11 +143,11 @@ def kline_data_for_chart(session, site, cat, market, code):
                 dt = datetime.datetime.combine(deadline, datetime.time(23, 59, 59))
             else:
                 dt = deadline.replace(hour=23, minute=59, second=59)
-            deadline = func.date_to_timestamp(dt)
+            deadline = utils.date_to_timestamp(dt)
         elif isinstance(deadline, str):
             # 假设日期字符串为 'YYYYMMDD'，转为当天 23:59:59
             dt = datetime.datetime.strptime(deadline, '%Y%m%d').replace(hour=23, minute=59, second=59)
-            deadline = func.date_to_timestamp(dt)
+            deadline = utils.date_to_timestamp(dt)
         else:
             # 其他类型（如 -1）视为无效，使用最后一天
             deadline = -1
@@ -162,11 +162,11 @@ def kline_data_for_chart(session, site, cat, market, code):
                 dt = datetime.datetime.combine(last_date, datetime.time(23, 59, 59))
             else:
                 dt = last_date.replace(hour=23, minute=59, second=59)
-            deadline = func.date_to_timestamp(dt)
+            deadline = utils.date_to_timestamp(dt)
         else:
             # 若为字符串，先解析
             dt = datetime.datetime.strptime(str(last_date), '%Y%m%d').replace(hour=23, minute=59, second=59)
-            deadline = func.date_to_timestamp(dt)
+            deadline = utils.date_to_timestamp(dt)
 
     # 一次性返回完整数据
     result = _handle_kline_full(df, freq, right, k, d, deci, deadline, code, market)
@@ -175,14 +175,14 @@ def kline_data_for_chart(session, site, cat, market, code):
 
 
 def get_kline_params(session):
-    kline_params = func.get_cache(session, 'kline_params', _get_kline_params_init())
+    kline_params = utils.get_cache(session, 'kline_params', _get_kline_params_init())
     return kline_params
 
 
 def set_kline_params(session, key, value):
-    kline_params = func.get_cache(session, 'kline_params', _get_kline_params_init())
+    kline_params = utils.get_cache(session, 'kline_params', _get_kline_params_init())
     kline_params[key] = value
-    func.set_cache(session, 'kline_params', kline_params)
+    utils.set_cache(session, 'kline_params', kline_params)
 
 
 def _handle_kline_full(df, freq, right, k, d, deci, deadline, code, market):
@@ -190,7 +190,7 @@ def _handle_kline_full(df, freq, right, k, d, deci, deadline, code, market):
     volume = []
 
     for _, row in df.iterrows():
-        ts = func.date_to_timestamp(row['trade_date'])
+        ts = utils.date_to_timestamp(row['trade_date'])
         ohlc.append([
             ts,
             round(row['open'], deci),
@@ -340,7 +340,7 @@ def _build_trade_markers(df, code, market, deci, freq='D'):
 
     # 构建买入标记
     for kline_date, items in buy_by_kline.items():
-        ts = func.date_to_timestamp(kline_date.replace('-', ''))
+        ts = utils.date_to_timestamp(kline_date.replace('-', ''))
         y = round(date_hl[kline_date]['low'] * 0.98, deci)
         trades = []
         for h in items:
@@ -362,7 +362,7 @@ def _build_trade_markers(df, code, market, deci, freq='D'):
 
     # 构建卖出标记
     for kline_date, items in sell_by_kline.items():
-        ts = func.date_to_timestamp(kline_date.replace('-', ''))
+        ts = utils.date_to_timestamp(kline_date.replace('-', ''))
         y = round(date_hl[kline_date]['high'] * 1.02, deci)
         trades = []
         for h in items:
@@ -392,7 +392,7 @@ def _build_trade_markers(df, code, market, deci, freq='D'):
 
     # 构建分红标记
     for kline_date, items in divd_by_kline.items():
-        ts = func.date_to_timestamp(kline_date.replace('-', ''))
+        ts = utils.date_to_timestamp(kline_date.replace('-', ''))
         y = round(date_hl[kline_date]['high'] * 1.02, deci)
         trades = []
         # 每笔分红金额/送股数量直接取 TransHistory 字段
@@ -450,7 +450,7 @@ def _calc_ema_track_line(df, k, d, deci):
     for trade_date, tp, up, av, lw, fl in zip(
         df['trade_date'], tp_series, up_series, av_series, lw_series, fl_series
     ):
-        ts = func.date_to_timestamp(trade_date)
+        ts = utils.date_to_timestamp(trade_date)
         tp_list.append([ts, tp if pd.notna(tp) else None])
         up_list.append([ts, up if pd.notna(up) else None])
         av_list.append([ts, av if pd.notna(av) else None])
@@ -468,7 +468,7 @@ def _calc_simple_ma_line(df, col, window, deci):
     ma_series = df[col].rolling(window=window).mean().round(deci)
     result = []
     for trade_date, value in zip(df['trade_date'], ma_series):
-        ts = func.date_to_timestamp(trade_date)
+        ts = utils.date_to_timestamp(trade_date)
         result.append([ts, value if pd.notna(value) else None])
     return result
 

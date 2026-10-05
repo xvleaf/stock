@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"/>
+    <meta http-equiv="X-UA-Compatible" content="ie=edge"/>
+
+    <title>始终在一起</title>
+    
+    {% load static %}
+    <link rel="icon" type="image/x-icon" href="{% static 'base/icon/favicon.svg' %}"/>
+    <link rel="Bookmark" type="image/x-icon"  href="{% static 'base/icon/favicon.svg' %}"/>
+    <link rel="apple-touch-icon" sizes="240x240" href="{% static 'base/icon/favicon.png' %}">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f0f8ff;
+        }
+        
+        canvas {
+            display: block;
+            background-color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="heartWaveCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('heartWaveCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 动态设置画布尺寸为全屏
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            // 计算爱心尺寸和位置
+            updateHeartConfig();
+        }
+        
+        // 爱心配置
+        function updateHeartConfig() {
+            const canvasHeight = canvas.height;
+            const canvasWidth = canvas.width;
+            
+            // 爱心参数方程中的尺寸（单位：无缩放）
+            // 宽度：大约在[-16, 16]之间，总宽度约为32个单位
+            // 高度：大约从-13到18，总高度约为31个单位，但根据参数方程实际高度约为38
+            const heartOriginalWidth = 32;  // 参数方程中x的范围约为32
+            const heartOriginalHeight = 38; // 参数方程中y的总高度
+            
+            // 计算基于高度限制的缩放比例（高度为画布高度的4/5）
+            const maxHeartHeight = canvasHeight * (4/5);
+            const scaleByHeight = maxHeartHeight / heartOriginalHeight;
+            
+            // 计算基于高度限制的爱心宽度
+            const heartWidthByHeight = heartOriginalWidth * scaleByHeight;
+            
+            // 计算基于宽度限制的缩放比例（宽度不超过画布的9/10）
+            const maxHeartWidth = canvasWidth * (9/10);
+            const scaleByWidth = maxHeartWidth / heartOriginalWidth;
+            
+            // 计算基于宽度限制的爱心高度
+            const heartHeightByWidth = heartOriginalHeight * scaleByWidth;
+            
+            let targetScale;
+            
+            // 自适应逻辑：
+            // 1. 如果基于高度计算的宽度 <= 画布宽度的9/10，则使用高度限制
+            // 2. 否则，使用宽度限制
+            if (heartWidthByHeight <= maxHeartWidth) {
+                targetScale = scaleByHeight;
+            } else {
+                targetScale = scaleByWidth;
+            }
+            
+            config.heart.scale = targetScale;
+            config.heart.centerX = canvas.width / 2;
+            config.heart.centerY = canvas.height / 2;
+            
+            // 计算爱心边界
+            calculateHeartBoundary();
+        }
+        
+        const config = {
+            heart: {
+                centerX: 0,
+                centerY: 0,
+                scale: 0,
+                opacity: 0,
+                color: '#ff6b6b',
+                lineWidth: 0
+            },
+            wave: {
+                // 运动周期
+                speed: 3,
+                colorLeft: '#ff0000',
+                colorRight: '#ffc0cb',
+                // 细线条
+                lineWidth: 0.5,
+                samplePoints: 800,
+                leftPhase: 0,
+                rightPhase: 0
+            }
+        };
+
+        function getHeartPoint(t) {
+            const x = 16 * Math.pow(Math.sin(t), 3);
+            const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+            return {
+                x: config.heart.centerX + x * config.heart.scale,
+                y: config.heart.centerY - y * config.heart.scale
+            };
+        }
+
+        let heartBoundary = {
+            minX: Infinity,
+            maxX: -Infinity,
+            edgeMap: new Map(),
+            leftWaveLength: 0,
+            rightWaveLength: 0
+        };
+
+        function calculateHeartBoundary() {
+            heartBoundary = {
+                minX: Infinity,
+                maxX: -Infinity,
+                edgeMap: new Map(),
+                leftWaveLength: 0,
+                rightWaveLength: 0
+            };
+
+            // 使用少的采样点以提高性能
+            for (let t = 0; t <= Math.PI * 2; t += 0.002) {
+                const point = getHeartPoint(t);
+                const x = Math.round(point.x);
+                const y = Math.round(point.y);
+
+                heartBoundary.minX = Math.min(heartBoundary.minX, x);
+                heartBoundary.maxX = Math.max(heartBoundary.maxX, x);
+
+                if (!heartBoundary.edgeMap.has(x)) {
+                    heartBoundary.edgeMap.set(x, {
+                        topY: y,
+                        bottomY: y,
+                        height: 0
+                    });
+                } else {
+                    const edge = heartBoundary.edgeMap.get(x);
+                    edge.topY = Math.min(edge.topY, y);
+                    edge.bottomY = Math.max(edge.bottomY, y);
+                    heartBoundary.edgeMap.set(x, edge);
+                }
+            }
+
+            heartBoundary.width = heartBoundary.maxX - heartBoundary.minX;
+            
+            // 波长1/30配置
+            heartBoundary.leftWaveLength = heartBoundary.width / 30;
+            heartBoundary.rightWaveLength = heartBoundary.width / 30;
+            
+            // 计算高度并清理无效数据
+            heartBoundary.edgeMap.forEach((edge, x) => {
+                edge.height = edge.bottomY - edge.topY;
+                if (edge.height <= 0) {
+                    heartBoundary.edgeMap.delete(x);
+                } else {
+                    heartBoundary.edgeMap.set(x, edge);
+                }
+            });
+
+            // 填充缺失的边缘点（使用线性插值）
+            for (let x = heartBoundary.minX; x <= heartBoundary.maxX; x++) {
+                if (!heartBoundary.edgeMap.has(x)) {
+                    let leftX = x - 1;
+                    let rightX = x + 1;
+                    let leftEdge = null;
+                    let rightEdge = null;
+
+                    while (leftX >= heartBoundary.minX && !leftEdge) {
+                        leftEdge = heartBoundary.edgeMap.get(leftX);
+                        leftX--;
+                    }
+                    while (rightX <= heartBoundary.maxX && !rightEdge) {
+                        rightEdge = heartBoundary.edgeMap.get(rightX);
+                        rightX++;
+                    }
+
+                    if (leftEdge && rightEdge) {
+                        const ratio = (x - (leftX + 1)) / ((rightX - 1) - (leftX + 1));
+                        const topY = Math.round(leftEdge.topY + (rightEdge.topY - leftEdge.topY) * ratio);
+                        const bottomY = Math.round(leftEdge.bottomY + (rightEdge.bottomY - leftEdge.bottomY) * ratio);
+                        heartBoundary.edgeMap.set(x, {
+                            topY,
+                            bottomY,
+                            height: bottomY - topY
+                        });
+                    } else if (leftEdge) {
+                        heartBoundary.edgeMap.set(x, { ...leftEdge });
+                    } else if (rightEdge) {
+                        heartBoundary.edgeMap.set(x, { ...rightEdge });
+                    }
+                }
+            }
+        }
+
+        function drawLeftWave() {
+            const { wave } = config;
+            const { minX, maxX, leftWaveLength, edgeMap } = heartBoundary;
+
+            ctx.beginPath();
+            ctx.strokeStyle = wave.colorLeft;
+            ctx.lineWidth = wave.lineWidth;
+
+            let isFirstValidPoint = true;
+            const phaseOffset = wave.leftPhase;
+            
+            // 预计算常量
+            const twoPI = Math.PI * 2;
+            const totalWidth = maxX - minX;
+            
+            // 使用更少的采样点以提高性能
+            const sampleStep = Math.max(1, Math.floor(wave.samplePoints / 400));
+
+            for (let i = 0; i <= wave.samplePoints; i += sampleStep) {
+                const x = minX + (i / wave.samplePoints) * totalWidth;
+                const xRounded = Math.round(x);
+
+                if (!edgeMap.has(xRounded)) continue;
+                const edge = edgeMap.get(xRounded);
+
+                const offsetX = x - minX;
+                const sinTheta = Math.sin((offsetX / leftWaveLength) * twoPI + phaseOffset);
+
+                let finalY = edge.topY + (1 - sinTheta) * (edge.height / 2);
+                finalY = Math.max(edge.topY, Math.min(edge.bottomY, finalY));
+
+                if (isFirstValidPoint) {
+                    ctx.moveTo(x, finalY);
+                    isFirstValidPoint = false;
+                } else {
+                    ctx.lineTo(x, finalY);
+                }
+            }
+
+            if (!isFirstValidPoint) {
+                ctx.stroke();
+            }
+        }
+
+        function drawRightWave() {
+            const { wave } = config;
+            const { minX, maxX, rightWaveLength, edgeMap } = heartBoundary;
+
+            ctx.beginPath();
+            ctx.strokeStyle = wave.colorRight;
+            ctx.lineWidth = wave.lineWidth;
+
+            let isFirstValidPoint = true;
+            const phaseOffset = wave.rightPhase;
+            
+            // 预计算常量
+            const twoPI = Math.PI * 2;
+            const totalWidth = maxX - minX;
+            
+            // 使用更少的采样点以提高性能
+            const sampleStep = Math.max(1, Math.floor(wave.samplePoints / 400));
+
+            for (let i = 0; i <= wave.samplePoints; i += sampleStep) {
+                const x = maxX - (i / wave.samplePoints) * totalWidth;
+                const xRounded = Math.round(x);
+
+                if (!edgeMap.has(xRounded)) continue;
+                const edge = edgeMap.get(xRounded);
+
+                const offsetX = maxX - x;
+                const sinTheta = Math.sin((offsetX / rightWaveLength) * twoPI + phaseOffset);
+
+                let finalY = edge.topY + (1 - sinTheta) * (edge.height / 2);
+                finalY = Math.max(edge.topY, Math.min(edge.bottomY, finalY));
+
+                if (isFirstValidPoint) {
+                    ctx.moveTo(x, finalY);
+                    isFirstValidPoint = false;
+                } else {
+                    ctx.lineTo(x, finalY);
+                }
+            }
+
+            if (!isFirstValidPoint) {
+                ctx.stroke();
+            }
+        }
+
+        function drawHeartFrame() {
+            // 爱心边框
+            return;
+        }
+
+        // 帧率控制
+        let lastFrameTime = 0;
+        const FPS = 60;
+        const frameInterval = 1000 / FPS;
+        
+        // 动画循环
+        function optimizedAnimate(timestamp) {
+            // 限制帧率，减少不必要的重绘
+            if (timestamp - lastFrameTime >= frameInterval) {
+                // 清除整个画布
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // 保存当前上下文状态
+                ctx.save();
+                
+                // 设置爱心形状的裁剪区域
+                ctx.beginPath();
+                for (let t = 0; t <= Math.PI * 2; t += 0.02) {
+                    const point = getHeartPoint(t);
+                    if (t === 0) {
+                        ctx.moveTo(point.x, point.y);
+                    } else {
+                        ctx.lineTo(point.x, point.y);
+                    }
+                }
+                ctx.closePath();
+                ctx.clip();
+                
+                // 在裁剪区域内绘制内容
+                drawLeftWave();
+                drawRightWave();
+                
+                // 恢复上下文状态
+                ctx.restore();
+
+                // 更新相位
+                config.wave.leftPhase += config.wave.speed / 100;
+                config.wave.rightPhase += config.wave.speed / 100;
+                
+                lastFrameTime = timestamp;
+            }
+            
+            requestAnimationFrame(optimizedAnimate);
+        }
+
+        // 初始化和事件监听
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // 动画循环
+        requestAnimationFrame(optimizedAnimate);
+    </script>
+</body>
+</html>

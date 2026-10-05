@@ -1,0 +1,114 @@
+<!doctype html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=contain"/>
+    <meta http-equiv="X-UA-Compatible" content="ie=edge"/>
+
+    <title>登录</title>
+
+    {% load static %}
+    <link rel="shortcut icon" type="image/x-icon" href="{% static 'base/icon/favicon.svg' %}"/>
+    <link rel="Bookmark" type="image/x-icon"  href="{% static 'base/icon/favicon.svg' %}"/>
+    <link rel="apple-touch-icon" sizes="240x240" href="{% static 'base/icon/favicon.png' %}">
+
+    <link rel="stylesheet" href="{% static 'base/css/tabler.min.css' %}"/>
+    <script src="{% static 'base/js/jquery-3.7.0.min.js' %}"></script>
+    <script src="{% static 'base/js/base.js' %}"></script>
+
+    <style>
+        .frame-login {
+            position:relative;
+            width: min(calc(var(--frame-width) * 0.85), 400px);
+            height: var(--frame-height);
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .login-content {
+            position:absolute;
+            background: white;
+            padding: 25px;
+            border-radius: 5px;
+            width: 100%;
+            margin-top: max(calc((var(--frame-height) - 400px) / 2), 10px);
+        }
+        .login-foot {
+            position:absolute;
+            width: 100%;
+            bottom: 25px;
+            display: flex;
+            justify-content: center;
+        }
+    </style>
+  </head>
+  <body>
+
+    <script>
+        let csrf_token = '{{ csrf_token }}';
+        let body_width = window.innerWidth;
+        let body_height = window.innerHeight;
+        doc.style.setProperty("--frame-width", body_width + "px");
+        doc.style.setProperty("--frame-height", body_height + "px");
+
+        window.addEventListener('resize', function () {
+            body_width = window.innerWidth;
+            body_height = window.innerHeight;
+            doc.style.setProperty("--frame-width", body_width + "px");
+            doc.style.setProperty("--frame-height", body_height + "px");
+        });
+    </script>
+
+    <div class="frame-login">
+      <div class="login-content">
+        <div class="card-body">
+          <h2 class="h2 text-center mb-4">登录</h2>
+            <form action="{% url 'login' %}" method="post" autocomplete="off" novalidate>
+
+                <!-- csrf_token 需要放在 form 内，否则无法登录 -->
+                {% csrf_token %}
+
+                <div class="mb-3">
+                  <label for="username" class="form-label">用户名</label>
+                  <input type="text" id="username" name="username" class="form-control"
+                         placeholder="用户名" autocomplete="off">
+                </div>
+
+                <div class="mb-2">
+                  <label for="password" class="form-label">密 &nbsp; &nbsp;码</label>
+                  <div class="input-group input-group-flat">
+                    <input type="password" id="password" name="password" class="form-control"
+                           placeholder="密码" autocomplete="off">
+                  </div>
+                </div>
+
+                {% if form.errors %}
+                  <div class="alert alert-danger" role="alert" >
+                    登录失败 ！<a href="#" class="alert-link"></a>
+                  </div>
+                {% endif %}
+
+                <div class="form-footer">
+                  <button type="submit" value="login" class="btn btn-primary w-100">登录</button>
+                  <input type="hidden" name="next" value="{{ request.GET.next }}" />
+                </div>
+            </form>
+        </div>
+      </div>
+
+      <div class="login-foot">
+        <a id="icp" href="" tabindex="-1"></a>
+      </div>
+    </div>
+
+    <script>
+         $(function () {
+            const icp = get_icp_config();
+            const icp_element = document.getElementById("icp");
+            icp_element.href = icp['url'];
+            icp_element.innerHTML = icp['name'];
+         })
+    </script>
+
+  </body>
+</html>

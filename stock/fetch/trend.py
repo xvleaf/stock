@@ -4,7 +4,6 @@ import pytz
 import pandas as pd
 from . import ashare
 from .config import get_trade_times
-from stock import func
 
 
 def trend_data_for_chart(session, tscode, step, deci=2):

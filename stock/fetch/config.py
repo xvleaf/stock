@@ -34,7 +34,7 @@ def get_all_config():
     if _web_setting_cache is not None:
         return _web_setting_cache
 
-    from ..models.models import WebSetting, WEB_SETTING_DEFAULTS
+    from ..models import WebSetting, WEB_SETTING_DEFAULTS
     result = {}
 
     # 从数据库读取
@@ -60,7 +60,7 @@ def get_config(key, default=None):
 
 def set_config(key, value):
     """保存单个配置（upsert），并清除缓存"""
-    from ..models.models import WebSetting, WEB_SETTING_DEFAULTS
+    from ..models import WebSetting, WEB_SETTING_DEFAULTS
     meta = WEB_SETTING_DEFAULTS.get(key, {})
     value_type = meta.get('type', 'string')
     group_name = meta.get('group', 'general')

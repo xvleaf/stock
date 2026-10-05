@@ -11,7 +11,7 @@ build/
 # Django
 *.log
 *.db
-staticfiles/
+assets/
 media/
 
 # Environment

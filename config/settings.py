@@ -50,12 +50,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # 目的是使 config 目录下的 admin 生效，需将 config 作为 apps 加到此表中
-    'config',
     # 指定项目位置
     'stock',
-    # 指定模型位置
-    'stock.models',
 ]
 
 MIDDLEWARE = [
@@ -81,7 +77,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                'stock.setting.ui_config',
+                'stock.context_processors.ui_config',
             ],
         },
     },
@@ -141,6 +137,10 @@ STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static')
 ]
 
+# collectstatic 的收集目标目录（生产环境由 Nginx 直接服务该目录）
+# 注意：不能与 STATICFILES_DIRS 中的静态源目录相同，否则 collectstatic 报 E002
+STATIC_ROOT = BASE_DIR / 'assets'
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
@@ -149,13 +149,17 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # 自定义登录后默认访问地址
 LOGIN_REDIRECT_URL = 'focus'
 
-# 解决 DEBUG = False 后 MIME type (‘text/plain’) 错误
-SECURE_CONTENT_TYPE_NOSNIFF = False
+# 曾为解决 DEBUG=False 时由 Django 直接服务静态文件、JS 被返回 text/plain，
+# 浏览器因 nosniff 拒绝执行的问题而设为 False；生产环境静态文件由 Nginx 服务（Content-Type 正确），
+# 恢复 Django 默认值 True（注释掉本行即启用默认），可防止 MIME 嗅探攻击。
+# SECURE_CONTENT_TYPE_NOSNIFF = False
 
 # url 允许不以 '/' 结尾
 APPEND_SLASH = False
 
 # 服务器端日志文件
+# 确保日志目录存在，否则 FileHandler 在日志配置阶段即抛异常、导致项目无法启动
+os.makedirs(os.path.join(BASE_DIR, 'log'), exist_ok=True)
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
