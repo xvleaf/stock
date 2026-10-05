@@ -62,6 +62,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # 全站强制登录（必须在 AuthenticationMiddleware 之后；白名单见 LOGIN_EXEMPT_PATHS）
+    'stock.middleware.LoginRequiredMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -154,6 +156,12 @@ LOGIN_URL = 'login'
 
 # 退出登录后跳转自定义登录页（默认对 staff 用户会跳 admin 登出页，这里统一到本站登录页）
 LOGOUT_REDIRECT_URL = 'login'
+
+# LoginRequiredMiddleware 白名单（按请求路径前缀匹配）
+# - /login：登录页本身，避免重定向死循环
+# - /admin：admin 自带 staff 登录流程（含 /admin/setup 超管初始化引导）
+# - /static/：静态文件（生产 Nginx 服务、开发 Django 服务）
+LOGIN_EXEMPT_PATHS = ['/login', '/admin', '/static/']
 
 # 曾为解决 DEBUG=False 时由 Django 直接服务静态文件、JS 被返回 text/plain，
 # 浏览器因 nosniff 拒绝执行的问题而设为 False；生产环境静态文件由 Nginx 服务（Content-Type 正确），

@@ -3,7 +3,7 @@
 """
 import json
 import datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
@@ -15,15 +15,10 @@ from ..models import (
     DividendRecord, ReviewList,
 )
 from ..forms import CAT_CHOICES, MARKET_CHOICES
-from . import cash as cash_utils
 from .. import utils
 from . import chart
 from ..fetch.config import get_config, get_all_config
 from ..fetch import quote
-
-
-def _q(value, places='0.01'):
-    return Decimal(str(value)).quantize(Decimal(places), rounding=ROUND_HALF_UP)
 
 
 def _create_or_update_review(order):
@@ -188,13 +183,13 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
         return JsonResponse({'status': 'error', 'error': '价格和数量必须大于0'})
 
     config = CashConfig.get_config()
-    amount = _q(price * qty)
+    amount = utils.round_decimal(price * qty)
     # 优先使用前端传入的费用（用户可手动修改），未传则自动计算
     fee_str = params.get('fee', '').strip()
     if fee_str:
-        fee = _q(fee_str)
+        fee = utils.round_decimal(fee_str)
     else:
-        fee_info = cash_utils.calc_fee(amount, intent, market, config)
+        fee_info = utils.calc_fee(amount, intent, market, config)
         fee = fee_info['total']
 
     with transaction.atomic():
@@ -245,13 +240,13 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
             order.recalculate()
 
             # 本次收益
-            deal_profit = _q(order.profit - profit_before)
+            deal_profit = utils.round_decimal(order.profit - profit_before)
 
             # 风险资金（基于交易后持仓重新计算，与trans_calc一致）
             if order.position_qty != 0:
-                order.risk_amount = cash_utils.calc_risk_capital(order.avg_cost_no_fee, stop_price, abs(order.position_qty), order.intent)
+                order.risk_amount = utils.calc_risk_capital(order.avg_cost_no_fee, stop_price, abs(order.position_qty), order.intent)
                 # 盈利机会：基于含手续费均价、目标价、止损价、持仓方向计算，保存到order避免重复计算
-                order.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, target_price, stop_price, order.intent)
+                order.win_ratio = utils.calc_win_ratio(order.avg_cost, target_price, stop_price, order.intent)
             else:
                 order.risk_amount = Decimal('0')
                 order.win_ratio = 0
@@ -351,13 +346,13 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
             order.recalculate()
 
             # 本次收益
-            deal_profit = _q(order.profit - profit_before)
+            deal_profit = utils.round_decimal(order.profit - profit_before)
 
             # 风险资金（基于交易后持仓重新计算，与trans_calc一致）
             if order.position_qty != 0:
-                order.risk_amount = cash_utils.calc_risk_capital(order.avg_cost_no_fee, stop_price, abs(order.position_qty), order.intent)
+                order.risk_amount = utils.calc_risk_capital(order.avg_cost_no_fee, stop_price, abs(order.position_qty), order.intent)
                 # 盈利机会：基于含手续费均价、目标价、止损价、持仓方向计算，保存到order避免重复计算
-                order.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, target_price, stop_price, order.intent)
+                order.win_ratio = utils.calc_win_ratio(order.avg_cost, target_price, stop_price, order.intent)
             else:
                 order.risk_amount = Decimal('0')
                 order.win_ratio = 0
@@ -704,9 +699,9 @@ def trans_edit(request, market, code):
             order.stop_price = Decimal(stop_price) if stop_price else Decimal('0')
             # 重新计算风险资金（根据交易方向）
             edit_intent = order.focus.intent if order.focus else 'B'
-            order.risk_amount = cash_utils.calc_risk_capital(order.avg_cost_no_fee, order.stop_price, order.position_qty, edit_intent)
+            order.risk_amount = utils.calc_risk_capital(order.avg_cost_no_fee, order.stop_price, order.position_qty, edit_intent)
             # 重新计算盈利机会并保存到order
-            order.win_ratio = cash_utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price, edit_intent) if order.position_qty > 0 else 0
+            order.win_ratio = utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price, edit_intent) if order.position_qty > 0 else 0
             order.save()
             # 更新 config.risk
             config.risk = config.risk - old_risk + order.risk_amount
@@ -756,7 +751,7 @@ def trans_edit(request, market, code):
         expected_profit = round(sell_amount - sell_fee - float(order.position_cost), 2)
 
     # 风险资金（基于持仓重新计算，与trans_calc一致）
-    risk_amount = float(cash_utils.calc_risk_capital(order.avg_cost_no_fee, order.stop_price, abs(order.position_qty), order.intent)) if order.position_qty != 0 else 0
+    risk_amount = float(utils.calc_risk_capital(order.avg_cost_no_fee, order.stop_price, abs(order.position_qty), order.intent)) if order.position_qty != 0 else 0
     risk_amount = round(risk_amount, 2)
 
     initial = {
@@ -774,7 +769,7 @@ def trans_edit(request, market, code):
         'risk_amount': risk_amount,
         'target_price': round(float(order.target_price), deci) if order.target_price else '',
         'stop_price': round(float(order.stop_price), deci) if order.stop_price else '',
-        'win_ratio': cash_utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price) if order.position_qty > 0 else 0,
+        'win_ratio': utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price) if order.position_qty > 0 else 0,
         'allowed_qty': 0,
         'comments': '',
     }
@@ -833,7 +828,7 @@ def trans_calc(request):
     amount = round(price * qty, 2) if price > 0 and qty > 0 else 0
 
     # 交易费用
-    fee_info = cash_utils.calc_fee(amount, intent, market, config)
+    fee_info = utils.calc_fee(amount, intent, market, config)
     fee = float(fee_info['total'])
 
     # ===== 1. 计算交易后的持仓状态（方向、数量、均价）=====
@@ -902,13 +897,13 @@ def trans_calc(request):
     # ===== 3. 基于交易后持仓计算盈利机会、风险资金、预计收益 =====
     # 盈利机会
     if new_qty != 0 and target_price > 0 and stop_price > 0:
-        win_ratio = cash_utils.calc_win_ratio(new_avg_no_fee, target_price, stop_price, new_intent)
+        win_ratio = utils.calc_win_ratio(new_avg_no_fee, target_price, stop_price, new_intent)
     else:
         win_ratio = 0
 
     # 风险资金（基于交易后持仓重新计算）
     if new_qty != 0:
-        risk_amount = float(cash_utils.calc_risk_capital(new_avg_no_fee, stop_price, abs(new_qty), new_intent))
+        risk_amount = float(utils.calc_risk_capital(new_avg_no_fee, stop_price, abs(new_qty), new_intent))
     else:
         risk_amount = 0
     risk_amount = round(risk_amount, 2)
@@ -918,17 +913,17 @@ def trans_calc(request):
     if new_qty != 0 and target_price > 0:
         if new_intent == 'B':
             sell_amount = target_price * abs(new_qty)
-            sell_fee = float(cash_utils.calc_fee(sell_amount, 'S', market, config)['total'])
+            sell_fee = float(utils.calc_fee(sell_amount, 'S', market, config)['total'])
             unrealized_profit = (target_price - new_avg_no_fee) * abs(new_qty) - sell_fee
         else:
             buy_amount = target_price * abs(new_qty)
-            buy_fee = float(cash_utils.calc_fee(buy_amount, 'B', market, config)['total'])
+            buy_fee = float(utils.calc_fee(buy_amount, 'B', market, config)['total'])
             unrealized_profit = (new_avg_no_fee - target_price) * abs(new_qty) - buy_fee
 
     profit = round(realized_profit + unrealized_profit, 2)
 
     # 允许数量（考虑反向交易，逻辑不变）
-    base_allowed = cash_utils.calc_allowed_qty(price, stop_price, intent) if price > 0 else 0
+    base_allowed = utils.calc_allowed_qty(price, stop_price, intent) if price > 0 else 0
     if intent == 'B' and position_qty < 0:
         # 买入：空头持仓可平仓 + 可新开仓
         allowed_qty = abs(position_qty) + base_allowed
@@ -984,8 +979,8 @@ def trans_dividend(request, market, code):
         return JsonResponse({'error': '当前无持仓'}, status=400)
 
     # 后台自行计算每股分红和送股比例
-    per_share = _q(cash_amount / position_qty) if cash_amount > 0 else Decimal('0')
-    bonus_ratio = _q(Decimal(bonus_qty) / Decimal(position_qty)) if bonus_qty > 0 else Decimal('0')
+    per_share = utils.round_decimal(cash_amount / position_qty) if cash_amount > 0 else Decimal('0')
+    bonus_ratio = utils.round_decimal(Decimal(bonus_qty) / Decimal(position_qty)) if bonus_qty > 0 else Decimal('0')
     qty_change = bonus_qty
 
     with transaction.atomic():
@@ -993,9 +988,9 @@ def trans_dividend(request, market, code):
 
         # 1. 现金分红：股票市值转为现金，不算收益
         if cash_amount > 0:
-            config.cash = _q(config.cash + cash_amount)
-            config.stock = _q(config.stock - cash_amount)  # 折减成本市值
-            config.total = _q(config.cash + config.stock)
+            config.cash = utils.round_decimal(config.cash + cash_amount)
+            config.stock = utils.round_decimal(config.stock - cash_amount)  # 折减成本市值
+            config.total = utils.round_decimal(config.cash + config.stock)
             # 不修改 config.profit 和 order.profit（分红不算收益）
 
         # 2. 送股：数量增加，config.stock 不变
@@ -1008,14 +1003,14 @@ def trans_dividend(request, market, code):
         # 3. 调整目标价和止损价（先现金分红下调，再送股同比例下调）
         if per_share > 0:
             if order.target_price > 0:
-                order.target_price = _q(order.target_price - per_share)
+                order.target_price = utils.round_decimal(order.target_price - per_share)
             if order.stop_price > 0:
-                order.stop_price = _q(order.stop_price - per_share)
+                order.stop_price = utils.round_decimal(order.stop_price - per_share)
         if bonus_ratio > 0:
             if order.target_price > 0:
-                order.target_price = _q(order.target_price / (1 + bonus_ratio))
+                order.target_price = utils.round_decimal(order.target_price / (1 + bonus_ratio))
             if order.stop_price > 0:
-                order.stop_price = _q(order.stop_price / (1 + bonus_ratio))
+                order.stop_price = utils.round_decimal(order.stop_price / (1 + bonus_ratio))
 
         # 保存 order 和 config
         order.save()
@@ -1175,8 +1170,8 @@ def calc_dividend_tax(request, market, code):
             else:
                 tax_rate = tax_short
                 rate_label = '20%'
-            div_amount = _q(per_share * b['qty'])
-            tax = _q(div_amount * tax_rate)
+            div_amount = utils.round_decimal(per_share * b['qty'])
+            tax = utils.round_decimal(div_amount * tax_rate)
             total_tax += tax
             details.append({
                 'div_date': div_date.strftime('%Y-%m-%d'),
@@ -1199,23 +1194,4 @@ def calc_dividend_tax(request, market, code):
 @require_http_methods(["POST"])
 def save_history_comment(request):
     """保存交易历史记录的备注"""
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'error': '无效的JSON'}, status=400)
-
-    history_id = data.get('history_id')
-    comments = data.get('comments', '') or ''
-
-    if not history_id:
-        return JsonResponse({'error': '缺少历史记录ID'}, status=400)
-
-    try:
-        history = TransHistory.objects.get(id=history_id)
-    except TransHistory.DoesNotExist:
-        return JsonResponse({'error': '历史记录不存在'}, status=404)
-
-    history.comments = comments
-    history.save(update_fields=['comments'])
-
-    return JsonResponse({'success': True})
+    return utils.save_history_comment(request, TransHistory)

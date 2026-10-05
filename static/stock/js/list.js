@@ -1,5 +1,5 @@
 import {RESIZE_DELAY_LAYOUT, isMainNavHidden, getMainNavHeight} from '../../base/js/base.js';
-import { showAlert } from './func.js';
+import { showAlert, getCsrfToken } from './func.js';
 
 let originalThead = null;
 let fixedHeaderWrap = null;
@@ -281,9 +281,4 @@ export function initPagination(postUrl) {
             }
         });
     }
-}
-
-export function getCsrfToken() {
-    const m = document.cookie.match(/csrftoken=([^;]+)/);
-    return m ? m[1] : '';
 }

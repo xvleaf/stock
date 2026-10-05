@@ -11,7 +11,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 from django.db import transaction
 from ..fetch import quote, tushare
-from . import chart, cash
+from . import chart
 from .. import utils
 from ..models import (StockList, FilterTask, FilterResult, FocusStock,
                             FilterConfig, BOARD_DEFS, BOARD_LABELS, board_of_code, ReviewList)
@@ -814,7 +814,7 @@ def _do_focus(result, ema_price=None, comments='筛选时添加'):
     deci = 3 if result.cat in ('fund', 'bond') else 2
     target = round(plan * _get_target_profit_ratio(), deci)
     stop = round(plan * _get_stop_loss_ratio(), deci)
-    qty = cash.calc_allowed_qty(plan, stop) if plan > 0 else 0
+    qty = utils.calc_allowed_qty(plan, stop) if plan > 0 else 0
 
     # 排在关注列表最后
     from django.db.models import Max as _Max

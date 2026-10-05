@@ -214,22 +214,15 @@ export function updateFormData(data) {
             }
         }
         if (!isSummary || data.pilot_total === 1) {
-            // 分红：现金+送股描述与 tooltip 一致；非分红沿用 qty@price
-            const dateStr = data.pilot_date ? ` [${data.pilot_date}` : '';
-            let actionStr;
-            if (data.pilot_dividend_amount !== undefined && data.pilot_dividend_amount !== '') {
-                const cash = Number(data.pilot_dividend_amount);
-                const bonus = Number(data.pilot_qty || 0);
-                if (cash > 0 && bonus > 0) actionStr = ` 分红${cash.toFixed(2)}元，送股${bonus}股]`;
-                else if (cash > 0) actionStr = ` 分红${cash.toFixed(2)}元]`;
-                else if (bonus > 0) actionStr = ` 送股${bonus}股]`;
-                else actionStr = data.pilot_date ? ']' : '';
-            } else {
-                const qtyPriceStr = (data.pilot_qty && data.pilot_price !== '') ? `${data.pilot_qty}股@${data.pilot_price}元` : '';
-                actionStr = data.pilot_action ? ` ${data.pilot_action}${qtyPriceStr}]` : (data.pilot_date ? ']' : '');
-            }
-            const idx = isSummary ? 1 : (data.pilot_idx + 1);
-            pilotIndicator.textContent = `第 ${idx} / ${data.pilot_total} 笔${dateStr}${actionStr}`;
+            pilotIndicator.textContent = pilotIndicatorText({
+                idx: isSummary ? 1 : (data.pilot_idx + 1),
+                total: data.pilot_total,
+                date: data.pilot_date,
+                action: data.pilot_action,
+                qty: data.pilot_qty,
+                price: data.pilot_price,
+                dividendAmount: data.pilot_dividend_amount,
+            });
         }
     }
 
@@ -252,47 +245,9 @@ export function updateFormData(data) {
         }
     }
 
-    // 历史模式下文字变灰，汇总模式恢复（trans）
-    if (data.is_summary === false || (data.pilot_idx !== undefined && data.pilot_idx >= 0)) {
-        document.querySelectorAll('#transViewForm .readonly-field').forEach(el => {
-            el.style.color = '#6c757d';
-        });
-        // 历史模式隐藏复盘特有字段
-        document.querySelectorAll('.review-only-fields').forEach(el => el.classList.add('d-none'));
-        // 历史模式显示仅历史模式的字段
-        document.querySelectorAll('.trans-history-only').forEach(el => el.classList.remove('d-none'));
-        // 历史模式隐藏评级下拉框（review 页面）
-        const reviewRatingWrap = document.getElementById('reviewRatingWrap');
-        if (reviewRatingWrap) reviewRatingWrap.classList.add('d-none');
-    } else {
-        document.querySelectorAll('#transViewForm .readonly-field').forEach(el => {
-            el.style.color = '';
-        });
-        // 汇总模式显示复盘特有字段
-        document.querySelectorAll('.review-only-fields').forEach(el => el.classList.remove('d-none'));
-        // 汇总模式隐藏仅历史模式的字段
-        document.querySelectorAll('.trans-history-only').forEach(el => el.classList.add('d-none'));
-        // 汇总模式显示评级下拉框（review 页面）
-        const reviewRatingWrap = document.getElementById('reviewRatingWrap');
-        if (reviewRatingWrap) reviewRatingWrap.classList.remove('d-none');
-    }
-
-    // 清仓交易字段显示控制（必须在 trans-history-only 处理之后执行）
+    // trans：历史模式字段变灰与历史/复盘/清仓字段显隐
     const isHistoryMode = data.is_summary === false || (data.pilot_idx !== undefined && data.pilot_idx >= 0);
-    if (isHistoryMode) {
-        if (data.is_close_trade) {
-            // 清仓交易：隐藏普通历史字段，显示清仓特有字段
-            document.querySelectorAll('.trans-normal-history').forEach(el => el.classList.add('d-none'));
-            document.querySelectorAll('.trans-close-only').forEach(el => el.classList.remove('d-none'));
-        } else {
-            // 非清仓交易：显示普通历史字段，隐藏清仓特有字段
-            document.querySelectorAll('.trans-normal-history').forEach(el => el.classList.remove('d-none'));
-            document.querySelectorAll('.trans-close-only').forEach(el => el.classList.add('d-none'));
-        }
-    } else {
-        // 汇总模式：隐藏清仓特有字段
-        document.querySelectorAll('.trans-close-only').forEach(el => el.classList.add('d-none'));
-    }
+    setTransHistoryState(isHistoryMode, !!data.is_close_trade);
 
     // 历史模式下文字变灰，汇总模式恢复（focus）
     if (data.is_summary === false || (data.pilot_idx !== undefined && data.pilot_idx >= 0)) {
@@ -691,5 +646,64 @@ export function calcWinRatio(price, targetPrice, stopPrice, intent='B') {
         if (t <= p) return 0;
         if (s >= p) return 99;
         return Math.max(0, Math.min(99, Math.round((t - p) / (t - s) * 99)));
+    }
+}
+
+// ===================== Pilot 指示器 / 历史模式字段状态（公共 UI 工具） =====================
+/**
+ * 生成 pilot 历史指示器文本（trans-view 初始化与 updateFormData 异步加载共用）
+ * @param {Object} p
+ * @param {number} p.idx - 当前笔序号（1-based）
+ * @param {number} p.total - 总笔数
+ * @param {string} p.date - 该笔日期
+ * @param {string} p.action - 该笔动作
+ * @param {string|number} p.qty - 该笔数量
+ * @param {string|number} p.price - 该笔价格
+ * @param {string|number} p.dividendAmount - 现金分红金额（为空表示非分红）
+ * @returns {string} 指示器文本
+ */
+export function pilotIndicatorText({ idx, total, date, action, qty, price, dividendAmount }) {
+    const dateStr = date ? ` [${date}` : '';
+    let actionStr;
+    if (dividendAmount !== undefined && dividendAmount !== '') {
+        const cash = Number(dividendAmount);
+        const bonus = Number(qty || 0);
+        if (cash > 0 && bonus > 0) actionStr = ` 分红${cash.toFixed(2)}元，送股${bonus}股]`;
+        else if (cash > 0) actionStr = ` 分红${cash.toFixed(2)}元]`;
+        else if (bonus > 0) actionStr = ` 送股${bonus}股]`;
+        else actionStr = date ? ']' : '';
+    } else {
+        const qtyPriceStr = (qty && price !== '') ? `${qty}股@${price}元` : '';
+        actionStr = action ? ` ${action}${qtyPriceStr}]` : (date ? ']' : '');
+    }
+    return `第 ${idx} / ${total} 笔${dateStr}${actionStr}`;
+}
+
+/**
+ * 切换 trans 视图历史模式字段状态（trans-view 初始化与 updateFormData 共用）
+ * @param {boolean} isHistory - 是否历史模式（false 为汇总模式）
+ * @param {boolean} isCloseTrade - 历史模式下是否为清仓交易
+ */
+export function setTransHistoryState(isHistory, isCloseTrade = false) {
+    // 只读字段：历史变灰，汇总恢复
+    document.querySelectorAll('#transViewForm .readonly-field').forEach(el => {
+        el.style.color = isHistory ? '#6c757d' : '';
+    });
+    // 复盘特有字段：历史隐藏，汇总显示
+    document.querySelectorAll('.review-only-fields').forEach(el => el.classList.toggle('d-none', isHistory));
+    // 仅历史模式字段：历史显示，汇总隐藏
+    document.querySelectorAll('.trans-history-only').forEach(el => el.classList.toggle('d-none', !isHistory));
+    // 评级下拉框（review 页面）：历史隐藏，汇总显示
+    const reviewRatingWrap = document.getElementById('reviewRatingWrap');
+    if (reviewRatingWrap) reviewRatingWrap.classList.toggle('d-none', isHistory);
+
+    // 清仓交易字段（必须在 trans-history-only 处理之后）
+    if (isHistory) {
+        // 清仓：隐藏普通历史字段、显示清仓字段；非清仓反之
+        document.querySelectorAll('.trans-normal-history').forEach(el => el.classList.toggle('d-none', !!isCloseTrade));
+        document.querySelectorAll('.trans-close-only').forEach(el => el.classList.toggle('d-none', !isCloseTrade));
+    } else {
+        // 汇总模式：隐藏清仓特有字段（普通历史字段保持原状态，不处理）
+        document.querySelectorAll('.trans-close-only').forEach(el => el.classList.add('d-none'));
     }
 }

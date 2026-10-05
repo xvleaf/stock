@@ -9,7 +9,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 from ..fetch import quote, tushare, kline, trend
 from ..forms import CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES, FocusStockForm
-from . import cash, chart
+from . import chart
 from .. import utils
 from ..models import CashConfig, StockList, FocusStock, FocusHistory, ReviewList
 from django.db import connection, transaction
@@ -112,8 +112,8 @@ def focus_plus(request):
                     focus.code = code
                     focus.market = market
                     focus.cat = cat
-                    focus.win_ratio = cash.calc_win_ratio(focus.plan_price, focus.target_price, focus.stop_price, focus.intent)
-                    focus.allowed_qty = cash.calc_allowed_qty(focus.plan_price, focus.stop_price, focus.intent)
+                    focus.win_ratio = utils.calc_win_ratio(focus.plan_price, focus.target_price, focus.stop_price, focus.intent)
+                    focus.allowed_qty = utils.calc_allowed_qty(focus.plan_price, focus.stop_price, focus.intent)
                     max_sort = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).count()
                     focus.sort_order = max_sort
                     focus.save()
@@ -155,8 +155,8 @@ def focus_view(request, market, code):
             with transaction.atomic():
                 updated = form.save(commit=False)
                 updated.intent = form.cleaned_data['intent_choice']
-                updated.win_ratio = cash.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price, updated.intent)
-                updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price, updated.stop_price, updated.intent)
+                updated.win_ratio = utils.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price, updated.intent)
+                updated.allowed_qty = utils.calc_allowed_qty(updated.plan_price, updated.stop_price, updated.intent)
                 updated.updated_at = updated.focus_date 
                 updated.save()
                 updated.save_history(action='edit', comments=form.cleaned_data.get('comments', ''))
@@ -221,8 +221,8 @@ def focus_edit(request, market, code):
             with transaction.atomic():
                 updated = form.save(commit=False)
                 updated.intent = form.cleaned_data['intent_choice']
-                updated.win_ratio = cash.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price, updated.intent)
-                updated.allowed_qty = cash.calc_allowed_qty(updated.plan_price, updated.stop_price, updated.intent)
+                updated.win_ratio = utils.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price, updated.intent)
+                updated.allowed_qty = utils.calc_allowed_qty(updated.plan_price, updated.stop_price, updated.intent)
                 updated.updated_at = updated.focus_date
                 updated.save()
                 updated.save_history(action='edit', comments=form.cleaned_data.get('comments', ''))
@@ -373,10 +373,10 @@ def focus_calc(request):
     config = CashConfig.get_config()
 
     # 允许数量
-    allowed_qty = cash.calc_allowed_qty(plan_price, stop_price, intent) if plan_price > 0 else 0
+    allowed_qty = utils.calc_allowed_qty(plan_price, stop_price, intent) if plan_price > 0 else 0
 
     # 盈利机会（0-99）
-    win_ratio = cash.calc_win_ratio(plan_price, target_price, stop_price, intent)
+    win_ratio = utils.calc_win_ratio(plan_price, target_price, stop_price, intent)
 
     return JsonResponse({
         'allowed_qty': allowed_qty,
@@ -387,25 +387,6 @@ def focus_calc(request):
 @require_http_methods(["POST"])
 def save_history_comment(request):
     """保存关注历史记录的备注"""
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'error': '无效的JSON'}, status=400)
-
-    history_id = data.get('history_id')
-    comments = data.get('comments', '') or ''
-
-    if not history_id:
-        return JsonResponse({'error': '缺少历史记录ID'}, status=400)
-
-    try:
-        history = FocusHistory.objects.get(id=history_id)
-    except FocusHistory.DoesNotExist:
-        return JsonResponse({'error': '历史记录不存在'}, status=404)
-
-    history.comments = comments
-    history.save(update_fields=['comments'])
-
-    return JsonResponse({'success': True})
+    return utils.save_history_comment(request, FocusHistory)
 
 

@@ -153,7 +153,7 @@ export function initReviewView(opts) {
             headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
             body: JSON.stringify({ history_id, history_type, comments }),
         }).then(r => r.json()).then(data => {
-            if (data.status === 'ok') {
+            if (data.success) {
                 showAlert({ title: '提示', text: '保存成功', type: 'success' });
                 originalComments = comments;
             }

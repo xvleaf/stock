@@ -1,5 +1,5 @@
 import { chartPageContainer, initChartPage, setPageConfig } from './chart.js';
-import { refreshQuotes, postRequest, showAlert, getCsrfToken } from './func.js';
+import { refreshQuotes, postRequest, showAlert, getCsrfToken, pilotIndicatorText, setTransHistoryState } from './func.js';
 
 // ===================== 交易页面 =====================
 export function initTransDeal(opts = {}) {
@@ -292,30 +292,20 @@ export function initTransView(opts = {}) {
     if (isSummary && pilotTotal === 1) {
         const pilotIndicator = document.getElementById('transPilotIndicator');
         if (pilotIndicator) {
-            // 分红：现金+送股描述与 tooltip 一致；非分红沿用 qty@price
-            const dateStr = pilotDate ? ` [${pilotDate}` : '';
-            let actionStr;
-            if (pilotDividendAmount !== '' && pilotDividendAmount !== undefined) {
-                const cash = Number(pilotDividendAmount);
-                const bonus = Number(pilotQty || 0);
-                if (cash > 0 && bonus > 0) actionStr = ` 分红${cash.toFixed(2)}元，送股${bonus}股]`;
-                else if (cash > 0) actionStr = ` 分红${cash.toFixed(2)}元]`;
-                else if (bonus > 0) actionStr = ` 送股${bonus}股]`;
-                else actionStr = pilotDate ? ']' : '';
-            } else {
-                const qtyPriceStr = (pilotQty && pilotPrice !== '') ? `${pilotQty}股@${pilotPrice}元` : '';
-                actionStr = pilotAction ? ` ${pilotAction}${qtyPriceStr}]` : (pilotDate ? ']' : '');
-            }
-            pilotIndicator.textContent = `第 1 / 1 笔${dateStr}${actionStr}`;
+            pilotIndicator.textContent = pilotIndicatorText({
+                idx: 1,
+                total: 1,
+                date: pilotDate,
+                action: pilotAction,
+                qty: pilotQty,
+                price: pilotPrice,
+                dividendAmount: pilotDividendAmount,
+            });
         }
     }
 
-    // 历史模式下文字变灰
-    if (!isSummary) {
-        document.querySelectorAll('#transViewForm .readonly-field').forEach(el => {
-            el.style.color = '#6c757d';
-        });
-    }
+    // 历史模式字段状态切换（汇总模式仅复位相关字段，该页无历史/清仓字段则无影响）
+    setTransHistoryState(!isSummary);
 
     // up/down 切换历史记录（备用，实际通过 chart.js 的 naviSwitch 实现）
     function switchPilot(delta) {

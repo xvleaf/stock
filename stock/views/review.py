@@ -441,25 +441,10 @@ def review_save(request):
 
 @require_POST
 def save_history_comment(request):
-    """保存历史记录中的备注"""
+    """保存历史记录备注（按 history_type 区分交易/关注历史）"""
     try:
         data = json.loads(request.body)
     except (json.JSONDecodeError, ValueError):
-        return JsonResponse({'error': '无效JSON'}, status=400)
-
-    history_id = data.get('history_id')
-    history_type = data.get('history_type', 'trans')
-    comments = data.get('comments', '')
-
-    try:
-        if history_type == 'trans':
-            from .trans import TransHistory
-            history = TransHistory.objects.get(id=history_id)
-        else:
-            from ..models import FocusHistory
-            history = FocusHistory.objects.get(id=history_id)
-        history.comments = comments
-        history.save()
-        return JsonResponse({'status': 'ok'})
-    except (TransHistory.DoesNotExist, FocusHistory.DoesNotExist):
-        return JsonResponse({'status': 'error', 'msg': '历史记录不存在'}, status=404)
+        data = {}
+    history_model = TransHistory if data.get('history_type', 'trans') == 'trans' else FocusHistory
+    return utils.save_history_comment(request, history_model)

@@ -2,12 +2,14 @@ import threading
 import pandas as pd
 import pytz
 from datetime import datetime, time, date as date_type
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
 from django.core.cache import cache
+from django.http import JsonResponse
 
 from .fetch import tushare
-from .models import StockList, StockSector, SectorList
+from .models import StockList, StockSector, SectorList, CashConfig
 
 
 def date_to_timestamp(date_obj):
@@ -309,3 +311,225 @@ def set_view_current_code(session, code):
 
 def get_view_current_code(session):
     return get_cache(session, 'view-current-code')
+
+
+# =====================================================================
+# 数值 / 交易计算公共工具（原 views/cash.py，供 cash/trans/focus 等模块复用）
+# =====================================================================
+def round_decimal(value, places='0.01'):
+    """统一四舍五入（ROUND_HALF_UP）到指定小数位，places 为 Decimal 量化字符串，如 '0.01'"""
+    return Decimal(str(value)).quantize(Decimal(places), rounding=ROUND_HALF_UP)
+
+
+def calc_allowed_qty(plan_price, stop_price=0, intent='B'):
+    """
+    计算允许购买数量（按手取整），取现金限制和风险额度限制的较小值
+    止损价>=成交价时，仅按现金计算
+    :param plan_price: 计划买入价
+    :param stop_price: 止损价
+    :param intent: 'B'买入 / 'S'卖出
+    :return: int 股数
+    """
+    config = CashConfig.get_config()
+    price = Decimal(str(plan_price))
+    # 现金限制
+    if price <= 0 or config.cash <= 0:
+        by_cash = 0
+    else:
+        by_cash = int(config.cash / price)
+    # 风险额度限制
+    remaining = config.allowance - config.risk
+    if intent == 'S':
+        # 卖出：风险 = (止损价 - 成交价)
+        risk_per_share = Decimal(str(stop_price or 0)) - price
+    else:
+        # 买入：风险 = (成交价 - 止损价)
+        risk_per_share = price - Decimal(str(stop_price or 0))
+    # 止损价>=成交价时，仅按现金计算
+    if risk_per_share <= 0:
+        return (by_cash // 100) * 100
+    by_risk = int(remaining / risk_per_share) if remaining > 0 else 0
+    max_qty = min(by_cash, by_risk)
+    # 向下取整（1手100股）
+    return (max_qty // 100) * 100
+
+
+def calc_commission(amount, commission_rate, min_commission):
+    """
+    计算佣金（不足最低佣金按最低收取）
+    :param amount: 成交金额 Decimal
+    :param commission_rate: 佣金费率
+    :param min_commission: 最低佣金
+    :return: Decimal
+    """
+    amount = Decimal(str(amount))
+    rate = Decimal(str(commission_rate))
+    minimum = Decimal(str(min_commission))
+    commission = amount * rate
+    return round_decimal(commission if commission >= minimum else minimum)
+
+
+def calc_stamp_tax(amount, stamp_tax_rate):
+    """
+    计算印花税（仅卖出收取）
+    :param amount: 成交金额 Decimal
+    :param stamp_tax_rate: 印花税率
+    :return: Decimal
+    """
+    return round_decimal(Decimal(str(amount)) * Decimal(str(stamp_tax_rate)))
+
+
+def calc_fee(amount, intent, market='SH', config=None):
+    """
+    计算交易费用
+    :param amount: 成交金额
+    :param intent: 'B'买入 / 'S'卖出
+    :param market: 'SH'沪市 / 'SZ'深市 / 'BJ'北交所
+    :param config: 保留参数（兼容旧调用），实际从 WebSetting 读取
+    :return: dict {commission, stamp_tax, transfer_fee, total}
+    """
+    from .fetch.config import get_all_config
+    cfg = get_all_config()
+    amount = Decimal(str(amount))
+    commission = calc_commission(amount, cfg.get('commission_ratio', 0.000085), cfg.get('commission_min', 0))
+    stamp_tax = Decimal('0')
+    if intent == 'S':
+        stamp_tax = calc_stamp_tax(amount, cfg.get('stamp_sell_ratio', 0.0005))
+    # 过户费：买卖双向收取，按市场选择费率
+    transfer_rate = cfg.get(f'transfer_fee_{market.lower()}', 0)
+    transfer_fee = round_decimal(amount * Decimal(str(transfer_rate)))
+    total = round_decimal(commission + stamp_tax + transfer_fee)
+    return {
+        'commission': round_decimal(commission),
+        'stamp_tax': stamp_tax,
+        'transfer_fee': transfer_fee,
+        'total': total,
+    }
+
+
+def calc_risk_capital(buy_price, stop_price, qty, intent='B'):
+    """
+    风险资金
+    买入：(买入价 - 止损价) × 数量
+    卖出：(止损价 - 卖出价) × 数量
+    风险为负时返回0
+    """
+    price = Decimal(str(buy_price))
+    stop = Decimal(str(stop_price))
+    qty = int(qty)
+    if intent == 'S':
+        risk = (stop - price) * qty
+    else:
+        risk = (price - stop) * qty
+    if risk <= 0 or qty <= 0:
+        return Decimal('0')
+    return round_decimal(risk)
+
+
+def calc_risk_reward_ratio(buy_price, target_price, stop_price, intent='B'):
+    """
+    盈亏比
+    买入：(目标价 - 买入价) / (买入价 - 止损价)
+    卖出：(卖出价 - 目标价) / (止损价 - 卖出价)
+    :return: Decimal，无效时返回0
+    """
+    price = Decimal(str(buy_price))
+    target = Decimal(str(target_price))
+    stop = Decimal(str(stop_price))
+    if intent == 'S':
+        if price <= 0 or stop <= price or target >= price:
+            return Decimal('0')
+        return round_decimal((price - target) / (stop - price))
+    else:
+        if price <= 0 or price <= stop or target <= price:
+            return Decimal('0')
+        return round_decimal((target - price) / (price - stop))
+
+
+def calc_estimated_profit(sell_price, qty, avg_cost, fee):
+    """
+    卖出预计盈亏 = (卖出价 - 持仓均价) × 数量 - 费用
+    """
+    sell = Decimal(str(sell_price))
+    cost = Decimal(str(avg_cost))
+    qty = int(qty)
+    fee = Decimal(str(fee))
+    return round_decimal((sell - cost) * qty - fee)
+
+
+def calc_amount(price, qty):
+    """成交金额 = 价格 × 数量"""
+    return round_decimal(Decimal(str(price)) * int(qty))
+
+
+def get_price_decimal(code):
+    """
+    根据股票代码判断价格小数位
+    A股股票 2位，可转债/基金3位
+    """
+    code = str(code).upper()
+    # 沪市转债 11xxxx，深市转债 12xxxx
+    if code.startswith('11') or code.startswith('12'):
+        return 3
+    return 2
+
+
+def calc_win_ratio(buy_price, target_price, stop_price, intent='B'):
+    """计算成功几率（0-99整数）
+    买入：(目标价 - 成交价) / (目标价 - 止损价) × 99
+    卖出：(成交价 - 目标价) / (止损价 - 目标价) × 99
+    """
+    try:
+        price = float(buy_price or 0)
+        target = float(target_price or 0)
+        stop = float(stop_price or 0)
+    except (TypeError, ValueError):
+        return 0
+    if price <= 0:
+        return 0
+    if intent == 'S':
+        # 卖出：止损价 > 成交价 > 目标价
+        if stop <= price:
+            return 99
+        if target >= price:
+            return 0
+        prob = round((price - target) / (stop - target) * 99)
+    else:
+        # 买入：目标价 > 成交价 > 止损价
+        if stop >= price:
+            return 99
+        if target <= price:
+            return 0
+        prob = round((target - price) / (target - stop) * 99)
+    return max(0, min(99, prob))
+
+
+# =====================================================================
+# 历史记录备注保存（trans/focus/review 三处共用，统一返回 {success: true}）
+# =====================================================================
+def save_history_comment(request, history_model):
+    """
+    保存指定历史模型某条记录的备注
+    :param request: HttpRequest，POST JSON：history_id、comments
+    :param history_model: 历史模型类（TransHistory / FocusHistory）
+    :return: JsonResponse，成功 {'success': True}
+    """
+    import json
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': '无效JSON'}, status=400)
+
+    history_id = data.get('history_id')
+    comments = data.get('comments', '') or ''
+    if not history_id:
+        return JsonResponse({'error': '缺少历史记录ID'}, status=400)
+
+    try:
+        history = history_model.objects.get(id=history_id)
+    except history_model.DoesNotExist:
+        return JsonResponse({'error': '历史记录不存在'}, status=404)
+
+    history.comments = comments
+    history.save(update_fields=['comments'])
+    return JsonResponse({'success': True})
