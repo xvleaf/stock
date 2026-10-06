@@ -1,27 +1,24 @@
-import os
 import json
 import datetime
 from decimal import Decimal
-import pandas as pd
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
-from ..fetch import quote, tushare, kline, trend
+from ..fetch import quote
 from ..forms import CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES, FocusStockForm
 from . import chart
 from .. import utils
-from ..models import CashConfig, StockList, FocusStock, FocusHistory, ReviewList
-from django.db import connection, transaction
+from ..models import CashConfig, FocusStock, FocusHistory, ReviewList
+from django.db import transaction
 
 
 # ===================== 关注清单 =====================
 def focus_list(request):
     if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({'error': '无效的JSON'}, status=400)
+        data, err = utils.parse_json_body(request)
+        if err is not None:
+            return err
 
         # 分页 / 每页数量（独立处理，可同时接收 page + per_page）
         if 'page' in data or 'per_page' in data:
@@ -40,25 +37,10 @@ def focus_list(request):
 
         # 股价刷新：只查询当前页的股票（前端传来 codes，格式为 "code.market"）
         if 'codes' in data:
-            result = []
-            for code_market in data['codes']:
-                parts = code_market.split('.')
-                if len(parts) != 2:
-                    continue
-                code, market = parts
-                fs = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).first()
-                if fs:
-                    deci = 3 if fs.cat in ('fund', 'bond') else 2
-                    close, change = quote.get_last_price(fs.tscode, deci)
-                    result.append({
-                        'code': fs.code,
-                        'market': fs.market,
-                        'close': close,
-                        'change': change,
-                        'deci': deci
-                    })
+            result = utils.refresh_prices(
+                data['codes'], FocusStock, 'status', FocusStock.STATUS_WATCHING)
             return JsonResponse(result, safe=False, json_dumps_params={'ensure_ascii': False})
-    
+
     items = []
     # models 自带 sort_order 排序，因此不需要进行排序
     focus_qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING)
@@ -67,13 +49,13 @@ def focus_list(request):
     pg = utils.paginate_queryset(request, focus_qs, 'focus-list-page')
 
     for fs in pg['items']:
-        deci = 3 if fs.cat in ('fund', 'bond') else 2
+        deci = utils.price_places(fs.cat)
         items.append({
             'code': fs.code,
             'market': fs.market,
             'name': fs.name,
             'plan_price': round(fs.plan_price, deci),
-            'win_ratio': round(fs.win_ratio, 0),
+            'win_ratio': fs.win_ratio,
             'close': '--',
             'change': '--',
             'deci': deci
@@ -123,15 +105,7 @@ def focus_plus(request):
         initial = {}
         form = FocusStockForm(initial=initial)
     
-    view_mode = utils.get_cache(request.session, 'view', 'kline') 
-    chart_init = {
-        'site': site,
-        'code': code,
-        'market': market,
-        'name': name,
-        'cat': cat,
-        'view': view_mode
-    }
+    chart_init = utils.build_chart_init(site, code, market, name, cat)
 
     return render(request, 'focus-plus.html', {
         'form': form, 
@@ -142,6 +116,24 @@ def focus_plus(request):
     })
 
 
+def _apply_focus_edit(form):
+    """
+    保存关注编辑的统一逻辑：设置 intent/win_ratio/allowed_qty/updated_at 并写编辑历史。
+    必须在调用方的 transaction.atomic() 内使用，返回保存后的 focus 实例。
+    """
+    updated = form.save(commit=False)
+    updated.intent = form.cleaned_data['intent_choice']
+    updated.win_ratio = utils.calc_win_ratio(
+        updated.plan_price, updated.target_price, updated.stop_price, updated.intent)
+    updated.allowed_qty = utils.calc_allowed_qty(
+        updated.plan_price, updated.stop_price, updated.intent)
+    updated.updated_at = updated.focus_date
+    updated.save()
+    updated.save_history(action='edit',
+                         comments=form.cleaned_data.get('comments', ''))
+    return updated
+
+
 def focus_view(request, market, code):
     site = '/focus/view'
     focus = FocusStock.objects.filter(code=code, market=market, status=FocusStock.STATUS_WATCHING).first()
@@ -150,18 +142,12 @@ def focus_view(request, market, code):
 
     if request.method == 'POST':
         form = FocusStockForm(request.POST, instance=focus, view_mode=True)
-        
+
         if form.is_valid():
             with transaction.atomic():
-                updated = form.save(commit=False)
-                updated.intent = form.cleaned_data['intent_choice']
-                updated.win_ratio = utils.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price, updated.intent)
-                updated.allowed_qty = utils.calc_allowed_qty(updated.plan_price, updated.stop_price, updated.intent)
-                updated.updated_at = updated.focus_date 
-                updated.save()
-                updated.save_history(action='edit', comments=form.cleaned_data.get('comments', ''))
+                _apply_focus_edit(form)
             utils.delete_cache(request.session, f'{site}-navi-data')
-        
+
         return redirect('focus_view', market=market, code=code)
     else:
         # 历史记录（按数据库顺序排序）
@@ -169,10 +155,9 @@ def focus_view(request, market, code):
         # 进入页面时强制重置为汇总模式（pilot_idx=-1）
         utils.set_cache(request.session, f'{site}-pilot', -1)
         utils.delete_cache(request.session, f'{site}-navi-data')
-        pilot_idx = -1
         is_summary = True
 
-        navi_data = chart.set_navi_data(request.session, site, code, market, 'focus', 'init')
+        chart.set_navi_data(request.session, site, code, market, 'focus', 'init')
 
         # 汇总模式：备注汇总所有历史记录的备注（按近期到远期顺序）
         comments_list = []
@@ -187,17 +172,10 @@ def focus_view(request, market, code):
 
         # 因为表单是 ModelForm，同时传入 instance 和 initial，initial 会覆盖显示值
         form = FocusStockForm(instance=focus, initial=initial_data, view_mode=True)
-        view_mode = utils.get_cache(request.session, 'view', 'kline')
 
-        chart_init = {
-            'site': site,
-            'code': code,
-            'market': market,
-            'name': focus.name,
-            'cat': focus.cat,
-            'view': view_mode,
-            'backUrl': utils.get_view_back(request.session) or '/focus/list',
-        }
+        chart_init = utils.build_chart_init(
+            site, code, market, focus.name, focus.cat,
+            back_url=utils.get_view_back(request.session) or '/focus/list')
 
         return render(request, 'focus-view.html', {
             'form': form,
@@ -219,13 +197,7 @@ def focus_edit(request, market, code):
         form = FocusStockForm(request.POST, instance=focus)
         if form.is_valid():
             with transaction.atomic():
-                updated = form.save(commit=False)
-                updated.intent = form.cleaned_data['intent_choice']
-                updated.win_ratio = utils.calc_win_ratio(updated.plan_price, updated.target_price, updated.stop_price, updated.intent)
-                updated.allowed_qty = utils.calc_allowed_qty(updated.plan_price, updated.stop_price, updated.intent)
-                updated.updated_at = updated.focus_date
-                updated.save()
-                updated.save_history(action='edit', comments=form.cleaned_data.get('comments', ''))
+                _apply_focus_edit(form)
             utils.delete_cache(request.session, '/focus/view-navi-data')
             return redirect('focus_view', market=market, code=code)
     else:
@@ -247,16 +219,9 @@ def focus_edit(request, market, code):
     market_display = dict(MARKET_CHOICES).get(focus.market, focus.market)
     intent_display = dict(INTENT_CHOICES).get(focus.intent, focus.intent)
 
-    view_mode = utils.get_cache(request.session, 'view', 'kline')
-    chart_init = {
-        'site': site,
-        'code': code,
-        'market': market,
-        'name': focus.name,
-        'cat': focus.cat,
-        'view': view_mode,
-        'backUrl': f'/focus/view/{market}/{code}',
-    }
+    chart_init = utils.build_chart_init(
+        site, code, market, focus.name, focus.cat,
+        back_url=f'/focus/view/{market}/{code}')
 
     return render(request, 'focus-edit.html', {
         'form': form,
@@ -278,10 +243,9 @@ def focus_close(request, market, code):
     """
     关闭关注股票（标记为已关闭）
     """
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'error': '无效的JSON'}, status=400)
+    data, err = utils.parse_json_body(request)
+    if err is not None:
+        return err
     try:
         focus = get_object_or_404(FocusStock, code=code, market=market, status=FocusStock.STATUS_WATCHING)
         
@@ -327,7 +291,7 @@ def get_focus_data_dict(focus, history=None):
     if not focus:
         return {}
 
-    deci = 3 if focus.cat in ('fund', 'bond') else 2
+    deci = utils.price_places(focus.cat)
     # 优先使用 history，否则使用 focus
     target = history if history else focus
 
@@ -360,17 +324,14 @@ def get_focus_data_dict(focus, history=None):
 @require_http_methods(["POST"])
 def focus_calc(request):
     """关注页面计算接口：允许数量、盈利机会"""
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'error': '无效的JSON'}, status=400)
+    data, err = utils.parse_json_body(request)
+    if err is not None:
+        return err
 
     intent = data.get('intent', 'B')
     plan_price = float(data.get('plan_price', 0) or 0)
     target_price = float(data.get('target_price', 0) or 0)
     stop_price = float(data.get('stop_price', 0) or 0)
-
-    config = CashConfig.get_config()
 
     # 允许数量
     allowed_qty = utils.calc_allowed_qty(plan_price, stop_price, intent) if plan_price > 0 else 0

@@ -1,5 +1,5 @@
 // cash.js — 资金总览页面：图表初始化 + 资金调整 + 日期筛选
-import { showAlert, showConfirm, getCsrfToken } from './func.js';
+import { postRequest, showAlert, showConfirm, escapeHtml } from './utils.js';
 
 const HISTORY_URL = '/cash/history';
 const ADJUST_URL = '/cash/adjust';
@@ -64,8 +64,9 @@ function renderChart(data) {
     }
 
     // 根据可见曲线数据计算纵轴范围（全隐藏时按4条均显示兜底）
+    // 边界倍率：上扩 1.1 倍、下缩 0.9 倍，保证刻度最大值 > 数据最大值、刻度最小值 < 数据最小值
+    const Y_AXIS_PADDING = 0.1;
     function calcYAxisRange(visibleSeries) {
-        const Y_AXIS_PADDING = 0.05;
         const allFour = [data.total, data.cash, data.stock, data.profit || []];
         // 若所有曲线均隐藏，则按四条曲线均显示来计算
         let seriesToUse = visibleSeries.length > 0 ? visibleSeries : allFour;
@@ -79,16 +80,78 @@ function renderChart(data) {
 
         const minVal = Math.min(...allValues);
         const maxVal = Math.max(...allValues);
-        let yMin = minVal >= 0 ? minVal * (1 - Y_AXIS_PADDING) : minVal * (1 + Y_AXIS_PADDING);
-        let yMax = maxVal >= 0 ? maxVal * (1 + Y_AXIS_PADDING) : maxVal * (1 - Y_AXIS_PADDING);
-        const padding = Math.max(yMax - maxVal, minVal - yMin);
-        return { min: minVal - padding, max: maxVal + padding };
+        // 数据边界恰为 0 时，0×0.9/1.1 仍为 0，无法严格包住，取另一侧极值的 0.1 倍
+        const yMin = minVal >= 0
+            ? (Math.abs(minVal) < 1e-9 ? -maxVal * Y_AXIS_PADDING : minVal * (1 - Y_AXIS_PADDING))
+            : minVal * (1 + Y_AXIS_PADDING);
+        const yMax = maxVal >= 0
+            ? (Math.abs(maxVal) < 1e-9 ? -minVal * Y_AXIS_PADDING : maxVal * (1 + Y_AXIS_PADDING))
+            : maxVal * (1 - Y_AXIS_PADDING);
+        return { min: yMin, max: yMax, dataMin: minVal, dataMax: maxVal };
     }
 
-    // 初始化时按可见曲线计算（默认只有收益可见）
+    // 1/5 家族美观步长（0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 5000, 10000, …）
+    function niceStep(raw) {
+        const exp = Math.floor(Math.log10(raw));
+        const base = Math.pow(10, exp);
+        const m = raw / base;                       // 1 ≤ m < 10
+        return (m <= 1 ? 1 : m <= 5 ? 5 : 10) * base;
+    }
+
+    // 步长的量级尾数（1 或 5），用于相邻档切换
+    function stepM(step) {
+        const exp = Math.floor(Math.log10(step) + 1e-9);
+        return step / Math.pow(10, exp);
+    }
+    function stepNext(step) { return stepM(step) < 5 ? step * 5 : step * 2; }
+    function stepPrev(step) { return stepM(step) < 5 ? step / 2 : step / 5; }
+
+    // 按指定步长生成对齐刻度（范围取整到步长整数倍，刻度永不重复）
+    // 对齐后边界若仍等于数据边界（恰为步长整数倍），外推一档，保证严格包住
+    function ticksForStep(lo, hi, step) {
+        let axisMin = Math.floor(lo / step + 1e-9) * step;
+        let axisMax = Math.ceil(hi / step - 1e-9) * step;
+        if (axisMax <= hi + 1e-9) axisMax += step;
+        if (axisMin >= lo - 1e-9) axisMin -= step;
+        const count = Math.round((axisMax - axisMin) / step) + 1;
+        const positions = [];
+        for (let i = 0; i < count; i++) {
+            positions.push(Math.round((axisMin + i * step) / step) * step);
+        }
+        return { min: axisMin, max: axisMax, positions, count, step };
+    }
+
+    // 生成 5~7 个刻度（中心 6）：在当前档及相邻档中选刻度数最接近 6 的
+    function buildYAxisTicks(lo, hi, dataMin, dataMax) {
+        if (hi - lo < 1e-9) { lo -= 1; hi += 1; }   // 数据相等（如全 0）时扩成 ±1
+        const TARGET = 6;
+        const step = niceStep(Math.max((hi - lo) / TARGET, 0.01));
+        let best = null;
+        for (const s of [stepPrev(step), step, stepNext(step)]) {
+            const t = ticksForStep(lo, hi, s);
+            if (!best || Math.abs(t.count - TARGET) < Math.abs(best.count - TARGET)) best = t;
+        }
+        // 刻度超过 7 个时，从外侧收掉多余的档（仍严格小于数据最小值 / 大于数据最大值）
+        if (best.count > 7) {
+            if (dataMin !== undefined && best.positions[1] < dataMin - 1e-9) {
+                best.min = best.positions[1];
+                best.positions.shift();
+                best.count--;
+            }
+            if (best.count > 7 && dataMax !== undefined && best.positions[best.positions.length - 2] > dataMax + 1e-9) {
+                best.max = best.positions[best.positions.length - 2];
+                best.positions.pop();
+                best.count--;
+            }
+        }
+        return best;
+    }
+
+    // 初始化时按可见曲线计算（默认只有收益可见），并对齐到美观刻度
     const initialRange = calcYAxisRange([data.profit || []]);
-    let yMin = initialRange.min;
-    let yMax = initialRange.max;
+    let yTicks = buildYAxisTicks(initialRange.min, initialRange.max, initialRange.dataMin, initialRange.dataMax);
+    let yMin = yTicks.min;
+    let yMax = yTicks.max;
 
     // 图表创建前：混合方案计算刻度位置（优先整除均匀间距，太少时回退循环去掉）
     const total = allDates.length;
@@ -181,12 +244,20 @@ function renderChart(data) {
         yAxis: {
             min: yMin,
             max: yMax,
+            tickPositions: yTicks.positions,
             title: { text: '金额（元）', margin: 3 },
             labels: {
                 formatter: function () {
-                    return this.value >= 10000
-                        ? (this.value / 10000).toFixed(1) + '万'
-                        : this.value.toFixed(0);
+                    const v = this.value;
+                    if (Math.abs(v) >= 10000) {
+                        // 万元以上统一带一位小数：12.0万 / 9.5万 / -5.0万
+                        return (v / 10000).toFixed(1) + '万';
+                    }
+                    // 整数标签也带 .0：0.0 / 5000.0 / 1.0
+                    if (Number.isInteger(v)) return v.toFixed(1);
+                    // 小数标签按步长精度：0.5 / 0.05
+                    const abs = Math.abs(v);
+                    return v.toFixed(abs >= 0.1 ? 1 : 2);
                 },
             },
         },
@@ -198,16 +269,16 @@ function renderChart(data) {
             borderColor: '#e8ecf0',
             borderRadius: 8,
             style: { fontSize: '13px' },
-            crosshairs: [{
-                color: '#c0c4cc',
-                width: 1,
-                dashStyle: 'dash',
-            }, false],
+            crosshairs: [
+                { color: '#c0c4cc', width: 1, dashStyle: 'dash' },
+                false
+            ],
             formatter: function () {
                 const dateStr = allDates[this.x] !== undefined ? allDates[this.x] : this.x;
                 const reasonItem = data.reasons && data.reasons[this.x] ? data.reasons[this.x] : null;
-                const eventStr = reasonItem ? reasonItem.event : '';
-                const remarkStr = reasonItem && reasonItem.remark ? reasonItem.remark : '';
+                // 用户可控文本，转义后再插入，防止 XSS
+                const eventStr = reasonItem && reasonItem.event ? escapeHtml(reasonItem.event) : '';
+                const remarkStr = reasonItem && reasonItem.remark ? escapeHtml(reasonItem.remark) : '';
 
                 // 获取各曲线值
                 const getVal = (name) => {
@@ -252,7 +323,12 @@ function renderChart(data) {
                                 .filter(s => s.visible)
                                 .map(s => s.options.rawData || []);
                             const range = calcYAxisRange(visibleSeries);
-                            chartInstance.yAxis[0].update({ min: range.min, max: range.max });
+                            yTicks = buildYAxisTicks(range.min, range.max, range.dataMin, range.dataMax);
+                            chartInstance.yAxis[0].update({
+                                min: yTicks.min,
+                                max: yTicks.max,
+                                tickPositions: yTicks.positions,
+                            });
                         }, 50);
                     },
                 },
@@ -328,32 +404,21 @@ function openQuotaModal() {
     }
 }
 
-function submitQuota() {
+async function submitQuota() {
     const amountEl = document.getElementById('modalQuotaAmount');
     const amount = parseFloat(amountEl?.value);
     if (isNaN(amount) || amount < 0) {
         showAlert({ title: '提示', text: '请输入有效的金额', type: 'warning' });
         return;
     }
-    fetch('/cash/quota', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-        body: JSON.stringify({ amount }),
-    })
-        .then(r => r.json())
-        .then(res => {
-            if (res.error) {
-                showAlert({ title: '失败', text: res.error, type: 'error' });
-                return;
-            }
-            if (quotaModalInstance) quotaModalInstance.hide();
-            updateCard('cashAllowance', res.allowance);
-            showAlert({ title: '成功', text: '风险额度已更新', type: 'success' });
-        })
-        .catch(err => {
-            console.error('变更风险额度失败:', err);
-            showAlert({ title: '失败', text: '请求失败，请稍后重试', type: 'error' });
-        });
+    const res = await postRequest('/cash/quota', { amount });
+    if (!res || res.error) {
+        showAlert({ title: '失败', text: (res && res.error) || '请求失败，请稍后重试', type: 'error' });
+        return;
+    }
+    if (quotaModalInstance) quotaModalInstance.hide();
+    updateCard('cashAllowance', res.allowance);
+    showAlert({ title: '成功', text: '风险额度已更新', type: 'success' });
 }
 
 function openAdjustModal(action) {
@@ -378,7 +443,7 @@ function openAdjustModal(action) {
 }
 
 // ===================== 资金调整 =====================
-export function adjustCash(action) {
+export async function adjustCash(action) {
     const amountInput = document.getElementById('modalAdjustAmount');
     const remarkInput = document.getElementById('modalAdjustRemark');
     const dateInput = document.getElementById('modalAdjustDate');
@@ -403,42 +468,27 @@ export function adjustCash(action) {
         }
     }
 
-    fetch(ADJUST_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCsrfToken(),
-        },
-        body: JSON.stringify({
-            action: action,
-            amount: amount,
-            remark: remarkInput?.value || '',
-            date: dateInput?.value || '',
-        }),
-    })
-        .then(r => r.json())
-        .then(res => {
-            if (res.error) {
-                showAlert({ title: '失败', text: res.error, type: 'error' });
-                return;
-            }
-            // 关闭 Modal
-            if (adjustModalInstance) adjustModalInstance.hide();
-            // 更新卡片数值
-            updateCard('cashTotal', res.total);
-            updateCard('cashCash', res.cash);
-            updateCard('cashStock', res.stock);
-            updateCard('cashAllowance', res.allowance);
-            updateCard('cashRisk', res.risk);
-            updateCard('cashProfit', res.profit);
-            showAlert({ title: '成功', text: `${actionText}成功`, type: 'success' });
-            // 自动刷新页面（图表 + 记录表格同时更新）
-            setTimeout(() => { window.location.reload(); }, 3000);
-        })
-        .catch(err => {
-            console.error('资金调整失败:', err);
-            showAlert({ title: '失败', text: '请求失败，请稍后重试', type: 'error' });
-        });
+    const res = await postRequest(ADJUST_URL, {
+        action: action,
+        amount: amount,
+        remark: remarkInput?.value || '',
+        date: dateInput?.value || '',
+    });
+    if (!res || res.error) {
+        showAlert({ title: '失败', text: (res && res.error) || '请求失败，请稍后重试', type: 'error' });
+        return;
+    }
+    if (adjustModalInstance) adjustModalInstance.hide();
+    // 更新卡片数值
+    updateCard('cashTotal', res.total);
+    updateCard('cashCash', res.cash);
+    updateCard('cashStock', res.stock);
+    updateCard('cashAllowance', res.allowance);
+    updateCard('cashRisk', res.risk);
+    updateCard('cashProfit', res.profit);
+    showAlert({ title: '成功', text: `${actionText}成功`, type: 'success' });
+    // 自动刷新页面（图表 + 记录表格同时更新）
+    setTimeout(() => { window.location.reload(); }, 3000);
 }
 
 function updateCard(id, value) {
@@ -464,28 +514,14 @@ export function initRevokeBtn() {
     });
 }
 
-function revokeCash(historyId) {
-    fetch(REVOKE_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCsrfToken(),
-        },
-        body: JSON.stringify({ history_id: parseInt(historyId) }),
-    })
-        .then(r => r.json())
-        .then(res => {
-            if (res.error) {
-                showAlert({ title: '失败', text: res.error, type: 'error' });
-                return;
-            }
-            showAlert({ title: '成功', text: '已撤回', type: 'success' });
-            setTimeout(() => { window.location.reload(); }, 3000);
-        })
-        .catch(err => {
-            console.error('撤回失败:', err);
-            showAlert({ title: '失败', text: '请求失败，请稍后重试', type: 'error' });
-        });
+async function revokeCash(historyId) {
+    const res = await postRequest(REVOKE_URL, { history_id: parseInt(historyId) });
+    if (!res || res.error) {
+        showAlert({ title: '失败', text: (res && res.error) || '请求失败，请稍后重试', type: 'error' });
+        return;
+    }
+    showAlert({ title: '成功', text: '已撤回', type: 'success' });
+    setTimeout(() => { window.location.reload(); }, 3000);
 }
 
 // ===================== 初始化资金弹窗 =====================
@@ -520,7 +556,7 @@ export function initInitModal(initialized) {
     }
 }
 
-function submitInit() {
+async function submitInit() {
     const dateStr = document.getElementById('modalInitDate')?.value?.trim();
     const cash = parseFloat(document.getElementById('modalInitCash')?.value);
     const stock = parseFloat(document.getElementById('modalInitStock')?.value);
@@ -543,31 +579,17 @@ function submitInit() {
         return;
     }
 
-    fetch(INIT_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCsrfToken(),
-        },
-        body: JSON.stringify({
-            date: dateStr,
-            cash: cash,
-            stock: stock,
-            allowance: allowance,
-        }),
-    })
-        .then(r => r.json())
-        .then(res => {
-            if (res.error) {
-                showAlert({ title: '失败', text: res.error, type: 'error' });
-                return;
-            }
-            if (initModalInstance) initModalInstance.hide();
-            showAlert({ title: '成功', text: '资金初始化完成', type: 'success' });
-            setTimeout(() => { window.location.reload(); }, 3000);
-        })
-        .catch(err => {
-            console.error('初始化失败:', err);
-            showAlert({ title: '失败', text: '请求失败，请稍后重试', type: 'error' });
-        });
+    const res = await postRequest(INIT_URL, {
+        date: dateStr,
+        cash: cash,
+        stock: stock,
+        allowance: allowance,
+    });
+    if (!res || res.error) {
+        showAlert({ title: '失败', text: (res && res.error) || '请求失败，请稍后重试', type: 'error' });
+        return;
+    }
+    if (initModalInstance) initModalInstance.hide();
+    showAlert({ title: '成功', text: '资金初始化完成', type: 'success' });
+    setTimeout(() => { window.location.reload(); }, 3000);
 }

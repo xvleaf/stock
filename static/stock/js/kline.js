@@ -1,5 +1,5 @@
 import { Highcharts, initPageElements, hideChartPlaceholder, loadChartPage, pageConfig, setPageConfig } from './chart.js';
-import { postRequest, priceDecimal, setPriceDecimal,showChartError } from './func.js';
+import { postRequest, priceDecimal, setPriceDecimal,showChartError } from './utils.js';
 
 // ========== K线图全局状态变量 ==========
 export let klineChart = null;

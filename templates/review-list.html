@@ -86,13 +86,12 @@
 {% load static %}
 <script type="module">
     import { baseInit } from "{% static 'base/js/base.js' %}";
-    import { tableHeaderInit } from "{% static 'stock/js/list.js' %}";
-    import { initReviewList } from "{% static 'stock/js/review.js' %}";
+    import { tableHeaderInit, initPagination } from "{% static 'stock/js/list.js' %}";
 
     document.addEventListener('DOMContentLoaded', () => {
         baseInit();
         tableHeaderInit();
-        initReviewList('/review/{{ review_type }}/list', '{{ review_type }}');
+        initPagination('/review/{{ review_type }}/list');
     });
 </script>
 {% endblock %}

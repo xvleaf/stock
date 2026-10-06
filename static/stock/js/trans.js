@@ -1,5 +1,5 @@
 import { chartPageContainer, initChartPage, setPageConfig } from './chart.js';
-import { refreshQuotes, postRequest, showAlert, getCsrfToken, pilotIndicatorText, setTransHistoryState } from './func.js';
+import { refreshQuotes, postRequest, showAlert, getCsrfToken, pilotIndicatorText, setTransHistoryState } from './utils.js';
 
 // ===================== 交易页面 =====================
 export function initTransDeal(opts = {}) {
@@ -42,32 +42,23 @@ export function initTransDeal(opts = {}) {
     const dividendTaxBody = document.getElementById('dividendTaxBody');
     let confirmedDividendTax = 0;
     let dividendTaxChecked = false; // 防止重复弹窗
+    let manualFee = null;           // 用户手动指定的费用；null = 使用自动费用
 
-    // 判断是否达到清仓/反手条件（支持多头和空头）
+    // 判断是否需要确认红利税：仅“卖出平多头（含反手做空）”。
+    // A股现金分红是多头概念，红利税在分红所持多头被卖出转让时缴纳；
+    // 买入平空头/反手做多与该多头无关，不弹窗、不缴税。
     function isClearCondition() {
         const intent = intentSelect ? intentSelect.value : 'B';
         const qty = parseInt(qtyInput.value) || 0;
-        // 多头清仓/反手做空：卖出方向 + 多头持仓 + 卖出数量 >= 持仓
-        if (intent === 'S' && positionQty > 0 && qty >= positionQty) return true;
-        // 空头清仓/反手做多：买入方向 + 空头持仓 + 买入数量 >= 持仓绝对值
-        if (intent === 'B' && positionQty < 0 && qty >= Math.abs(positionQty)) return true;
-        return false;
+        // 卖出方向 + 多头持仓 + 卖出数量 >= 持仓
+        return intent === 'S' && positionQty > 0 && qty >= positionQty;
     }
 
     // 调用后端计算红利税明细
     function fetchDividendTax() {
         const dateInput = document.getElementById('id_date');
         const date = dateInput ? dateInput.value : '';
-        return fetch(`/trans/dividend/calc/${initChart.market}/${initChart.code}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCsrfToken(),
-            },
-            body: JSON.stringify({ date: date }),
-        })
-        .then(res => res.json())
-        .catch(() => null);
+        return postRequest(`/trans/dividend/calc/${initChart.market}/${initChart.code}`, { date });
     }
 
     // 显示红利税确认弹窗
@@ -116,19 +107,21 @@ export function initTransDeal(opts = {}) {
         });
     }
 
-    // 弹窗确定按钮
+    // 弹窗确定按钮：按确认（可手动修改）的分红税重算预计收益
     if (document.getElementById('dividendTaxConfirm')) {
         document.getElementById('dividendTaxConfirm').addEventListener('click', () => {
             confirmedDividendTax = parseFloat(dividendTaxInput.value) || 0;
             dividendTaxModal.hide();
+            scheduleCalc();
         });
     }
-    // 弹窗取消按钮
+    // 弹窗取消按钮：按 0 税重算预计收益
     if (document.getElementById('dividendTaxCancel')) {
         document.getElementById('dividendTaxCancel').addEventListener('click', () => {
             confirmedDividendTax = 0;
             dividendTaxChecked = false;
             dividendTaxModal.hide();
+            scheduleCalc();
         });
     }
 
@@ -158,6 +151,8 @@ export function initTransDeal(opts = {}) {
             current_risk: currentRisk,
             avg_cost: avgCost,
             avg_cost_no_fee: avgCostNoFee,
+            fee: manualFee,                          // 手动费用，null 表示自动
+            dividend_tax: confirmedDividendTax,      // 已确认的分红税
         };
     }
 
@@ -168,47 +163,29 @@ export function initTransDeal(opts = {}) {
     }
 
     // 请求后台计算
-    function requestCalc() {
+    async function requestCalc() {
         const params = collectParams();
         if (!isParamsChanged(params)) return;
         lastParams = { ...params };
 
-        fetch('/trans/calc', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCsrfToken(),
-            },
-            body: JSON.stringify(params),
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.error) return;
-            amountInput.value = data.amount.toFixed(2);
-            feeInput.value = data.fee.toFixed(2);
-            profitInput.value = data.profit.toFixed(2);
-            riskInput.value = data.risk_amount.toFixed(2);
-            allowedInput.value = data.allowed_qty;
-            winInput.value = data.win_ratio;
+        const data = await postRequest('/trans/calc', params);
+        if (!data || data.error) return;
+        // 仅未手动指定费用时填充自动费用；手动指定后保留用户输入
+        if (manualFee === null) feeInput.value = data.fee.toFixed(2);
+        amountInput.value = data.amount.toFixed(2);
+        profitInput.value = data.profit.toFixed(2);
+        riskInput.value = data.risk_amount.toFixed(2);
+        allowedInput.value = data.allowed_qty;
+        winInput.value = data.win_ratio;
 
-            // 风险资金超过剩余风险额度时，风险资金输入框变红
-            const remainingRisk = allowance - currentRisk;
-            if (data.risk_amount > remainingRisk && remainingRisk > 0) {
-                riskInput.classList.add('text-danger');
-            } else {
-                riskInput.classList.remove('text-danger');
-            }
+        // 风险资金超过剩余风险额度时，风险资金输入框变红
+        const remainingRisk = allowance - currentRisk;
+        riskInput.classList.toggle('text-danger', data.risk_amount > remainingRisk && remainingRisk > 0);
 
-            // 成交数量超过允许数量时，成交数量变红
-            const qty = parseInt(qtyInput.value) || 0;
-            const allowedQty = parseInt(allowedInput.value) || 0;
-            if (qty > allowedQty && allowedQty > 0) {
-                qtyInput.classList.add('text-danger');
-            } else {
-                qtyInput.classList.remove('text-danger');
-            }
-        })
-        .catch(() => {});
+        // 成交数量超过允许数量时，成交数量变红
+        const qty = parseInt(qtyInput.value) || 0;
+        const allowedQty = parseInt(allowedInput.value) || 0;
+        qtyInput.classList.toggle('text-danger', qty > allowedQty && allowedQty > 0);
     }
 
     // 防抖触发计算
@@ -222,6 +199,11 @@ export function initTransDeal(opts = {}) {
     targetInput.addEventListener('blur', scheduleCalc);
     stopInput.addEventListener('blur', scheduleCalc);
     feeInput.addEventListener('blur', scheduleCalc);
+    // 用户手动输入费用：非空按输入值计算，清空恢复自动
+    feeInput.addEventListener('input', () => {
+        const v = feeInput.value.trim();
+        manualFee = v === '' ? null : (parseFloat(v) || 0);
+    });
 
     // 表单提交：AJAX 方式，失败时弹窗报错，成功时跳转
     form.addEventListener('submit', (e) => {
@@ -267,13 +249,14 @@ export function initTransList(interval = 20000) {
     if (!tbody) return;
 
     refreshQuotes('/trans/list', tbody);
-    setInterval(() => refreshQuotes('/trans/list', tbody), interval);
+    const timer = setInterval(() => refreshQuotes('/trans/list', tbody), interval);
+    // 离开页面时清理轮询
+    window.addEventListener('beforeunload', () => clearInterval(timer));
 }
 
 // ===================== 交易详情（只读） =====================
 export function initTransView(opts = {}) {
     const isSummary = opts.is_summary !== false;
-    let pilotIdx = opts.pilot_idx !== undefined ? opts.pilot_idx : -1;
     const pilotTotal = opts.pilot_total || 0;
     const pilotDate = opts.pilot_date || '';
     const pilotAction = opts.pilot_action || '';
@@ -306,31 +289,6 @@ export function initTransView(opts = {}) {
 
     // 历史模式字段状态切换（汇总模式仅复位相关字段，该页无历史/清仓字段则无影响）
     setTransHistoryState(!isSummary);
-
-    // up/down 切换历史记录（备用，实际通过 chart.js 的 naviSwitch 实现）
-    function switchPilot(delta) {
-        let newIdx = pilotIdx + delta;
-        // 从汇总（-1）点 up → 最近一笔（N-1）
-        if (pilotIdx === -1 && delta === -1) {
-            newIdx = pilotTotal - 1;
-        }
-        // 从最近一笔（N-1）点 down → 汇总（-1）
-        if (pilotIdx === pilotTotal - 1 && delta === 1) {
-            newIdx = -1;
-        }
-        if (newIdx < -1 || newIdx >= pilotTotal) return;
-        pilotIdx = newIdx;
-        postRequest('/trans/view/' + initChart.market + '/' + initChart.code, { pilot: pilotIdx })
-            .then(() => {
-                window.location.reload();
-            })
-            .catch(() => {
-                window.location.reload();
-            });
-    }
-
-    // 暴露给图表的 up/down 按钮
-    window.switchTransPilot = switchPilot;
 
     // ===== 分红登记（divdBtn）—— 监听 chartLoaded 事件，确保图表渲染完成后绑定 =====
     if (!window._dividendModalBound) {
@@ -437,7 +395,6 @@ export function initTransEdit(opts = {}) {
     const avgCost = opts.avg_cost || 0;
     const avgCostNoFee = opts.avg_cost_no_fee || 0;
     const positionQty = opts.position_qty || 0;
-    const positionCost = opts.position_cost || 0;
     const currentRisk = opts.current_risk || 0;
     const allowance = opts.allowance || 0;
     const oldRisk = opts.old_risk || 0;
@@ -480,36 +437,21 @@ export function initTransEdit(opts = {}) {
         return JSON.stringify(params) !== JSON.stringify(lastParams);
     }
 
-    function requestCalc() {
+    async function requestCalc() {
         const params = collectParams();
         if (!isParamsChanged(params)) return;
         lastParams = { ...params };
 
-        fetch('/trans/calc', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCsrfToken(),
-            },
-            body: JSON.stringify(params),
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.error) return;
-            profitInput.value = data.profit.toFixed(2);
-            riskInput.value = data.risk_amount.toFixed(2);
-            winInput.value = data.win_ratio;
+        const data = await postRequest('/trans/calc', params);
+        if (!data || data.error) return;
+        profitInput.value = data.profit.toFixed(2);
+        riskInput.value = data.risk_amount.toFixed(2);
+        winInput.value = data.win_ratio;
 
-            // 风险资金变动部分超过剩余风险额度时，风险资金输入框变红
-            const riskChange = data.risk_amount - oldRisk;
-            const remainingRisk = allowance - currentRisk;
-            if (riskChange > remainingRisk && riskChange > 0) {
-                riskInput.classList.add('text-danger');
-            } else {
-                riskInput.classList.remove('text-danger');
-            }
-        })
-        .catch(() => {});
+        // 风险资金变动部分超过剩余风险额度时，风险资金输入框变红
+        const riskChange = data.risk_amount - oldRisk;
+        const remainingRisk = allowance - currentRisk;
+        riskInput.classList.toggle('text-danger', riskChange > remainingRisk && riskChange > 0);
     }
 
     function scheduleCalc() {

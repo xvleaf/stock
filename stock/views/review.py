@@ -2,7 +2,6 @@
 复盘模块：已清仓交易 / 已关闭关注的复盘列表与详情
 """
 import json
-import datetime
 from decimal import Decimal
 from django.shortcuts import render, redirect
 from django.http import JsonResponse
@@ -59,43 +58,8 @@ def calc_weighted_return(order):
 
 
 def _get_date_range(request):
-    """获取日期范围（从 WebSetting 获取，结束日期仅当天有效）"""
-    from ..fetch.config import get_config, set_config
-    today = datetime.date.today()
-    today_str = today.strftime('%Y-%m-%d')
-
-    # 默认起始日期：去年今天 + 1天
-    try:
-        _last_year_today = today.replace(year=today.year - 1)
-    except ValueError:
-        _last_year_today = today.replace(year=today.year - 1, day=28)
-    default_start = (_last_year_today + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
-
-    # 起始日期：从 WebSetting 获取，空则使用默认值
-    start_str = str(get_config('review_stat_start', '') or default_start)
-
-    # 结束日期：检查设置日期是否为今天，是则用存储值，否则自动更新为今天
-    end_set_day = str(get_config('review_stat_end_set_day', ''))
-    if end_set_day == today_str:
-        end_str = str(get_config('review_stat_end', '') or today_str)
-    else:
-        # 跨天了，自动更新结束日期为今天
-        end_str = today_str
-        set_config('review_stat_end', today_str)
-        set_config('review_stat_end_set_day', today_str)
-
-    try:
-        start_date = datetime.datetime.strptime(start_str, '%Y-%m-%d').date()
-    except (ValueError, TypeError):
-        start_date = _last_year_today + datetime.timedelta(days=1)
-        start_str = start_date.strftime('%Y-%m-%d')
-    try:
-        end_date = datetime.datetime.strptime(end_str, '%Y-%m-%d').date()
-    except (ValueError, TypeError):
-        end_date = today
-        end_str = end_date.strftime('%Y-%m-%d')
-
-    return start_date, end_date, start_str, end_str
+    """获取复盘统计日期范围（起始/结束日期，结束日期仅当天有效，跨天自动重置）。"""
+    return utils.get_stat_range('review')
 
 
 def review_list(request, review_type):
@@ -106,14 +70,12 @@ def review_list(request, review_type):
     
     # 保存到 session
     utils.set_cache(request.session, 'review-type', review_type)
-    site = f'/review/{review_type}/list'
 
     # POST：保存分页条件
     if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-        except (json.JSONDecodeError, ValueError):
-            return JsonResponse({'error': '无效JSON'}, status=400)
+        data, err = utils.parse_json_body(request)
+        if err is not None:
+            return err
         if 'page' in data:
             utils.set_cache(request.session, 'review-page', int(data['page']))
         if 'per_page' in data:
@@ -186,7 +148,6 @@ def _build_history_list(order, focus):
     构建历史明细列表：先交易历史（新→旧），再关注历史（新→旧）
     返回可序列化的字典列表
     """
-    import json
     history_list = []
 
     # 交易历史
@@ -419,10 +380,9 @@ def review_focus_view(request, market, code):
 @require_POST
 def review_save(request):
     """保存评级和备注"""
-    try:
-        data = json.loads(request.body)
-    except (json.JSONDecodeError, ValueError):
-        return JsonResponse({'error': '无效JSON'}, status=400)
+    data, err = utils.parse_json_body(request)
+    if err is not None:
+        return err
 
     review_id = data.get('review_id')
     rating = data.get('rating')
@@ -442,9 +402,7 @@ def review_save(request):
 @require_POST
 def save_history_comment(request):
     """保存历史记录备注（按 history_type 区分交易/关注历史）"""
-    try:
-        data = json.loads(request.body)
-    except (json.JSONDecodeError, ValueError):
-        data = {}
+    data, _ = utils.parse_json_body(request)
+    data = data or {}
     history_model = TransHistory if data.get('history_type', 'trans') == 'trans' else FocusHistory
     return utils.save_history_comment(request, history_model)

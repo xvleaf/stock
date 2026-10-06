@@ -1,6 +1,6 @@
 from django import forms
 from django.utils import timezone
-from .models import CashConfig, FocusStock, TransHistory
+from .models import FocusStock
 
 
 CAT_CHOICES = [
@@ -18,10 +18,6 @@ INTENT_CHOICES = [
     ('B', '买入'), 
     ('S', '卖出')
 ]
-
-
-class DateInput(forms.DateInput):
-    input_type = 'date'
 
 
 class FocusStockForm(forms.ModelForm):
@@ -175,37 +171,4 @@ class FocusStockForm(forms.ModelForm):
                 required=False,
                 initial=display_val,
             )
-
-
-class TransHistoryForm(forms.ModelForm):
-    """成交填报表单"""
-    class Meta:
-        model = TransHistory
-        fields = ['intent', 'date', 'price', 'qty', 'fee', 'comments']
-        widgets = {
-            'intent': forms.Select(
-                attrs={'class': 'form-select'},
-                choices=[('B', '买入'), ('S', '卖出')]
-            ),
-            'date': DateInput(attrs={'class': 'form-control'}),
-            'price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'qty': forms.NumberInput(attrs={'class': 'form-control'}),
-            'fee': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'comments': forms.Textarea(attrs={
-                'class': 'form-control', 'rows': 2, 'style': 'resize:none;',
-            }),
-        }
-
-
-class CashConfigForm(forms.ModelForm):
-    """账户资金设置"""
-    class Meta:
-        model = CashConfig
-        fields = [
-            'total', 'allowance',
-        ]
-        widgets = {
-            'total': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'allowance': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-        }
 

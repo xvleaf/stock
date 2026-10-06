@@ -39,37 +39,8 @@ def cash_view(request):
         if 'per_page' in data:
             utils.set_cache(request.session, 'cash-per-page', int(data['per_page']))
         return JsonResponse({'status': 'ok'})
-    # 日期范围：从 WebSetting 获取，结束日期仅当天有效，跨天自动恢复为当天
-    from ..fetch.config import get_config, set_config
-    today = datetime.date.today()
-    today_str = today.strftime('%Y-%m-%d')
-    # 默认起始日期：去年今天 + 1天（Python日期运算自动处理大小月/闰年进位）
-    try:
-        _last_year_today = today.replace(year=today.year - 1)
-    except ValueError:
-        _last_year_today = today.replace(year=today.year - 1, day=28)
-    default_start = (_last_year_today + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
-    # 起始日期：从 WebSetting 获取，空则使用默认值
-    start_str = str(get_config('cash_stat_start', '') or default_start)
-    # 结束日期：检查设置日期是否为今天，是则用存储值，否则自动更新为今天
-    end_set_day = str(get_config('cash_stat_end_set_day', ''))
-    if end_set_day == today_str:
-        end_str = str(get_config('cash_stat_end', '') or today_str)
-    else:
-        # 跨天了，自动更新结束日期为今天
-        end_str = today_str
-        set_config('cash_stat_end', today_str)
-        set_config('cash_stat_end_set_day', today_str)
-    try:
-        start_date = datetime.datetime.strptime(start_str, '%Y-%m-%d').date()
-    except (ValueError, TypeError):
-        start_date = _last_year_today + datetime.timedelta(days=1)
-        start_str = start_date.strftime('%Y-%m-%d')
-    try:
-        end_date = datetime.datetime.strptime(end_str, '%Y-%m-%d').date()
-    except (ValueError, TypeError):
-        end_date = today
-        end_str = end_date.strftime('%Y-%m-%d')
+    # 日期范围：起始/结束日期统一由公共函数处理（结束日期跨天自动重置为当天）
+    start_date, end_date, start_str, end_str = utils.get_stat_range('cash')
     # 历史记录按日期范围过滤 + 分页（每页条数独立存储，不影响其他页面）
     # 资金变化记录仅按 id 排序（不按日期），保证与创建顺序一致
     history_qs = CashHistory.objects.filter(date__gte=start_date, date__lte=end_date).order_by('-id')
@@ -93,38 +64,11 @@ def cash_view(request):
 
 @require_http_methods(["GET"])
 def cash_history_api(request):
-    """返回资金历史数据（供前端 Highcharts 绘制），日期范围从 WebSetting 获取"""
-    from ..fetch.config import get_config, set_config
-    today = datetime.date.today()
-    today_str = today.strftime('%Y-%m-%d')
-    # 默认起始日期：去年今天 + 1天
-    try:
-        _last_year_today = today.replace(year=today.year - 1)
-    except ValueError:
-        _last_year_today = today.replace(year=today.year - 1, day=28)
-    default_start = (_last_year_today + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
-    # 起始日期：从 WebSetting 获取，空则使用默认值
-    start_str = str(get_config('cash_stat_start', '') or default_start)
-    # 结束日期：检查设置日期是否为今天，是则用存储值，否则自动更新为今天
-    end_set_day = str(get_config('cash_stat_end_set_day', ''))
-    if end_set_day == today_str:
-        end_str = str(get_config('cash_stat_end', '') or today_str)
-    else:
-        end_str = today_str
-        set_config('cash_stat_end', today_str)
-        set_config('cash_stat_end_set_day', today_str)
-    # 【资金历史图数据也仅按 id 排序（id 递增即创建顺序）
-    qs = CashHistory.objects.all().order_by('id')
-    if start_str:
-        try:
-            qs = qs.filter(date__gte=datetime.datetime.strptime(start_str, '%Y-%m-%d').date())
-        except (ValueError, TypeError):
-            pass
-    if end_str:
-        try:
-            qs = qs.filter(date__lte=datetime.datetime.strptime(end_str, '%Y-%m-%d').date())
-        except (ValueError, TypeError):
-            pass
+    """返回资金历史数据（供前端 Highcharts 绘制），日期范围与资金总览页一致"""
+    start_date, end_date, _, _ = utils.get_stat_range('cash')
+    # 资金历史图数据仅按 id 排序（id 递增即创建顺序），并按日期范围过滤
+    qs = CashHistory.objects.filter(
+        date__gte=start_date, date__lte=end_date).order_by('id')
     total_series = []
     cash_series = []
     stock_series = []
@@ -163,10 +107,9 @@ def cash_adjust_api(request):
     手动调整资金（存入/取出），并写入历史记录
     POST JSON: {action: 'deposit'|'withdraw', amount: 10000, remark: ''}
     """
-    try:
-        params = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'error': '无效JSON'}, status=400)
+    params, err = utils.parse_json_body(request)
+    if err is not None:
+        return err
 
     action = params.get('action')
     amount = Decimal(str(params.get('amount', 0)))
@@ -219,10 +162,9 @@ def cash_revoke(request):
     撤回最近一笔记录（存入/取出/买入/卖出）
     POST JSON: {history_id: 123}
     """
-    try:
-        params = json.loads(request.body)
-    except (json.JSONDecodeError, ValueError):
-        return JsonResponse({'error': '无效JSON'}, status=400)
+    params, err = utils.parse_json_body(request)
+    if err is not None:
+        return err
     history_id = params.get('history_id')
     if not history_id:
         return JsonResponse({'error': '缺少记录ID'}, status=400)
@@ -400,10 +342,9 @@ def cash_init(request):
     """
     if CashConfig.has_config():
         return JsonResponse({'error': '已初始化，请勿重复提交'}, status=400)
-    try:
-        params = json.loads(request.body)
-    except (json.JSONDecodeError, ValueError):
-        return JsonResponse({'error': '无效JSON'}, status=400)
+    params, err = utils.parse_json_body(request)
+    if err is not None:
+        return err
     date_str = params.get('date', '')
     try:
         init_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
@@ -446,10 +387,9 @@ def cash_quota(request):
     手动修改风险额度（allowance）
     POST JSON: {amount: 100000}
     """
-    try:
-        params = json.loads(request.body)
-    except (json.JSONDecodeError, ValueError):
-        return JsonResponse({'error': '无效JSON'}, status=400)
+    params, err = utils.parse_json_body(request)
+    if err is not None:
+        return err
     try:
         amount = Decimal(str(params.get('amount', 0)))
     except Exception:

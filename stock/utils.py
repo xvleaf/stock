@@ -1,7 +1,10 @@
+import json
+import logging
 import threading
+
 import pandas as pd
 import pytz
-from datetime import datetime, time, date as date_type
+from datetime import datetime, time, timedelta, date as date_type
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
@@ -11,14 +14,146 @@ from django.http import JsonResponse
 from .fetch import tushare
 from .models import StockList, StockSector, SectorList, CashConfig
 
+logger = logging.getLogger('stock')
+
+# 中国时区（模块级复用，避免每次转换重复构造）
+SH_TZ = pytz.timezone('Asia/Shanghai')
+
+
+# =====================================================================
+# 请求体解析等视图公共小工具
+# =====================================================================
+def parse_json_body(request):
+    """
+    解析 POST 请求的 JSON body。
+    返回 (data, error_response)：
+      - 成功：(dict/list, None)
+      - 失败：(None, 400 JsonResponse)
+    """
+    try:
+        return json.loads(request.body), None
+    except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
+        return None, JsonResponse({'error': '无效JSON'}, status=400)
+
+
+def price_places(cat):
+    """返回该类资产价格小数位：基金/债券 3 位，其余 2 位。"""
+    return 3 if cat in ('fund', 'bond') else 2
+
+
+def build_chart_init(site, code, market, name, cat, view='kline', back_url=None, **extra):
+    """
+    构造图表页面 pageConfig 的初始字典（各 view 页面复用）。
+    navi/mark/taskId 等附加字段通过 extra 传入。
+    """
+    chart = {
+        'site': site,
+        'code': code,
+        'market': market,
+        'name': name,
+        'cat': cat,
+        'view': view,
+    }
+    if back_url is not None:
+        chart['backUrl'] = back_url
+    chart.update(extra)
+    return chart
+
+
+def get_stat_range(prefix):
+    """
+    统计页（cash/review）日期范围，返回 (start_date, end_date, start_str, end_str)。
+    - 起始：WebSetting '{prefix}_stat_start'，空则默认去年今天 +1 天
+    - 结束：仅当天有效，跨天自动重置为当天，并写回
+      '{prefix}_stat_end' / '{prefix}_stat_end_set_day'
+    """
+    from .fetch.config import get_config, set_config
+
+    today = date_type.today()
+    today_str = today.strftime('%Y-%m-%d')
+    try:
+        default_start_date = today.replace(year=today.year - 1) + timedelta(days=1)
+    except ValueError:
+        # 2月29日等边界
+        default_start_date = today.replace(year=today.year - 1, day=28) + timedelta(days=1)
+    default_start = default_start_date.strftime('%Y-%m-%d')
+
+    start_str = str(get_config(f'{prefix}_stat_start', '') or default_start)
+    end_set_day = str(get_config(f'{prefix}_stat_end_set_day', ''))
+    if end_set_day == today_str:
+        end_str = str(get_config(f'{prefix}_stat_end', '') or today_str)
+    else:
+        end_str = today_str
+        set_config(f'{prefix}_stat_end', today_str)
+        set_config(f'{prefix}_stat_end_set_day', today_str)
+
+    try:
+        start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        start_date = default_start_date
+        start_str = start_date.strftime('%Y-%m-%d')
+    try:
+        end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        end_date = today
+        end_str = end_date.strftime('%Y-%m-%d')
+
+    return start_date, end_date, start_str, end_str
+
+
+def refresh_prices(code_markets, model, status_field, status_value):
+    """
+    按 "code.market" 列表批量取最新价（一次查询取出对应标的，再逐个取行情）。
+    :param model: 标的模型（FocusStock / TransOrder）
+    :param status_field / status_value: 状态过滤，如 ('status', FocusStock.STATUS_WATCHING)
+    :return: list[dict]，每项 {code, market, close, change, deci}
+    """
+    from django.db.models import Q
+    from .fetch import quote
+
+    pairs = []
+    for cm in code_markets:
+        parts = str(cm).split('.')
+        if len(parts) == 2:
+            pairs.append((parts[0], parts[1]))
+    if not pairs:
+        return []
+
+    q = Q()
+    for c, m in pairs:
+        q |= Q(code=c, market=m)
+    qs = model.objects.filter(q, **{status_field: status_value})
+
+    result = []
+    for obj in qs:
+        deci = price_places(getattr(obj, 'cat', 'stock'))
+        close, change = quote.get_last_price(f'{obj.code}.{obj.market}', deci)
+        result.append({
+            'code': obj.code,
+            'market': obj.market,
+            'close': close,
+            'change': change,
+            'deci': deci,
+        })
+    return result
+
+
+def create_deal(history_model, **fields):
+    """
+    创建一条不触发订单自动重算的成交/分红历史（TransHistory）。
+    调用方负责在合适时机调用一次 order.recalculate()。
+    """
+    deal = history_model(**fields)
+    deal._skip_recalc = True
+    deal.save()
+    return deal
+
 
 def date_to_timestamp(date_obj):
     """
     将日期转换为13位毫秒时间戳（强制中国时区，并设为当天00:00:00）
     date_obj: 字符串'YYYYMMDD' 或 datetime/date 对象
     """
-    tz = pytz.timezone('Asia/Shanghai')
-    
     if isinstance(date_obj, str):
         # 解析 '20230104' 格式
         dt = datetime.strptime(date_obj, '%Y%m%d')
@@ -29,24 +164,50 @@ def date_to_timestamp(date_obj):
         dt = date_obj
         if dt.tzinfo is not None:
             # 如果已有时区，转换为中国时区
-            dt = dt.astimezone(tz)
+            dt = dt.astimezone(SH_TZ)
         else:
-            dt = tz.localize(dt)
+            dt = SH_TZ.localize(dt)
     else:
         # 其他类型（如 pandas Timestamp）转换为 datetime
         dt = pd.to_datetime(date_obj).to_pydatetime()
-        dt = tz.localize(dt)
-    
+        dt = SH_TZ.localize(dt)
+
     # 如果 dt 还不是 aware，本地化
     if dt.tzinfo is None:
-        dt = tz.localize(dt)
+        dt = SH_TZ.localize(dt)
     else:
         # 确保在中国时区
-        dt = dt.astimezone(tz)
-    
+        dt = dt.astimezone(SH_TZ)
+
     # 保留日期部分（即当天00:00:00）
     # 这里返回 00:00:00 的时间戳
     return int(dt.timestamp() * 1000)
+
+
+def dates_to_timestamps(series):
+    """
+    将一整列日期（date/datetime/pandas.Timestamp/字符串'YYYYMMDD'或'YYYY-MM-DD'）
+    一次性【整列向量化】转换为 13 位毫秒时间戳列表（中国时区当天 00:00），
+    等价于逐个 date_to_timestamp，但解析、时区本地化、毫秒换算全部在 C 层整列完成，
+    无 Python 逐行迭代，适合 DataFrame 整列。
+    """
+    try:
+        # 快路径：整列格式统一（DataFrame 列通常如此）
+        parsed = pd.to_datetime(series)
+    except (ValueError, TypeError):
+        # 兜底：字符串格式混合（'YYYYMMDD' 与 'YYYY-MM-DD' 共存）
+        parsed = pd.to_datetime(series, format='mixed')
+    # 统一为 Series（DatetimeIndex 没有 .dt accessor），后续全部走 .dt
+    dt_series = pd.Series(parsed)
+    if dt_series.dt.tz is not None:
+        dt_series = dt_series.dt.tz_convert(SH_TZ)
+    else:
+        dt_series = dt_series.dt.tz_localize(SH_TZ)
+    # 归一化到当天 00:00:00
+    dt_series = dt_series.dt.normalize()
+    # 转 UTC、去时区后整列取 int64 纳秒，再整列换算为毫秒（向量化，无逐行循环）
+    ns = dt_series.dt.tz_convert('UTC').dt.tz_localize(None).astype('int64')
+    return (ns // 1_000_000).tolist()
 
 
 def set_cache(session, key, value, expiry=None):
@@ -108,29 +269,33 @@ def _update_stock_list():
         # 按代码正序排列
         df = df.sort_values('code').reset_index(drop=True)
 
-        with transaction.atomic():
-            for _, row in df.iterrows():
-                # 先尝试查询现有记录
-                stock = StockList.objects.filter(
-                    code=row['code'],
-                    market=row['market']
-                ).first()
-                if stock:
-                    # 存在则更新
+        # 一次性取出存量，内存中比对后批量写入（避免逐行查询/保存）
+        existing = {(s.code, s.market): s for s in StockList.objects.all()}
+        to_create, to_update = [], []
+        for _, row in df.iterrows():
+            key = (row['code'], row['market'])
+            stock = existing.get(key)
+            if stock:
+                if stock.name != row['name'] or stock.industry != row['industry']:
                     stock.name = row['name']
                     stock.industry = row['industry']
-                    stock.save()
-                else:
-                    # 不存在则创建
-                    StockList.objects.create(
-                        code=row['code'],
-                        market=row['market'],
-                        name=row['name'],
-                        industry=row['industry']
-                    )
-                    new_stocks.append((row['code'], row['market']))
-    except Exception as e:
-        print(f"更新股票列表失败: {e}")
+                    to_update.append(stock)
+            else:
+                to_create.append(StockList(
+                    code=row['code'],
+                    market=row['market'],
+                    name=row['name'],
+                    industry=row['industry']
+                ))
+                new_stocks.append(key)
+
+        with transaction.atomic():
+            if to_create:
+                StockList.objects.bulk_create(to_create, batch_size=500)
+            if to_update:
+                StockList.objects.bulk_update(to_update, ['name', 'industry'], batch_size=500)
+    except Exception:
+        logger.exception('更新股票列表失败')
         return
 
     # 异步更新股票-板块关联（不阻塞当前请求）
@@ -147,7 +312,7 @@ def _update_stock_sector(new_stocks):
     try:
         if not StockSector.objects.exists():
             # ===== 全量模式：遍历所有板块，调用 get_match_industry =====
-            print("[StockSector] 全量初始化开始...")
+            logger.info("[StockSector] 全量初始化开始...")
             sectors = SectorList.objects.all()
             bulk_list = []
             for sector in sectors:
@@ -166,20 +331,20 @@ def _update_stock_sector(new_stocks):
                             sector_code=sector.code,
                             sector_market=sector.market,
                         ))
-                except Exception as e:
-                    print(f"[StockSector] 板块 {sector.code} 获取成分股失败: {e}")
+                except Exception:
+                    logger.exception("[StockSector] 板块 %s 获取成分股失败", sector.code)
             if bulk_list:
                 # 按股票代码正序排列
                 bulk_list.sort(key=lambda x: x.stock_code)
                 with transaction.atomic():
                     StockSector.objects.all().delete()
                     StockSector.objects.bulk_create(bulk_list, batch_size=500)
-            print(f"[StockSector] 全量初始化完成，共 {len(bulk_list)} 条关联")
+            logger.info("[StockSector] 全量初始化完成，共 %d 条关联", len(bulk_list))
         else:
             # ===== 增量模式：仅处理新增股票，调用 get_industry_member =====
             if not new_stocks:
                 return
-            print(f"[StockSector] 增量更新开始，新增 {len(new_stocks)} 只股票...")
+            logger.info("[StockSector] 增量更新开始，新增 %d 只股票...", len(new_stocks))
             count = 0
             for code, market in new_stocks:
                 try:
@@ -199,11 +364,11 @@ def _update_stock_sector(new_stocks):
                             sector_market=sec_market,
                         )
                         count += 1
-                except Exception as e:
-                    print(f"[StockSector] 股票 {code}.{market} 获取板块失败: {e}")
-            print(f"[StockSector] 增量更新完成，新增 {count} 条关联")
-    except Exception as e:
-        print(f"[StockSector] 更新失败: {e}")
+                except Exception:
+                    logger.exception("[StockSector] 股票 %s.%s 获取板块失败", code, market)
+            logger.info("[StockSector] 增量更新完成，新增 %d 条关联", count)
+    except Exception:
+        logger.exception("[StockSector] 更新失败")
 
 
 # =====================================================================
@@ -343,7 +508,7 @@ def calc_allowed_qty(plan_price, stop_price=0, intent='B'):
         # 卖出：风险 = (止损价 - 成交价)
         risk_per_share = Decimal(str(stop_price or 0)) - price
     else:
-        # 买入：风险 = (成交价 - 止损价)
+        # 买入：交易风险 = (成交价 - 止损价)
         risk_per_share = price - Decimal(str(stop_price or 0))
     # 止损价>=成交价时，仅按现金计算
     if risk_per_share <= 0:
@@ -426,54 +591,6 @@ def calc_risk_capital(buy_price, stop_price, qty, intent='B'):
     return round_decimal(risk)
 
 
-def calc_risk_reward_ratio(buy_price, target_price, stop_price, intent='B'):
-    """
-    盈亏比
-    买入：(目标价 - 买入价) / (买入价 - 止损价)
-    卖出：(卖出价 - 目标价) / (止损价 - 卖出价)
-    :return: Decimal，无效时返回0
-    """
-    price = Decimal(str(buy_price))
-    target = Decimal(str(target_price))
-    stop = Decimal(str(stop_price))
-    if intent == 'S':
-        if price <= 0 or stop <= price or target >= price:
-            return Decimal('0')
-        return round_decimal((price - target) / (stop - price))
-    else:
-        if price <= 0 or price <= stop or target <= price:
-            return Decimal('0')
-        return round_decimal((target - price) / (price - stop))
-
-
-def calc_estimated_profit(sell_price, qty, avg_cost, fee):
-    """
-    卖出预计盈亏 = (卖出价 - 持仓均价) × 数量 - 费用
-    """
-    sell = Decimal(str(sell_price))
-    cost = Decimal(str(avg_cost))
-    qty = int(qty)
-    fee = Decimal(str(fee))
-    return round_decimal((sell - cost) * qty - fee)
-
-
-def calc_amount(price, qty):
-    """成交金额 = 价格 × 数量"""
-    return round_decimal(Decimal(str(price)) * int(qty))
-
-
-def get_price_decimal(code):
-    """
-    根据股票代码判断价格小数位
-    A股股票 2位，可转债/基金3位
-    """
-    code = str(code).upper()
-    # 沪市转债 11xxxx，深市转债 12xxxx
-    if code.startswith('11') or code.startswith('12'):
-        return 3
-    return 2
-
-
 def calc_win_ratio(buy_price, target_price, stop_price, intent='B'):
     """计算成功几率（0-99整数）
     买入：(目标价 - 成交价) / (目标价 - 止损价) × 99
@@ -514,11 +631,9 @@ def save_history_comment(request, history_model):
     :param history_model: 历史模型类（TransHistory / FocusHistory）
     :return: JsonResponse，成功 {'success': True}
     """
-    import json
-    try:
-        data = json.loads(request.body)
-    except (json.JSONDecodeError, ValueError):
-        return JsonResponse({'error': '无效JSON'}, status=400)
+    data, err = parse_json_body(request)
+    if err:
+        return err
 
     history_id = data.get('history_id')
     comments = data.get('comments', '') or ''

@@ -4,7 +4,7 @@
 import json
 import datetime
 from decimal import Decimal
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import render, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.utils import timezone
@@ -158,8 +158,8 @@ def trans_deal(request, market, code):
 
 
 def _handle_trans_post(request, market, code, order, focus, stock_name, stock_cat):
-    """处理买入/卖出提交"""
-    deci = 3 if stock_cat in ('fund', 'bond') else 2
+    """处理买入/卖出提交（买卖统一流程，仅方向与资金符号不同）。"""
+    deci = utils.price_places(stock_cat)
     try:
         params = request.POST
         intent = params.get('intent', 'B')
@@ -168,7 +168,6 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
         qty = int(params.get('qty', 0))
         target_price = Decimal(str(params.get('target_price', 0) or 0))
         stop_price = Decimal(str(params.get('stop_price', 0) or 0))
-        win_ratio = Decimal(str(params.get('win_ratio', 0) or 0))
         comments = params.get('comments', '')
         dividend_tax = Decimal(str(params.get('dividend_tax', 0) or 0))
     except (ValueError, TypeError):
@@ -182,235 +181,135 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
     if qty <= 0 or price <= 0:
         return JsonResponse({'status': 'error', 'error': '价格和数量必须大于0'})
 
+    is_buy = (intent == 'B')
     config = CashConfig.get_config()
     amount = utils.round_decimal(price * qty)
-    # 优先使用前端传入的费用（用户可手动修改），未传则自动计算
+    # 优先使用前端传入费用（可手动改），未传则自动计算
     fee_str = params.get('fee', '').strip()
     if fee_str:
         fee = utils.round_decimal(fee_str)
     else:
-        fee_info = utils.calc_fee(amount, intent, market, config)
-        fee = fee_info['total']
+        fee = utils.calc_fee(amount, intent, market, config)['total']
 
     with transaction.atomic():
-        if intent == 'B':
-            # 买入
+        if is_buy:
             total_cost = amount + fee
             if total_cost > config.cash:
                 return JsonResponse({'status': 'error', 'error': f'现金不足，需要 {total_cost}，当前 {config.cash}'})
 
-            # 创建或获取交易订单
-            if not order:
-                order = TransOrder(
-                    focus=focus,
-                    code=code,
-                    name=stock_name,
-                    market=market,
-                    cat=stock_cat,
-                    intent='B',
-                    target_price=target_price,
-                    stop_price=stop_price,
-                )
-                order.save()
-            else:
-                order.target_price = target_price
-                order.stop_price = stop_price
-
-            # 记录交易前的状态
-            profit_before = order.profit if order.pk else Decimal('0')
-            risk_before = order.risk_amount if order.pk else Decimal('0')
-            position_qty_before = order.position_qty if order.pk else 0
-
-            # 创建成交明细
-            deal = TransHistory.objects.create(
-                order=order,
-                action=TransHistory.ACTION_BUY,
-                intent='B',
-                date=deal_date,
-                price=price,
-                qty=qty,
-                amount=amount,
-                fee=fee,
-                target_price=target_price,
-                stop_price=stop_price,
-                comments=comments,
-            )
-
-            # 重新计算订单所有汇总字段
-            order.recalculate()
-
-            # 本次收益
-            deal_profit = utils.round_decimal(order.profit - profit_before)
-
-            # 风险资金（基于交易后持仓重新计算，与trans_calc一致）
-            if order.position_qty != 0:
-                order.risk_amount = utils.calc_risk_capital(order.avg_cost_no_fee, stop_price, abs(order.position_qty), order.intent)
-                # 盈利机会：基于含手续费均价、目标价、止损价、持仓方向计算，保存到order避免重复计算
-                order.win_ratio = utils.calc_win_ratio(order.avg_cost, target_price, stop_price, order.intent)
-            else:
-                order.risk_amount = Decimal('0')
-                order.win_ratio = 0
-            risk_change = order.risk_amount - risk_before
-            # 更新持仓方向
-            if order.position_qty > 0:
-                order.intent = 'B'
-            elif order.position_qty < 0:
-                order.intent = 'S'
+        # 创建或获取订单
+        if not order:
+            order = TransOrder(
+                focus=focus, code=code, name=stock_name, market=market, cat=stock_cat,
+                intent=intent, target_price=target_price, stop_price=stop_price)
             order.save()
+        else:
+            order.target_price = target_price
+            order.stop_price = stop_price
 
-            # 保存该笔交易后的持仓快照
-            deal.profit = order.profit
-            deal.win_ratio = order.win_ratio
-            deal.risk_amount = order.risk_amount
-            deal.position_qty = order.position_qty
-            deal.avg_cost = order.avg_cost
-            deal.avg_cost_no_fee = order.avg_cost_no_fee
-            deal.save(update_fields=['profit', 'win_ratio', 'risk_amount', 'position_qty', 'avg_cost', 'avg_cost_no_fee'])
+        # 交易前状态
+        profit_before = order.profit if order.pk else Decimal('0')
+        risk_before = order.risk_amount if order.pk else Decimal('0')
+        position_qty_before = order.position_qty if order.pk else 0
+
+        # 创建成交（不触发自动重算），随后统一重算一次
+        deal_action = TransHistory.ACTION_BUY if is_buy else TransHistory.ACTION_SELL
+        # 卖出平多头（含反手做空）时，红利税随本笔成交首次入库，recalculate 才能计入
+        deal_dividend_tax = (dividend_tax
+                             if (not is_buy and position_qty_before > 0
+                                 and qty >= position_qty_before and dividend_tax > 0)
+                             else Decimal('0'))
+        deal = utils.create_deal(
+            TransHistory, order=order, action=deal_action, intent=intent, date=deal_date,
+            price=price, qty=qty, amount=amount, fee=fee,
+            dividend_tax=deal_dividend_tax,
+            target_price=target_price, stop_price=stop_price, comments=comments)
+        order.recalculate()
+
+        deal_profit = utils.round_decimal(order.profit - profit_before)
+
+        # 风险资金 / 盈利机会（基于交易后持仓）
+        if order.position_qty != 0:
+            order.risk_amount = utils.calc_risk_capital(
+                order.avg_cost_no_fee, stop_price, abs(order.position_qty), order.intent)
+            order.win_ratio = utils.calc_win_ratio(
+                order.avg_cost, target_price, stop_price, order.intent)
+        else:
+            order.risk_amount = Decimal('0')
+            order.win_ratio = 0
+        risk_change = order.risk_amount - risk_before
+        if order.position_qty > 0:
+            order.intent = 'B'
+        elif order.position_qty < 0:
+            order.intent = 'S'
+
+        # 红利税已固化在本笔成交(dividend_tax)并由 recalculate 计入损益；
+        # is_tax_case 仅用于现金到手金额与备注，不再手动冲减 order.profit
+        is_tax_case = (not is_buy and position_qty_before > 0
+                        and order.position_qty <= 0 and dividend_tax > 0)
+        order.save()
+
+        # 该笔交易后持仓快照（_skip_recalc 仍生效，不会触发重算）
+        deal.profit = order.profit
+        deal.win_ratio = order.win_ratio
+        deal.risk_amount = order.risk_amount
+        deal.position_qty = order.position_qty
+        deal.avg_cost = order.avg_cost
+        deal.avg_cost_no_fee = order.avg_cost_no_fee
+        snap_fields = ['profit', 'win_ratio', 'risk_amount', 'position_qty',
+                       'avg_cost', 'avg_cost_no_fee']
+        deal.save(update_fields=snap_fields)
+
+        if is_buy:
             if not order.open_date:
                 order.open_date = deal_date
-            order.save()
+            order.save(update_fields=['open_date'])
 
-            # 更新资金配置
-            config.cash -= total_cost
-            # stock 直接根据当前持仓设置（多头为正，空头为负，平仓为0）
-            # 避免增量计算在反手交易时产生误差
-            config.stock = order.position_cost_no_fee
-            config.total = config.cash + config.stock
-            config.risk += risk_change
-            if config.risk < 0:
-                config.risk = Decimal('0')
+        # 资金配置（stock 直接按当前持仓设置，避免反手交易增量误差）
+        if is_buy:
+            cash_change = -(amount + fee)
+            config.cash -= amount + fee
             config.profit += deal_profit
-            config.save()
-
-            # 写入资金历史
-            CashHistory.snapshot(
-                event=CashHistory.EVENT_BUY,
-                change=-total_cost,
-                current_profit=deal_profit,
-                remark=f'买入{stock_name}{qty}股@{float(price):.{deci}f}元',
-                order=order,
-                date=deal_date,
-            )
-
-            # 更新关注状态
-            if focus and focus.status == FocusStock.STATUS_WATCHING:
-                focus.status = FocusStock.STATUS_CLOSED
-                focus.close_reason = FocusStock.CLOSE_REASON_BOUGHT
-                focus.close_date = deal_date
-                focus.save()
-                # 创建已交易历史记录
-                focus.save_history(action=FocusHistory.ACTION_DEAL, comments=f'买入{stock_name}{qty}股@{float(price):.{deci}f}元')
-
+            hist_current = deal_profit
         else:
-            # 卖出
-            total_income = amount - fee
-
-            # 创建或获取交易订单（卖空建仓时可能没有订单）
-            if not order:
-                order = TransOrder(
-                    focus=focus,
-                    code=code,
-                    name=stock_name,
-                    market=market,
-                    cat=stock_cat,
-                    intent='S',
-                    target_price=target_price,
-                    stop_price=stop_price,
-                )
-                order.save()
-            else:
-                order.target_price = target_price
-                order.stop_price = stop_price
-
-            # 记录交易前的状态
-            profit_before = order.profit if order.pk else Decimal('0')
-            risk_before = order.risk_amount if order.pk else Decimal('0')
-            position_qty_before = order.position_qty if order.pk else 0
-
-            # 创建成交明细
-            deal = TransHistory.objects.create(
-                order=order,
-                action=TransHistory.ACTION_SELL,
-                intent='S',
-                date=deal_date,
-                price=price,
-                qty=qty,
-                amount=amount,
-                fee=fee,
-                target_price=target_price,
-                stop_price=stop_price,
-                comments=comments,
-            )
-
-            # 重新计算订单所有汇总字段
-            order.recalculate()
-
-            # 本次收益
-            deal_profit = utils.round_decimal(order.profit - profit_before)
-
-            # 风险资金（基于交易后持仓重新计算，与trans_calc一致）
-            if order.position_qty != 0:
-                order.risk_amount = utils.calc_risk_capital(order.avg_cost_no_fee, stop_price, abs(order.position_qty), order.intent)
-                # 盈利机会：基于含手续费均价、目标价、止损价、持仓方向计算，保存到order避免重复计算
-                order.win_ratio = utils.calc_win_ratio(order.avg_cost, target_price, stop_price, order.intent)
-            else:
-                order.risk_amount = Decimal('0')
-                order.win_ratio = 0
-            risk_change = order.risk_amount - risk_before
-            # 更新持仓方向
-            if order.position_qty > 0:
-                order.intent = 'B'
-            elif order.position_qty < 0:
-                order.intent = 'S'
-
-            # 清仓时使用前端提交的红利税（用户已在弹窗中确认）
-            if position_qty_before > 0 and order.position_qty <= 0 and dividend_tax > 0:
-                # 从收入中扣除分红税
-                total_income -= dividend_tax
-                # 从 order.profit 中扣除分红税
-                order.profit -= dividend_tax
-
-            order.save()
-
-            # 保存该笔交易后的持仓快照
-            deal.profit = order.profit
-            deal.win_ratio = order.win_ratio
-            deal.risk_amount = order.risk_amount
-            deal.position_qty = order.position_qty
-            deal.avg_cost = order.avg_cost
-            deal.avg_cost_no_fee = order.avg_cost_no_fee
-            deal.dividend_tax = dividend_tax
-            deal.save(update_fields=['profit', 'win_ratio', 'risk_amount', 'position_qty', 'avg_cost', 'avg_cost_no_fee', 'dividend_tax'])
-
-            # deal.save() 会触发 TransHistory.save() → order.recalculate()，覆盖 profit
-            # 因此需要在 deal.save() 后重新设置扣除红利税后的 profit
-            if position_qty_before > 0 and order.position_qty <= 0 and dividend_tax > 0:
-                order.profit -= dividend_tax
-                order.save(update_fields=['profit'])
-
-            # 更新资金配置
+            # 现金到手=成交额-费用-红利税(代扣)；deal_profit 已由 recalculate 含红利税
+            total_income = amount - fee - (dividend_tax if is_tax_case else Decimal('0'))
+            cash_change = total_income
             config.cash += total_income
-            # stock 直接根据当前持仓设置（多头为正，空头为负，平仓为0）
-            # 避免增量计算在反手交易时产生误差
-            config.stock = order.position_cost_no_fee
-            config.total = config.cash + config.stock
-            config.risk += risk_change
-            if config.risk < 0:
-                config.risk = Decimal('0')
-            config.profit += deal_profit - dividend_tax
-            config.save()
+            hist_current = deal_profit
+            config.profit += hist_current
+        config.stock = order.position_cost_no_fee
+        config.total = config.cash + config.stock
+        config.risk += risk_change
+        if config.risk < 0:
+            config.risk = Decimal('0')
+        config.save()
 
-            # 写入资金历史
+        # 资金历史
+        if is_buy:
             CashHistory.snapshot(
-                event=CashHistory.EVENT_SELL,
-                change=total_income,
-                current_profit=deal_profit - dividend_tax,
-                remark=f'卖出{stock_name}{qty}股@{float(price):.{deci}f}元' + (f'，扣红利税{dividend_tax}元' if dividend_tax > 0 else ''),
-                order=order,
-                date=deal_date,
-            )
+                event=CashHistory.EVENT_BUY, change=cash_change,
+                current_profit=hist_current,
+                remark=f'买入{stock_name}{qty}股@{float(price):.{deci}f}元',
+                order=order, date=deal_date)
+        else:
+            CashHistory.snapshot(
+                event=CashHistory.EVENT_SELL, change=cash_change,
+                current_profit=hist_current,
+                remark=f'卖出{stock_name}{qty}股@{float(price):.{deci}f}元'
+                       + (f'，扣红利税{dividend_tax}元' if is_tax_case else ''),
+                order=order, date=deal_date)
 
-    # 清仓时创建/更新复盘记录
+        # 买入：关闭对应关注
+        if is_buy and focus and focus.status == FocusStock.STATUS_WATCHING:
+            focus.status = FocusStock.STATUS_CLOSED
+            focus.close_reason = FocusStock.CLOSE_REASON_BOUGHT
+            focus.close_date = deal_date
+            focus.save()
+            focus.save_history(
+                action=FocusHistory.ACTION_DEAL,
+                comments=f'买入{stock_name}{qty}股@{float(price):.{deci}f}元')
+
     if order and order.pk:
         order.refresh_from_db()
         _create_or_update_review(order)
@@ -421,10 +320,9 @@ def _handle_trans_post(request, market, code, order, focus, stock_name, stock_ca
 # ===================== 交易清单 =====================
 def trans_list(request):
     if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({'error': '无效的JSON'}, status=400)
+        data, err = utils.parse_json_body(request)
+        if err is not None:
+            return err
 
         if 'page' in data or 'per_page' in data:
             if 'page' in data:
@@ -435,23 +333,8 @@ def trans_list(request):
 
         # 股价刷新：只查询当前页的股票
         if 'codes' in data:
-            result = []
-            for code_market in data['codes']:
-                parts = code_market.split('.')
-                if len(parts) != 2:
-                    continue
-                code, market = parts
-                order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_OPEN).first()
-                if order:
-                    deci = 3 if order.cat in ('fund', 'bond') else 2
-                    close, change = quote.get_last_price(order.tscode, deci)
-                    result.append({
-                        'code': order.code,
-                        'market': order.market,
-                        'close': close,
-                        'change': change,
-                        'deci': deci
-                    })
+            result = utils.refresh_prices(
+                data['codes'], TransOrder, 'status', TransOrder.STATUS_OPEN)
             return JsonResponse(result, safe=False, json_dumps_params={'ensure_ascii': False})
 
     items = []
@@ -459,7 +342,7 @@ def trans_list(request):
     pg = utils.paginate_queryset(request, qs, 'trans-list-page')
 
     for o in pg['items']:
-        deci = 3 if o.cat in ('fund', 'bond') else 2
+        deci = utils.price_places(o.cat)
         items.append({
             'code': o.code,
             'market': o.market,
@@ -490,7 +373,7 @@ def get_trans_data_dict(order, history=None):
     if not order:
         return {}
 
-    deci = 3 if order.cat in ('fund', 'bond') else 2
+    deci = utils.price_places(order.cat)
     cat_display = dict(CAT_CHOICES).get(order.cat, order.cat)
     market_display = dict(MARKET_CHOICES).get(order.market, order.market)
 
@@ -552,121 +435,53 @@ def get_trans_data_dict(order, history=None):
 
 def trans_view(request, market, code):
     site = '/trans/view'
-    order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_OPEN).first()
+    order = TransOrder.objects.filter(
+        code=code, market=market, status=TransOrder.STATUS_OPEN).first()
     if not order:
         return redirect('trans_list')
 
     if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({'error': '无效的JSON'}, status=400)
-
+        data, err = utils.parse_json_body(request)
+        if err is not None:
+            return err
         # pilot 切换历史记录
         if 'pilot' in data:
             utils.set_cache(request.session, f'{site}-pilot', int(data['pilot']))
             return JsonResponse({'status': 'success'})
 
-    # 历史记录（所有操作按时间排序）
     histories = list(order.histories.all().order_by('id'))
-    # 进入页面时强制重置为汇总模式（pilot_idx=-1）
+    # 进入页面强制重置为汇总模式（pilot_idx=-1）
     utils.set_cache(request.session, f'{site}-pilot', -1)
     utils.delete_cache(request.session, f'{site}-navi-data')
-    pilot_idx = -1
 
-    is_summary = (pilot_idx < 0)
-    pilot = histories[pilot_idx] if not is_summary and histories else None
+    chart.set_navi_data(request.session, site, code, market, 'trans', 'init')
 
-    # 导航数据
-    navi_data = chart.set_navi_data(request.session, site, code, market, 'trans', 'init')
+    # 汇总数据复用公共字典；模板的 cat/market 字段显示中文
+    initial = get_trans_data_dict(order)
+    initial['cat'] = initial['cat_display']
+    initial['market'] = initial['market_display']
 
-    # 表单初始值
-    deci = 3 if order.cat in ('fund', 'bond') else 2
-    cat_display = dict(CAT_CHOICES).get(order.cat, order.cat)
-    market_display = dict(MARKET_CHOICES).get(order.market, order.market)
-    if is_summary or pilot is None:
-        # 显示当前持仓汇总
-        # 收集所有历史记录中的备注（按近期到远期顺序）
-        comments_list = []
-        for h in reversed(histories):
-            if h.comments:
-                date_str = h.date.strftime('%Y-%m-%d') if h.date else ''
-                comments_list.append(f'{date_str}：{h.comments}')
-        comments_text = '\n'.join(comments_list)
+    deci = utils.price_places(order.cat)
+    chart_init = utils.build_chart_init(
+        site, code, market, order.name, order.cat, back_url='/trans/list')
 
-        initial = {
-            'cat': cat_display,
-            'market': market_display,
-            'code': order.code,
-            'name': order.name,
-            'date': order.open_date.strftime('%Y-%m-%d') if order.open_date else '',
-            'intent': '持仓中',
-            'price': round(float(order.avg_cost), deci) if order.position_qty != 0 else 0,
-            'qty': order.position_qty,
-            'amount': round(float(abs(order.position_cost_no_fee)), 2),
-            'fee': round(float(order.total_fee), 2),
-            'profit': round(float(order.profit), 2),
-            'risk_amount': round(float(order.risk_amount), 2),
-            'target_price': round(float(order.target_price), deci) if order.target_price else '',
-            'stop_price': round(float(order.stop_price), deci) if order.stop_price else '',
-            'win_ratio': order.win_ratio if order.position_qty != 0 else 0,
-            'allowed_qty': 0,
-            'comments': comments_text,
-        }
-        latest_history = histories[-1] if histories else None
-    else:
-        # 显示历史记录
-        h = pilot
-        initial = {
-            'cat': cat_display,
-            'market': market_display,
-            'code': order.code,
-            'name': order.name,
-            'date': h.date.strftime('%Y-%m-%d') if h.date else '',
-            'intent': h.get_action_display(),
-            'price': round(float(h.price), deci) if h.price else 0,
-            'qty': h.qty,
-            'amount': round(float(h.amount), 2),
-            'fee': round(float(h.fee), 2),
-            'profit': round(float(h.profit), 2),
-            'risk_amount': round(float(h.risk_amount), 2),
-            'target_price': round(float(h.target_price), deci) if h.target_price else '',
-            'stop_price': round(float(h.stop_price), deci) if h.stop_price else '',
-            'win_ratio': h.win_ratio,
-            'allowed_qty': '',
-            'comments': h.comments or '',
-        }
-
-    view_mode = utils.get_cache(request.session, 'view', 'kline')
-    chart_init = {
-        'site': site,
-        'code': code,
-        'market': market,
-        'name': order.name,
-        'cat': order.cat,
-        'view': view_mode,
-        'backUrl': '/trans/list',
-    }
-
-    # 汇总模式下，只有一条历史记录时，传递建仓记录信息给指示器
-    pilot_date = ''
-    pilot_action = ''
-    pilot_qty = ''
-    pilot_price = ''
-    pilot_dividend_amount = ''
-    if is_summary and len(histories) == 1:
+    # 汇总模式且仅一条历史：指示器显示该笔建仓信息
+    pilot_date = pilot_action = pilot_qty = pilot_price = pilot_dividend_amount = ''
+    if len(histories) == 1:
         h0 = histories[0]
         pilot_date = h0.date.strftime('%Y-%m-%d') if h0.date else ''
         pilot_action = h0.get_action_display()
         pilot_qty = h0.qty
         pilot_price = f"{float(h0.price):.{deci}f}" if h0.price else ''
-        pilot_dividend_amount = float(h0.dividend_amount) if h0.action == TransHistory.ACTION_DIVIDEND else ''
+        pilot_dividend_amount = (float(h0.dividend_amount)
+                                  if h0.action == TransHistory.ACTION_DIVIDEND else '')
 
+    cfg = CashConfig.get_config()
     return render(request, 'trans-view.html', {
         'order': order,
         'initial': initial,
-        'is_summary': is_summary,
-        'pilot_idx': pilot_idx,
+        'is_summary': True,
+        'pilot_idx': -1,
         'pilot_total': len(histories),
         'pilot_date': pilot_date,
         'pilot_action': pilot_action,
@@ -674,8 +489,8 @@ def trans_view(request, market, code):
         'pilot_price': pilot_price,
         'pilot_dividend_amount': pilot_dividend_amount,
         'chart': json.dumps(chart_init),
-        'cash': CashConfig.get_config().cash,
-        'available': CashConfig.get_config().allowance - CashConfig.get_config().risk,
+        'cash': cfg.cash,
+        'available': cfg.allowance - cfg.risk,
     })
 
 
@@ -708,23 +523,22 @@ def trans_edit(request, market, code):
             if config.risk < 0:
                 config.risk = Decimal('0')
             config.save()
-            # 记录编辑历史
-            deal = TransHistory.objects.create(
-                order=order,
-                action=TransHistory.ACTION_EDIT,
-                intent=edit_intent,
-                date=datetime.datetime.strptime(update_date, '%Y-%m-%d').date() if update_date else timezone.now().date(),
-                target_price=order.target_price,
-                stop_price=order.stop_price,
-                comments=comments or '修改目标/止损',
-            )
+            # 记录编辑历史（不触发自动重算）
+            edit_date = (datetime.datetime.strptime(update_date, '%Y-%m-%d').date()
+                         if update_date else timezone.now().date())
+            deal = utils.create_deal(
+                TransHistory, order=order, action=TransHistory.ACTION_EDIT,
+                intent=edit_intent, date=edit_date,
+                target_price=order.target_price, stop_price=order.stop_price,
+                comments=comments or '修改目标/止损')
             # 保存该笔编辑后的持仓快照
             deal.profit = order.profit
             deal.win_ratio = order.win_ratio
             deal.risk_amount = order.risk_amount
             deal.position_qty = order.position_qty
             deal.avg_cost = order.avg_cost
-            deal.save(update_fields=['profit', 'win_ratio', 'risk_amount', 'position_qty', 'avg_cost'])
+            deal.save(update_fields=['profit', 'win_ratio', 'risk_amount',
+                                     'position_qty', 'avg_cost'])
             # 写入资金历史（调整计划，无金额变动）
             CashHistory.snapshot(
                 event=CashHistory.EVENT_ADJUST,
@@ -736,7 +550,7 @@ def trans_edit(request, market, code):
             )
         return redirect('trans_view', market=market, code=code)
 
-    deci = 3 if order.cat in ('fund', 'bond') else 2
+    deci = utils.price_places(order.cat)
     cat_display = dict(CAT_CHOICES).get(order.cat, order.cat)
     market_display = dict(MARKET_CHOICES).get(order.market, order.market)
 
@@ -769,21 +583,13 @@ def trans_edit(request, market, code):
         'risk_amount': risk_amount,
         'target_price': round(float(order.target_price), deci) if order.target_price else '',
         'stop_price': round(float(order.stop_price), deci) if order.stop_price else '',
-        'win_ratio': utils.calc_win_ratio(order.avg_cost, order.target_price, order.stop_price) if order.position_qty > 0 else 0,
+        'win_ratio': order.win_ratio if order.position_qty > 0 else 0,
         'allowed_qty': 0,
         'comments': '',
     }
 
-    view_mode = utils.get_cache(request.session, 'view', 'kline')
-    chart_init = {
-        'site': site,
-        'code': code,
-        'market': market,
-        'name': order.name,
-        'cat': order.cat,
-        'view': view_mode,
-        'backUrl': '/trans/list',
-    }
+    chart_init = utils.build_chart_init(
+        site, code, market, order.name, order.cat, back_url='/trans/list')
 
     return render(request, 'trans-edit.html', {
         'order': order,
@@ -806,10 +612,9 @@ def trans_edit(request, market, code):
 @require_http_methods(["POST"])
 def trans_calc(request):
     """交易页面计算接口：成交金额、费用、风险资金、允许数量、盈利机会、预计收益"""
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'error': '无效的JSON'}, status=400)
+    data, err = utils.parse_json_body(request)
+    if err is not None:
+        return err
 
     intent = data.get('intent', 'B')
     market = data.get('market', 'SH')
@@ -818,18 +623,22 @@ def trans_calc(request):
     target_price = float(data.get('target_price', 0) or 0)
     stop_price = float(data.get('stop_price', 0) or 0)
     position_qty = int(data.get('position_qty', 0) or 0)
-    current_risk = float(data.get('current_risk', 0) or 0)
-    avg_cost = float(data.get('avg_cost', 0) or 0)
     avg_cost_no_fee = float(data.get('avg_cost_no_fee', 0) or 0)
+    # 可选参数：前端手动指定费用/分红税时传入（含 0），未传则用默认
+    fee_param = data.get('fee')
+    dividend_tax_param = data.get('dividend_tax')
 
     config = CashConfig.get_config()
 
     # 成交金额
     amount = round(price * qty, 2) if price > 0 and qty > 0 else 0
 
-    # 交易费用
+    # 交易费用：前端传入（含 0）则用用户手动费用，否则自动计算
     fee_info = utils.calc_fee(amount, intent, market, config)
-    fee = float(fee_info['total'])
+    if fee_param is not None:
+        fee = float(fee_param)
+    else:
+        fee = float(fee_info['total'])
 
     # ===== 1. 计算交易后的持仓状态（方向、数量、均价）=====
     new_qty = 0
@@ -879,20 +688,17 @@ def trans_calc(request):
                 new_intent = 'S'
 
     # ===== 2. 计算已实现收益（平仓部分）=====
+    # 本次交易费用全额计入本次平仓收益，不做数量比例分摊，不分摊到后续交易
     realized_profit = 0
     if qty > 0 and price > 0:
         if intent == 'B' and position_qty < 0:
-            # 买入平仓空头
-            short_qty = abs(position_qty)
-            close_qty = min(qty, short_qty)
-            close_fee = fee * (close_qty / qty) if qty > 0 else 0
-            realized_profit = (avg_cost_no_fee - price) * close_qty - close_fee
+            # 买入平仓空头（可能反手做多）
+            close_qty = min(qty, abs(position_qty))
+            realized_profit = (avg_cost_no_fee - price) * close_qty - fee
         elif intent == 'S' and position_qty > 0:
-            # 卖出平仓多头
-            long_qty = position_qty
-            close_qty = min(qty, long_qty)
-            close_fee = fee * (close_qty / qty) if qty > 0 else 0
-            realized_profit = (price - avg_cost_no_fee) * close_qty - close_fee
+            # 卖出平仓多头（可能反手做空）
+            close_qty = min(qty, position_qty)
+            realized_profit = (price - avg_cost_no_fee) * close_qty - fee
 
     # ===== 3. 基于交易后持仓计算盈利机会、风险资金、预计收益 =====
     # 盈利机会
@@ -920,7 +726,19 @@ def trans_calc(request):
             buy_fee = float(utils.calc_fee(buy_amount, 'B', market, config)['total'])
             unrealized_profit = (new_avg_no_fee - target_price) * abs(new_qty) - buy_fee
 
-    profit = round(realized_profit + unrealized_profit, 2)
+    # 分红税：前端确认（含手动修改）后传入，从预计收益中扣除
+    if dividend_tax_param is not None:
+        dividend_tax = float(dividend_tax_param)
+    else:
+        dividend_tax = 0
+
+    # 本次交易费用：有平仓时已全额计入已实现收益；无平仓时全额从预计收益扣除
+    has_close = (qty > 0 and price > 0 and intent == 'B' and position_qty < 0) or \
+                (qty > 0 and price > 0 and intent == 'S' and position_qty > 0)
+    if has_close:
+        profit = round(realized_profit + unrealized_profit - dividend_tax, 2)
+    else:
+        profit = round(realized_profit + unrealized_profit - dividend_tax - fee, 2)
 
     # 允许数量（考虑反向交易，逻辑不变）
     base_allowed = utils.calc_allowed_qty(price, stop_price, intent) if price > 0 else 0
@@ -939,6 +757,7 @@ def trans_calc(request):
         'risk_amount': risk_amount,
         'allowed_qty': allowed_qty,
         'win_ratio': win_ratio,
+        'dividend_tax': round(dividend_tax, 2),
         'profit': profit,
     })
 
@@ -955,10 +774,9 @@ def trans_dividend(request, market, code):
     order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_OPEN).first()
     if not order:
         return JsonResponse({'error': '未找到持仓记录'}, status=404)
-    try:
-        data = json.loads(request.body)
-    except (json.JSONDecodeError, ValueError):
-        return JsonResponse({'error': '无效JSON'}, status=400)
+    data, err = utils.parse_json_body(request)
+    if err is not None:
+        return err
 
     date_str = data.get('date', '')
     try:
@@ -1017,7 +835,7 @@ def trans_dividend(request, market, code):
         config.save()
 
         # 4. 写入分红记录（先创建，供 recalculate 查询累计现金分红）
-        dividend = DividendRecord.objects.create(
+        DividendRecord.objects.create(
             order=order, code=code, name=order.name, market=market,
             date=div_date,
             dividend_type=DividendRecord.DIVIDEND_CASH if cash_amount > 0 else DividendRecord.DIVIDEND_BONUS,
@@ -1037,10 +855,10 @@ def trans_dividend(request, market, code):
             if qty_change > 0:
                 _parts.append(f'送股{qty_change}股')
             deal_comments = '，'.join(_parts)
-        deal = TransHistory.objects.create(
-            order=order, action=TransHistory.ACTION_DIVIDEND,
+        deal = utils.create_deal(
+            TransHistory, order=order, action=TransHistory.ACTION_DIVIDEND,
             intent=order.intent, date=div_date,
-            price=0, qty=qty_change, amount=0, fee=0,
+            price=Decimal('0'), qty=qty_change, amount=Decimal('0'), fee=Decimal('0'),
             dividend_amount=cash_amount,
             target_price=order.target_price, stop_price=order.stop_price,
             comments=deal_comments,
@@ -1091,10 +909,9 @@ def calc_dividend_tax(request, market, code):
     order = TransOrder.objects.filter(code=code, market=market, status=TransOrder.STATUS_OPEN).first()
     if not order:
         return JsonResponse({'error': '未找到持仓记录'}, status=404)
-    try:
-        data = json.loads(request.body)
-    except (json.JSONDecodeError, ValueError):
-        return JsonResponse({'error': '无效JSON'}, status=400)
+    data, err = utils.parse_json_body(request)
+    if err is not None:
+        return err
 
     date_str = data.get('date', '')
     try:

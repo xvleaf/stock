@@ -4,7 +4,7 @@
  * - 单字段AJAX提交
  */
 import { baseInit } from "/static/base/js/base.js";
-import { showAlert, showConfirm, getCsrfToken } from "/static/stock/js/func.js";
+import { showAlert, showConfirm, getCsrfToken } from "/static/stock/js/utils.js";
 
 // 字段中文名映射
 const FIELD_LABELS = {
@@ -169,7 +169,7 @@ export function initSetting(saved = false, error = false) {
                         input.value = oldValue;
                         showAlert({ text: result.error || '保存失败', type: 'error' });
                     }
-                } catch (e) {
+                } catch {
                     input.value = oldValue;
                     showAlert({ text: '网络请求失败', type: 'error' });
                 }

@@ -10,7 +10,6 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 import os
-import django_redis
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -24,11 +23,18 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY') 
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # 转换为布尔值
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
+
+# SECRET_KEY 缺失时：开发环境给临时值，生产环境直接报错启动失败
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'django-insecure-dev-only-key-change-me'
+    else:
+        raise RuntimeError('生产环境必须在 .env 中配置 DJANGO_SECRET_KEY')
 
 # 读取 .env 中的 DJANGO_ALLOWED_HOSTS，分割为列表
 # 第2个参数是默认值
@@ -171,17 +177,40 @@ LOGIN_EXEMPT_PATHS = ['/login', '/admin', '/static/']
 # url 允许不以 '/' 结尾
 APPEND_SLASH = False
 
+# =====================================================================
+# 生产环境 HTTPS / Cookie 安全（仅 DEBUG=False 时生效；Nginx 反向代理部署）
+# =====================================================================
+if not DEBUG:
+    # 信任 Nginx 转发的 X-Forwarded-Proto，配合 SSL 重定向判断
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    # 自动把 HTTP 请求重定向到 HTTPS
+    SECURE_SSL_REDIRECT = True
+    # Session / CSRF Cookie 仅 HTTPS 传输
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # HSTS：一年内强制 HTTPS（含子域名、可预加载）
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
 # 服务器端日志文件
 # 确保日志目录存在，否则 FileHandler 在日志配置阶段即抛异常、导致项目无法启动
 os.makedirs(os.path.join(BASE_DIR, 'log'), exist_ok=True)
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'default': {
+            'format': '[{asctime}] {levelname} {name}: {message}',
+            'style': '{',
+        },
+    },
     'handlers': {
         'file': {
             'level': 'INFO',
             'class': 'logging.FileHandler',
             'filename': os.path.join(BASE_DIR, 'log', 'info.log'),
+            'formatter': 'default',
         },
     },
     'loggers': {
@@ -189,6 +218,12 @@ LOGGING = {
             'handlers': ['file'],
             'level': 'INFO',
             'propagate': True,
+        },
+        # 业务代码统一 logger（utils/各视图/抓取模块）
+        'stock': {
+            'handlers': ['file'],
+            'level': 'INFO',
+            'propagate': False,
         },
     },
 }

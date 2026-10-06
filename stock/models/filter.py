@@ -132,7 +132,7 @@ class FilterConfig(models.Model):
     stop_loss_ratio = models.DecimalField('添加关注止损价', max_digits=5, decimal_places=2, default=Decimal('0.98'))
 
     class Meta:
-        db_table = 'filter_config'
+        db_table = 'models_filter_config'
         verbose_name = '筛选配置'
         verbose_name_plural = verbose_name
 

@@ -1,4 +1,3 @@
-import os
 from . import ashare
 from .config import get_quote_interval
 

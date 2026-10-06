@@ -1,5 +1,5 @@
 import {RESIZE_DELAY_LAYOUT, isMainNavHidden, getMainNavHeight} from '../../base/js/base.js';
-import { showAlert, getCsrfToken } from './func.js';
+import { showAlert, postRequest } from './utils.js';
 
 let originalThead = null;
 let fixedHeaderWrap = null;
@@ -222,11 +222,7 @@ export function initPagination(postUrl) {
     if (!pag) return;
 
     function saveAndReload(patch) {
-        fetch(postUrl, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
-            body: JSON.stringify(patch),
-        }).then(() => { window.location.reload(); });
+        postRequest(postUrl, patch).then(() => { window.location.reload(); });
     }
 
     pag.querySelector('.page-prev')?.addEventListener('click', (e) => {

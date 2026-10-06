@@ -239,6 +239,8 @@ class TransOrder(models.Model):
                 sell_qty += d.qty
                 sell_amount += d.price * d.qty
                 sell_fee += d.fee
+                # 本笔卖出固化的红利税计入损益（清多头/反手做空时由前端确认）
+                profit -= d.dividend_tax
 
         self.buy_qty = buy_qty
         self.sell_qty = sell_qty
@@ -337,13 +339,19 @@ class TransHistory(models.Model):
         action = '买入' if self.intent == self.INTENT_BUY else '卖出'
         return f'{action} {self.order.code} {self.qty}@{self.price}'
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # True 时 save 不触发订单自动重算（多步流程中由调用方统一 recalculate 一次）
+        self._skip_recalc = False
+
     def save(self, *args, **kwargs):
         if self.action not in (self.ACTION_EDIT, self.ACTION_DIVIDEND):
             self.amount = (Decimal(str(self.price)) * self.qty).quantize(Decimal('0.01'))
         elif self.action == self.ACTION_DIVIDEND:
             self.amount = Decimal('0')
         super().save(*args, **kwargs)
-        self.order.recalculate()
+        if not self._skip_recalc:
+            self.order.recalculate()
 
     def delete(self, *args, **kwargs):
         order = self.order

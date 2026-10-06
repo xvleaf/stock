@@ -1,19 +1,13 @@
-import os
 import json
-import datetime
-from decimal import Decimal
-import pandas as pd
+
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.shortcuts import render, get_object_or_404, redirect
-from django.utils import timezone
-from ..fetch import tushare, kline, trend, quote
+from django.shortcuts import render
+from ..fetch import kline, trend, quote
 from . import focus
 from .. import utils
-from ..models import (SectorList, StockList, FocusStock, FocusHistory, TransOrder,
-                            TransHistory, FilterTask, FilterResult, ReviewList)
-from ..forms import FocusStockForm, TransHistoryForm, CashConfigForm, CAT_CHOICES, MARKET_CHOICES, INTENT_CHOICES
+from ..models import (SectorList, StockList, FocusStock, TransOrder,
+                            FilterResult, ReviewList)
 
 NAVI_PARAMS_INIT = {
     'showNavi': False,
@@ -46,10 +40,9 @@ MARK_CONFIG_INIT = {
 
 @require_http_methods(["POST"])
 def chart_data_api(request):
-    try:
-        params = json.loads(request.body)
-    except json.JSONDecodeError:
-        return _json_error('无效JSON')
+    params, err = utils.parse_json_body(request)
+    if err is not None:
+        return err
     params_site= params.get('site', '')
     params_func = params.get('func')
     params_code = params.get('code', None)
@@ -75,10 +68,9 @@ def chart_data_api(request):
 @require_http_methods(["POST"])
 def check_focus_api(request):
     """检查股票是否已关注，未关注时返回最后一个 EMA 值"""
-    try:
-        params = json.loads(request.body)
-    except json.JSONDecodeError:
-        return _json_error('无效JSON')
+    params, err = utils.parse_json_body(request)
+    if err is not None:
+        return err
 
     code = params.get('code')
     market = params.get('market')
@@ -111,11 +103,10 @@ def check_focus_api(request):
     return JsonResponse({'focused': False, 'ema': ema})
 
 
-@require_http_methods(["POST"])
 def _build_chart_response(request, site, code, market, name, cat, view_mode):
     """
     构建图表页面响应的共用函数：返回 (html_content, context_dict)
-    消除 navi/pilot 路径与通用路径中的重复代码（构建 context、设置 backUrl、获取 page_config、渲染模板）
+    内部辅助函数（非视图，故不加 require_http_methods）。
     """
     context = {
         'site': site,
@@ -153,10 +144,9 @@ def chart_view_api(request):
     """
     处理图表视图切换、参数更新，返回新的图表 HTML 片段
     """
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'error': '无效JSON'}, status=400)
+    data, err = utils.parse_json_body(request)
+    if err is not None:
+        return err
 
     param_func = data.get('func')
     param_value = data.get('value')
@@ -281,7 +271,7 @@ def chart_view_api(request):
                                     pilot_action = history.get_action_display()
                                 pilot_qty = history.qty
                                 cat = detail.get('cat', 'stock')
-                                deci = 3 if cat in ('fund', 'bond') else 2
+                                deci = utils.price_places(cat)
                                 pilot_price = f"{float(history.price):.{deci}f}"
                                 # 分红时携带现金分红金额，供前端 transPilotIndicator 与 tooltip 一致描述
                                 pilot_dividend_amount = float(history.dividend_amount) if history.action == TransHistory.ACTION_DIVIDEND else ''
@@ -390,7 +380,7 @@ def chart_view_api(request):
 
 
 def get_page_config(session, site, cat):
-    deci = 3 if cat in ('fund', 'bond') else 2
+    deci = utils.price_places(cat)
         
     trend_params_map = {
         '/focus/view': {'plus': False, 'exit': True, 'edit': True, 'deal': True, 'divd': False},
@@ -466,29 +456,8 @@ def get_mark_config(session, site, navi_data):
             'focus': 1 if focused else 0,
             'status': instance.mark if instance else ''
         }
-    elif site == '/stocks/view':
-        # 板块股票等通用股票页：显示 关注/标记/隐藏 按钮
-        if navi_data:
-            get_site, code, market = navi_data.get('site_code_market')
-            if get_site == site:
-                instance = StockList.objects.filter(code=code, market=market).first()
-                focused = FocusStock.objects.filter(
-                    code=code, market=market, status=FocusStock.STATUS_WATCHING).exists()
-            else:
-                return MARK_CONFIG_INIT
-        else:
-            return MARK_CONFIG_INIT
-
-        mark_config = {
-            'showMark': True,
-            'showFocus': True,
-            'showStatus': True,
-            'showHide': True,
-            'focus': 1 if focused else 0,
-            'status': instance.mark if instance else ''
-        }
-    elif site == '/refer/view':
-        # 筛选对比结果页：显示 关注/标记/隐藏 按钮
+    elif site in ('/stocks/view', '/refer/view'):
+        # 板块股票页 / 筛选对比结果页：显示 关注/标记/隐藏 按钮（两页逻辑一致）
         if navi_data:
             get_site, code, market = navi_data.get('site_code_market')
             if get_site == site:
@@ -680,7 +649,6 @@ def set_navi_data(session, site, code, market, function, action, navi_id=None):
 
     # kline-deadline: 历史模式下设为该笔日期，汇总模式下删除
     if pilot_idx >= 0 and pilot_list and 0 <= pilot_idx < len(pilot_list):
-        pilot_id = pilot_list[pilot_idx][0]
         pilot_date = pilot_list[pilot_idx][1]
         deadline = pilot_date.strftime('%Y%m%d')
         utils.set_cache(
@@ -723,63 +691,53 @@ def set_navi_data(session, site, code, market, function, action, navi_id=None):
     return navi_data
 
 
+# 清单页 → view 页 custom navi 的缓存 key 映射
+CUSTOM_NAVI_KEYS = {
+    '/sector/view': 'sector-view-custom-navi',
+    '/filter/view': 'filter-view-custom-navi',
+    '/stocks/view': 'stocks-view-custom-navi',
+    '/refer/view': 'refer-view-custom-navi',
+}
+
+
+def _get_custom_navi(site, session):
+    """优先返回清单页传入的 custom navi；无（未设置/为空/无session）则返回 None，调用方走 fallback。"""
+    key = CUSTOM_NAVI_KEYS.get(site)
+    if not key or not session:
+        return None
+    custom = utils.get_cache(session, key)
+    return [tuple(x) for x in custom] if custom else None
+
+
 def get_navi_list(site, session=None):
     if site == '/focus/view':
         qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).order_by('sort_order')
-        navi_list = list(qs.values_list('id', 'code', 'market')) 
-
-    elif site == '/trans/view':
+        return list(qs.values_list('id', 'code', 'market'))
+    if site == '/trans/view':
         qs = TransOrder.objects.filter(status=TransOrder.STATUS_OPEN).order_by('-created_at')
-        navi_list = list(qs.values_list('id', 'code', 'market')) 
-    elif site == '/sector/view':
-        # 优先使用板块清单传入的自定义 navi 列表（标记筛选后）；否则用全部板块
-        custom = utils.get_cache(session, 'sector-view-custom-navi') if session else None
-        if custom:
-            navi_list = [tuple(x) for x in custom]
-        else:
-            qs = SectorList.objects.all()
-            navi_list = list(qs.values_list('id', 'code', 'market'))
-    elif site == '/filter/view':
-        # 优先使用对比页传入的自定义 navi 列表；否则用当前 task 全部结果
-        custom = utils.get_cache(session, 'filter-view-custom-navi') if session else None
-        if custom:
-            navi_list = [tuple(x) for x in custom]
-        else:
-            task_id = utils.get_cache(session, 'filter-current-task') if session else None
-            qs = FilterResult.objects.filter(task_id=task_id).exclude(hide='1').order_by('sort_order', 'id')
-            navi_list = list(qs.values_list('id', 'code', 'market'))
-    elif site == '/stocks/view':
-        # 优先使用板块股票清单传入的自定义 navi 列表；否则用全部未 hide 股票
-        custom = utils.get_cache(session, 'stocks-view-custom-navi') if session else None
-        if custom:
-            navi_list = [tuple(x) for x in custom]
-        else:
-            qs = StockList.objects.exclude(hide='1').order_by('code')
-            navi_list = list(qs.values_list('id', 'code', 'market'))
-    elif site == '/refer/view':
-        # 优先使用筛选对比页传入的自定义 navi 列表；否则用全部未 hide 股票
-        custom = utils.get_cache(session, 'refer-view-custom-navi') if session else None
-        if custom:
-            navi_list = [tuple(x) for x in custom]
-        else:
-            qs = StockList.objects.exclude(hide='1').order_by('code')
-            navi_list = list(qs.values_list('id', 'code', 'market'))
-    elif site == '/review/focus/view':
-        # 从 ReviewList 中查询 focus 类型的记录（与复盘列表页面一致，不去重）
-        qs = ReviewList.objects.filter(
-            review_type=ReviewList.TYPE_FOCUS
-        ).order_by('-close_date', '-id')
-        navi_list = [(r.id, r.code, r.market) for r in qs]
-    elif site == '/review/trans/view':
-        # 从 ReviewList 中查询 trans 类型的记录（与复盘列表页面一致，不去重）
-        qs = ReviewList.objects.filter(
-            review_type=ReviewList.TYPE_TRANS
-        ).order_by('-close_date', '-id')
-        navi_list = [(r.id, r.code, r.market) for r in qs]
-    else:
-        navi_list = []
+        return list(qs.values_list('id', 'code', 'market'))
 
-    return navi_list
+    # 优先使用清单页传入的 custom navi（标记筛选/板块成分等）
+    custom = _get_custom_navi(site, session)
+    if custom is not None:
+        return custom
+
+    if site == '/sector/view':
+        return list(SectorList.objects.all().values_list('id', 'code', 'market'))
+    if site == '/filter/view':
+        task_id = utils.get_cache(session, 'filter-current-task') if session else None
+        qs = FilterResult.objects.filter(task_id=task_id).exclude(hide='1').order_by('sort_order', 'id')
+        return list(qs.values_list('id', 'code', 'market'))
+    if site in ('/stocks/view', '/refer/view'):
+        qs = StockList.objects.exclude(hide='1').order_by('code')
+        return list(qs.values_list('id', 'code', 'market'))
+    if site == '/review/focus/view':
+        qs = ReviewList.objects.filter(review_type=ReviewList.TYPE_FOCUS).order_by('-close_date', '-id')
+        return [(r.id, r.code, r.market) for r in qs]
+    if site == '/review/trans/view':
+        qs = ReviewList.objects.filter(review_type=ReviewList.TYPE_TRANS).order_by('-close_date', '-id')
+        return [(r.id, r.code, r.market) for r in qs]
+    return []
 
 
 def get_pilot_list(site, code, market, navi_id=None):
@@ -958,68 +916,3 @@ def _get_stock_detail(site, code, market, history_id=None, history_type=None, na
 
 def _json_error(msg, status=400):
     return JsonResponse({'error': msg}, status=status)
-
-
-# 备用
-def _navi_switch(site, current_code, direction):
-    if site == '/focus/view':
-        qs = FocusStock.objects.filter(status=FocusStock.STATUS_WATCHING).order_by('sort_order', '-focus_date')
-        codes = list(qs.values_list('code', flat=True))
-    elif site == 'trans/view':
-        qs = TransOrder.objects.filter(status=TransOrder.STATUS_OPEN).order_by('-created_at')
-        codes = list(qs.values_list('code', flat=True))
-    elif site == 'review/view':
-        # 已交易复盘：左右切换不同股票
-        all_closed = TransOrder.objects.filter(status=TransOrder.STATUS_CLOSED).order_by('close_date')
-        stock_latest = {}
-        for o in all_closed:
-            if o.code not in stock_latest or o.close_date > stock_latest[o.code].close_date:
-                stock_latest[o.code] = o
-        unique_stocks = list(stock_latest.values())
-        unique_stocks.sort(key=lambda x: x.close_date, reverse=True)
-        codes = [s.code for s in unique_stocks]
-        if not codes or current_code not in codes:
-            return JsonResponse({'code': current_code, 'url': f'/review/view/{current_code}/'})
-        idx = codes.index(current_code)
-        if direction == 'prev' and idx > 0:
-            target = codes[idx - 1]
-        elif direction == 'next' and idx < len(codes) - 1:
-            target = codes[idx + 1]
-        else:
-            target = current_code
-        orders = TransOrder.objects.filter(code=target, status=TransOrder.STATUS_CLOSED).order_by('close_date')
-        round_num = len(orders)
-        return JsonResponse({'code': target, 'url': f'/review/view/{target}/?round={round_num}'})
-    elif site == '/review/focus/view':
-        # 从 ReviewList 中查询 focus 类型的记录
-        qs = ReviewList.objects.filter(
-            review_type=ReviewList.TYPE_FOCUS
-        ).order_by('-close_date', '-id')
-        codes = []
-        for r in qs:
-            if r.code not in codes:
-                codes.append(r.code)
-        if not codes or current_code not in codes:
-            return JsonResponse({'code': current_code, 'url': f'/review/focus/view/{current_code}/'})
-        idx = codes.index(current_code)
-        if direction == 'prev' and idx > 0:
-            target = codes[idx - 1]
-        elif direction == 'next' and idx < len(codes) - 1:
-            target = codes[idx + 1]
-        else:
-            target = current_code
-        return JsonResponse({'code': target, 'url': f'/review/focus/view/{target}/'})
-    else:
-        codes = []
-
-    # 处理其他站点...
-    if not codes or current_code not in codes:
-        return JsonResponse({'code': current_code})
-    idx = codes.index(current_code)
-    if direction == 'prev' and idx > 0:
-        target = codes[idx - 1]
-    elif direction == 'next' and idx < len(codes) - 1:
-        target = codes[idx + 1]
-    else:
-        target = current_code
-    return JsonResponse({'code': target})

@@ -2,14 +2,17 @@
 import json, requests, datetime
 import pandas as pd
 
+# 外部行情请求统一超时（秒），避免无响应时无限挂起
+HTTP_TIMEOUT = 10
+
 # --- 腾讯日线 ---  2025-12-21 正常使用
-def get_price_day_tx(code, end_date='', count=10, frequency='1d'):     # 日线获取  
-    unit = 'week' if frequency in '1w' else 'month' if frequency in '1M' else 'day'
+def get_price_day_tx(code, end_date='', count=10, frequency='1d'):     # 日线获取
+    unit = 'week' if frequency == '1w' else 'month' if frequency == '1M' else 'day'
     if end_date:
         end_date = end_date.strftime('%Y-%m-%d') if isinstance(end_date, datetime.date) else end_date.split(' ')[0]
     end_date = '' if end_date == datetime.datetime.now().strftime('%Y-%m-%d') else end_date
-    URL = f'http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={code},{unit},,{end_date},{count},qfq'
-    st = json.loads(requests.get(URL).content)
+    URL = f'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={code},{unit},,{end_date},{count},qfq'
+    st = json.loads(requests.get(URL, timeout=HTTP_TIMEOUT).content)
     ms = 'qfq' + unit
     stk = st['data'][code]
     buf = stk[ms] if ms in stk else stk[unit]       # 指数返回不是 qfqday，是 day
@@ -24,8 +27,8 @@ def get_price_min_tx(code, end_date=None, count=10, frequency='1d'):    # 分钟
     ts = int(frequency[:-1]) if frequency[:-1].isdigit() else 1
     if end_date:
         end_date = end_date.strftime('%Y-%m-%d') if isinstance(end_date, datetime.date) else end_date.split(' ')[0]
-    URL = f'http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={code},m{ts},,{count}'
-    st = json.loads(requests.get(URL).content)
+    URL = f'https://ifzq.gtimg.cn/appstock/app/kline/mkline?param={code},m{ts},,{count}'
+    st = json.loads(requests.get(URL, timeout=HTTP_TIMEOUT).content)
     buf = st['data'][code]['m' + str(ts)]
     df = pd.DataFrame(buf, columns=['time', 'open', 'close', 'high', 'low', 'volume', 'n1', 'n2'])
     df = df[['time', 'open', 'close', 'high', 'low', 'volume']]
@@ -46,8 +49,8 @@ def get_price_sina(code, end_date='', count=10, frequency='60m'):    # 新浪全
         end_date = pd.to_datetime(end_date) if not isinstance(end_date, datetime.date) else end_date
         unit = 4 if frequency == '1200m' else 29 if frequency == '7200m' else 1
         count = count + (datetime.datetime.now() - end_date).days // unit
-    URL = f'http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={code}&scale={ts}&ma=5&datalen={count}'
-    dstr = json.loads(requests.get(URL).content)
+    URL = f'https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={code}&scale={ts}&ma=5&datalen={count}'
+    dstr = json.loads(requests.get(URL, timeout=HTTP_TIMEOUT).content)
     df = pd.DataFrame(dstr, columns=['day', 'open', 'high', 'low', 'close', 'volume'])
     df['open'] = df['open'].astype(float)
     df['high'] = df['high'].astype(float)
@@ -61,21 +64,21 @@ def get_price_sina(code, end_date='', count=10, frequency='60m'):    # 新浪全
         return df[df.index <= end_date][-mcount:]
     return df
 
-def get_price(code, end_date='', count=10, frequency='1d', fields=[]):        # 对外暴露只有唯一函数
+def get_price(code, end_date='', count=10, frequency='1d', fields=None):        # 对外暴露只有唯一函数
     xcode = code.replace('.XSHG', '').replace('.XSHE', '')
     xcode = 'sh' + xcode if ('XSHG' in code) else 'sz' + xcode if ('XSHE' in code) else code
 
     if frequency in ['1d', '1w', '1M']:   # 日线、周线、月线
-        try:            
+        try:
             return get_price_day_tx(xcode, end_date=end_date, count=count, frequency=frequency)
-        except:
+        except Exception:
             return get_price_sina(xcode, end_date=end_date, count=count, frequency=frequency)
     if frequency in ['1m', '5m', '15m', '30m', '60m']:  # 分钟线
-        if frequency in '1m':
+        if frequency == '1m':
             return get_price_min_tx(xcode, end_date=end_date, count=count, frequency=frequency)
         try:
             return get_price_sina(xcode, end_date=end_date, count=count, frequency=frequency)
-        except:
+        except Exception:
             return get_price_min_tx(xcode, end_date=end_date, count=count, frequency=frequency)
 
 if __name__ == '__main__':

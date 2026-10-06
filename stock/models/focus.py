@@ -1,6 +1,5 @@
 from django.db import models
 from django.utils import timezone
-from decimal import Decimal
 
 
 # ===================== 股票列表 =====================
@@ -56,7 +55,7 @@ class FocusStock(models.Model):
     target_price = models.DecimalField('目标价格', max_digits=10, decimal_places=3, default=0)
     stop_price = models.DecimalField('止损价格', max_digits=10, decimal_places=3, default=0)
     allowed_qty = models.IntegerField('允许数量', default=0)
-    win_ratio = models.DecimalField('盈利概率', max_digits=5, decimal_places=2, default=0)
+    win_ratio = models.IntegerField('盈利概率', default=0)
 
     status = models.CharField('状态', max_length=10, choices=STATUS_CHOICES,
                               default=STATUS_WATCHING, db_index=True)
@@ -87,13 +86,6 @@ class FocusStock(models.Model):
     @property
     def tscode(self):
         return f'{self.code}.{self.market}'
-
-    @property
-    def risk_reward_ratio(self):
-        buy = self.plan_price
-        if buy and self.target_price and self.stop_price and buy > self.stop_price:
-            return (self.target_price - buy) / (buy - self.stop_price)
-        return Decimal('0')
 
     def save_history(self, action='edit', comments=''):
         """保存当前关注信息到历史记录"""
@@ -140,7 +132,7 @@ class FocusHistory(models.Model):
     plan_qty = models.IntegerField('计划数量', default=0)
     target_price = models.DecimalField('目标价格', max_digits=10, decimal_places=3, default=0)
     stop_price = models.DecimalField('止损价格', max_digits=10, decimal_places=3, default=0)
-    win_ratio = models.DecimalField('盈利概率', max_digits=5, decimal_places=2, default=0)
+    win_ratio = models.IntegerField('盈利概率', default=0)
     comments = models.TextField('备注', blank=True, default='')
 
     class Meta:

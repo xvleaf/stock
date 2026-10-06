@@ -1,5 +1,5 @@
 import { Highcharts, initPageElements, hideChartPlaceholder, pageConfig } from './chart.js';
-import { postRequest, priceDecimal, setPriceDecimal, showChartError } from './func.js';
+import { postRequest, priceDecimal, setPriceDecimal, showChartError } from './utils.js';
 
 export let trendChart = null;
 let trendTimer = null;
@@ -242,16 +242,18 @@ function updateTrendChart() {
     if (!trendChart) return;
     if (ohlcNewData.length === 0) return;
 
+    // 时间戳 → 索引映射，O(1) 定位（替代逐个 findIndex 的 O(n²)）
+    const tsIndex = new Map(ohlcData.map((point, i) => [point[0], i]));
+
     // 按时间戳查找并更新已有数据
     for (let i = 0; i < ohlcNewData.length; i++) {
         const newPoint = ohlcNewData[i];
-        const ts = newPoint[0];
-        const idx = ohlcData.findIndex(item => item[0] === ts);
-        if (idx !== -1) {
+        const idx = tsIndex.get(newPoint[0]);
+        if (idx !== undefined) {
             ohlcData[idx] = newPoint;
             volumeData[idx] = volumeNewData[i];
         } else {
-            console.warn('时间戳未找到，可能数据不一致:', ts);
+            console.warn('时间戳未找到，可能数据不一致:', newPoint[0]);
         }
     }
 

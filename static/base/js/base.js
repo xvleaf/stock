@@ -256,7 +256,7 @@ export function handleWindowScroll() {
     }
 }
 // ====================== Highcharts 全局配置 ======================
-function initHighchartsConfig() {
+function initHighchartsConfig(signal) {
     if (typeof window.Highcharts === 'undefined') return;
     // 拦截 Highcharts startTime 相关报错，避免控制台噪音
     window.addEventListener('error', function(e) {
@@ -265,7 +265,7 @@ function initHighchartsConfig() {
             e.stopPropagation();
             return true;
         }
-    }, true);
+    }, { capture: true, signal });
     // 禁用无障碍功能，减少控制台警告
     window.Highcharts.setOptions({
         accessibility: {
@@ -291,7 +291,7 @@ export function baseInit() {
     pageContent = document.getElementById('pageContent');
     gapEl = document.getElementById('gap');
     // Highcharts 全局配置
-    initHighchartsConfig();
+    initHighchartsConfig(signal);
     // 开启初始化保护
     isInitializing = true;
     subMenuAbortController = new AbortController();

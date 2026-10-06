@@ -1,4 +1,4 @@
-import { postRequest, updateFormData, initScrollFold, showChartError, showConfirm, showAlert, showFormModal, getCsrfToken } from './func.js';
+import { postRequest, updateFormData, initScrollFold, showChartError, showConfirm, showAlert, showFormModal, setBackAndGo } from './utils.js';
 import { trendChart, initTrendChart, destroyTrendChart, clearTrendTimer } from './trend.js';
 import { klineChart, initKlineChart, destroyKlineChart, refreshKlineDensity, getCurrentEma } from './kline.js';
 import { changeFreq as klineChangeFreq, toggleRight as klineToggleRight } from './kline.js';
@@ -239,7 +239,7 @@ export function hideChartPlaceholder() {
 export function initPageElements() {
     const nameItem = document.getElementById('nameItem');
     const codeItem = document.getElementById('codeItem');
-    const nameAct = pageConfig.cat == 'stock' ? true : false;
+    const nameAct = pageConfig.cat === 'stock';
 
     if (nameItem) {
         nameItem.textContent = pageConfig.name;
@@ -260,18 +260,9 @@ export function initPageElements() {
         // 股票 view（cat=stock）：点击 code 进入该股票的所属板块列表
         else if (pageConfig.cat === 'stock') {
             codeItem.classList.add('pointer');
-            codeItem.onclick = () => {
-                // 先 AJAX 设置返回来源，再跳转
-                fetch(`/stocks/sectors/${pageConfig.market}/${pageConfig.code}`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
-                    body: JSON.stringify({ set_back: window.location.pathname }),
-                }).then(() => {
-                    window.location.href = `/stocks/sectors/${pageConfig.market}/${pageConfig.code}`;
-                }).catch(() => {
-                    window.location.href = `/stocks/sectors/${pageConfig.market}/${pageConfig.code}`;
-                });
-            };
+            const sectorsUrl = `/stocks/sectors/${pageConfig.market}/${pageConfig.code}`;
+            // 先 AJAX 设置返回来源，再跳转
+            codeItem.onclick = () => setBackAndGo(sectorsUrl, window.location.pathname, sectorsUrl);
         }
     }
     
@@ -320,37 +311,30 @@ export function initPageElements() {
 // 本地重绘标记按钮（不发请求）
 function renderMarkButtons() {
     const mk = pageConfig.mark || {};
-    const focusMark = document.getElementById('focusMark');
-    const majorMark = document.getElementById('majorMark');
-    const minorMark = document.getElementById('minorMark');
-    const hideMark = document.getElementById('hideMark');
-
-    if (mk.showFocus && focusMark) {
-        const on = mk.focus === 1 || mk.focus === '1';
-        const icon = on ? 'tabler:current-location-filled' : 'tabler:current-location';
-        focusMark.innerHTML = `<iconify-icon icon="${icon}" style="width:1em;height:1em;"></iconify-icon>`;
-        focusMark.classList.remove('d-none');
-        focusMark.onclick = focusAction;
-    }
-    if (majorMark) {
-        const on = mk.status === '1';
-        const icon = on ? 'tabler:hexagon-number-1-filled' : 'tabler:hexagon-number-1';
-        majorMark.innerHTML = `<iconify-icon icon="${icon}" style="width:1em;height:1em;"></iconify-icon>`;
-        majorMark.classList.remove('d-none');
-        majorMark.onclick = () => markAction('major');
-    }
-    if (minorMark) {
-        const on = mk.status === '2';
-        const icon = on ? 'tabler:hexagon-number-2-filled' : 'tabler:hexagon-number-2';
-        minorMark.innerHTML = `<iconify-icon icon="${icon}" style="width:1em;height:1em;"></iconify-icon>`;
-        minorMark.classList.remove('d-none');
-        minorMark.onclick = () => markAction('minor');
-    }
-    if (mk.showHide && hideMark) {
-        hideMark.innerHTML = '<iconify-icon icon="tabler:hexagon-minus" style="width:1em;height:1em;"></iconify-icon>';
-        hideMark.classList.remove('d-none');
-        hideMark.onclick = hideAction;
-    }
+    // 标记按钮统一配置：显示条件 / 选中态 / 图标 / 点击行为
+    const markDefs = [
+        { el: document.getElementById('focusMark'), show: mk.showFocus,
+          on: mk.focus === 1 || mk.focus === '1',
+          filled: 'tabler:current-location-filled', outline: 'tabler:current-location',
+          click: focusAction },
+        { el: document.getElementById('majorMark'), show: true, on: mk.status === '1',
+          filled: 'tabler:hexagon-number-1-filled', outline: 'tabler:hexagon-number-1',
+          click: () => markAction('major') },
+        { el: document.getElementById('minorMark'), show: true, on: mk.status === '2',
+          filled: 'tabler:hexagon-number-2-filled', outline: 'tabler:hexagon-number-2',
+          click: () => markAction('minor') },
+        { el: document.getElementById('hideMark'), show: mk.showHide, on: false,
+          filled: 'tabler:hexagon-minus', outline: 'tabler:hexagon-minus',
+          click: hideAction },
+    ];
+    markDefs.forEach(def => {
+        const btn = def.el;
+        if (!btn || !def.show) return;
+        const icon = def.on ? def.filled : def.outline;
+        btn.innerHTML = `<iconify-icon icon="${icon}" style="width:1em;height:1em;"></iconify-icon>`;
+        btn.classList.remove('d-none');
+        btn.onclick = def.click;
+    });
 }
 
 

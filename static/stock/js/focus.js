@@ -1,5 +1,5 @@
 import { chartPageContainer, initChartPage, destroyChart, setPageConfig } from './chart.js';
-import { postRequest, refreshQuotes, getCsrfToken } from './func.js';
+import { postRequest, refreshQuotes } from './utils.js';
 
 // ===================== focus-list 页面 =====================
 export function initFocusList(interval) {
@@ -70,7 +70,7 @@ export function initFocusList(interval) {
         }
     });
 
-    tbody.addEventListener('dragend', (e) => {
+    tbody.addEventListener('dragend', () => {
         if (dragRow) {
             saveSortOrder();
             clearDragState();
@@ -167,7 +167,7 @@ export function initFocusList(interval) {
     }, { passive: false });
 
     // 全局 touchend 和 touchcancel
-    document.addEventListener('touchend', (e) => {
+    document.addEventListener('touchend', () => {
         if (longPressTimer) {
             clearTimeout(longPressTimer);
             longPressTimer = null;
@@ -264,39 +264,22 @@ function createFocusCalc(priceId, targetId, stopId, allowedId, winId, intentSele
         return JSON.stringify(params) !== JSON.stringify(lastParams);
     }
 
-    function requestCalc() {
+    async function requestCalc() {
         const params = collectParams();
         if (!isParamsChanged(params)) return;
         lastParams = { ...params };
 
-        fetch('/focus/calc', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCsrfToken(),
-            },
-            body: JSON.stringify(params),
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.error) return;
-            if (allowedInput) allowedInput.value = data.allowed_qty;
-            if (winInput) winInput.value = data.win_ratio;
+        const data = await postRequest('/focus/calc', params);
+        if (!data || data.error) return;
+        if (allowedInput) allowedInput.value = data.allowed_qty;
+        if (winInput) winInput.value = data.win_ratio;
 
-            // 超限检查：计划数量超过允许数量时变红
-            const planQtyInput = document.getElementById('id_plan_qty');
-            const planQty = parseInt(planQtyInput?.value) || 0;
-            const allowedQty = parseInt(data.allowed_qty) || 0;
-            const overLimit = planQty > allowedQty && allowedQty > 0;
-            if (planQtyInput) {
-                if (overLimit) {
-                    planQtyInput.classList.add('text-danger');
-                } else {
-                    planQtyInput.classList.remove('text-danger');
-                }
-            }
-        })
-        .catch(() => {});
+        // 超限检查：计划数量超过允许数量时变红
+        const planQtyInput = document.getElementById('id_plan_qty');
+        const planQty = parseInt(planQtyInput?.value) || 0;
+        const allowedQty = parseInt(data.allowed_qty) || 0;
+        const overLimit = planQty > allowedQty && allowedQty > 0;
+        if (planQtyInput) planQtyInput.classList.toggle('text-danger', overLimit);
     }
 
     function scheduleCalc() {
@@ -375,7 +358,9 @@ export function initFocusPlus(config) {
         }
 
         nameFetchTimer = setTimeout(() => {
-            fetch(`/api/stock-name?code=${code}&market=${market}&cat=${cat}`)
+            // URLSearchParams 自动编码，避免特殊字符拼接
+            const qs = new URLSearchParams({ code, market, cat }).toString();
+            fetch(`/api/stock-name?${qs}`)
                 .then(r => r.json())
                 .then(data => {
                     if (data.name) {

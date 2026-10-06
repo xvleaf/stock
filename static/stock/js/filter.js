@@ -1,10 +1,8 @@
 import { chartPageContainer, initChartPage, setPageConfig } from './chart.js';
-import { postRequest, getCsrfToken, showRadioModal, showConfirm, showAlert, showFormModal } from './func.js';
+import { postRequest, escapeHtml, showRadioModal, showConfirm, showAlert, showFormModal } from './utils.js';
 
 // ===================== filter-list 结果清单 =====================
 export function initFilterList(opts = {}) {
-    const tbody = document.getElementById('stockBody');
-
     // 存 session 后回到干净的 /filter/list
     function savePref(patch) {
         postRequest('/filter/list', patch).then(() => {
@@ -74,7 +72,6 @@ function compareCard(opt) {
     const rkindOpts = [['ema', 'EMA'], ['ma', 'MA'], ['prc', '价格']]
         .map(([v, t]) => `<option value="${v}" ${v === (opt.right_kind || 'ema') ? 'selected' : ''}>${t}</option>`).join('');
     const opOpts = OP_OPTS.map(([v, t]) => `<option value="${v}" ${v === (opt.op || '>') ? 'selected' : ''}>${t}</option>`).join('');
-    const isPrc = opt.right_kind === 'prc';
     return `
         <div class="cond-head">
             <span class="fw-bold small">比较条件</span>
@@ -92,7 +89,7 @@ function compareCard(opt) {
         </div>
         <div class="cond-row mt-2">
             <div class="field"><label>K线周期</label><select class="cmp-freq form-select form-select-sm">${freqOpts}</select></div>
-            <div class="field"><label>观察窗口</label><input class="cmp-window form-control form-control-sm" type="number" value="${opt.window || 10}"></div>
+            <div class="field"><label>观察窗口</label><input class="cmp-window form-control form-select-sm" type="number" value="${opt.window || 10}"></div>
             <div class="field"><label>满足条件</label><input class="cmp-min form-control form-control-sm" type="number" value="${opt.min_count || 8}"></div>
         </div>
     `;
@@ -284,7 +281,7 @@ export function initFilterRun({ parentId, lastConditions, runningState }) {
         document.querySelectorAll('#condList select, #condList input').forEach(el => el.disabled = false);
         // 恢复 PRC 模式下左值的只读状态
         document.querySelectorAll('#condList .cond-card').forEach(card => {
-            if (typeof updateCompareMode === 'function') updateCompareMode(card);
+            updateCompareMode(card);
         });
     }
     function showRunning(done, total) {
@@ -309,7 +306,7 @@ export function initFilterRun({ parentId, lastConditions, runningState }) {
         unlockConditions();
     }
 
-    // 轮询进度
+    // 轮询进度（GET 状态）
     function startPolling() {
         stopPolling();
         pollTimer = setInterval(async () => {
@@ -328,7 +325,7 @@ export function initFilterRun({ parentId, lastConditions, runningState }) {
                 } else if (data.status === 'stopped') {
                     stopPolling();
                     hideRunning();
-                    statusBox.classList.remove('d-none');
+                    statusBox.classList.add('d-none');
                     statusBox.textContent = '筛选已强制终止，数据已回滚。';
                 } else if (data.status === 'timeout') {
                     stopPolling();
@@ -336,7 +333,7 @@ export function initFilterRun({ parentId, lastConditions, runningState }) {
                     statusBox.classList.remove('d-none');
                     statusBox.textContent = '筛选超时（2小时），已强制终止并回滚。';
                 }
-            } catch (e) { /* 忽略轮询错误 */ }
+            } catch { /* 忽略轮询错误 */ }
         }, 2000);
     }
     function stopPolling() {
@@ -386,7 +383,6 @@ export function initFilterRun({ parentId, lastConditions, runningState }) {
 }
 
 
-// ===================== filter-refer 对比 =====================
 // ===================== filter-config 历史管理 =====================
 export function initFilterConfig() {
     document.addEventListener('click', async (e) => {
@@ -412,7 +408,6 @@ export function initFilterConfig() {
         if (filterBtn) {
             const res = await postRequest('/filter/list', { parent_id: filterBtn.dataset.id });
             if (res && res.status === 'success') window.location.href = '/filter/run';
-            return;
         }
     });
 
@@ -435,7 +430,7 @@ export function initFilterConfig() {
             initialValues[input.id] = input.value;
         });
 
-        function validateAndSave() {
+        async function validateAndSave() {
             const filterTimeout = document.getElementById('filterTimeoutInput').value.trim();
             const targetProfit = document.getElementById('targetProfitInput').value.trim();
             const stopLoss = document.getElementById('stopLossInput').value.trim();
@@ -457,32 +452,21 @@ export function initFilterConfig() {
             // 检查是否有变化
             let hasChange = false;
             autoSaveInputs.forEach(input => {
-                if (input.value !== initialValues[input.id]) {
-                    hasChange = true;
-                }
+                if (input.value !== initialValues[input.id]) hasChange = true;
             });
             if (!hasChange) return;
 
-            fetch('/filter/config/save', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
-                body: JSON.stringify({
-                    filter_timeout: parseInt(filterTimeout),
-                    target_profit_ratio: parseFloat(targetProfit),
-                    stop_loss_ratio: parseFloat(stopLoss),
-                }),
-            }).then(res => res.json()).then(data => {
-                if (data.status === 'success') {
-                    autoSaveInputs.forEach(input => {
-                        initialValues[input.id] = input.value;
-                    });
-                    showAlert({ type: 'success', text: '保存成功' });
-                } else {
-                    showAlert({ type: 'error', text: data.message || '保存失败' });
-                }
-            }).catch(() => {
-                showAlert({ type: 'error', text: '请求失败，请重试' });
+            const data = await postRequest('/filter/config/save', {
+                filter_timeout: parseInt(filterTimeout),
+                target_profit_ratio: parseFloat(targetProfit),
+                stop_loss_ratio: parseFloat(stopLoss),
             });
+            if (data && data.status === 'success') {
+                autoSaveInputs.forEach(input => { initialValues[input.id] = input.value; });
+                showAlert({ type: 'success', text: '保存成功' });
+            } else {
+                showAlert({ type: 'error', text: (data && data.message) || '请求失败，请重试' });
+            }
         }
 
         autoSaveInputs.forEach(input => {
@@ -497,59 +481,38 @@ export function initFilterConfig() {
             showConfirm({
                 title: '刷新板块关联',
                 text: '确定要重建板块关联吗？',
-            }).then((confirmed) => {
+            }).then(async (confirmed) => {
                 if (!confirmed) return;
                 rebuildBtn.disabled = true;
                 rebuildBtn.textContent = '正在刷新...';
-                fetch('/sector/rebuild', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
-                    body: JSON.stringify({}),
-                }).then(res => res.json()).then(data => {
-                    if (data.status === 'success') {
-                        showAlert({ type: 'success', text: '刷新已开始，完成后自动生效' });
-                    } else {
-                        showAlert({ type: 'error', text: data.message || '刷新失败' });
-                        rebuildBtn.disabled = false;
-                        rebuildBtn.textContent = '刷新板块关联';
-                    }
-                }).catch(() => {
-                    showAlert({ type: 'error', text: '请求失败，请重试' });
+                const data = await postRequest('/sector/rebuild', {});
+                if (data && data.status === 'success') {
+                    showAlert({ type: 'success', text: '刷新已开始，完成后自动生效' });
+                } else {
+                    showAlert({ type: 'error', text: (data && data.message) || '刷新失败' });
                     rebuildBtn.disabled = false;
                     rebuildBtn.textContent = '刷新板块关联';
-                });
+                }
             });
         });
     }
 }
 
+
 // ===================== filter-refer 对比页面 =====================
 export function initFilterRefer(opts = {}) {
     const { tasks = [], hasSelection = false, defaultA = null, defaultB = null, scope = 'all' } = opts;
 
-    // HTML 转义
-    function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str == null ? '' : String(str);
-        return div.innerHTML;
-    }
-
     // 保存并刷新
     function saveAndReload(patch) {
-        fetch('/refer/list', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
-            body: JSON.stringify(patch),
-        }).then(() => { window.location.reload(); });
+        postRequest('/refer/list', patch).then(() => { window.location.reload(); });
     }
 
-    // 从对比列表进入 view
+    // 从对比列表进入 view：先标记 from_view 再跳转
     function goReferView(market, code) {
-        fetch('/refer/list', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
-            body: JSON.stringify({ from_view: '1' }),
-        }).then(() => { window.location.href = `/refer/view/${market}/${code}`; });
+        postRequest('/refer/list', { from_view: '1' }).then(() => {
+            window.location.href = `/refer/view/${market}/${code}`;
+        });
     }
 
     // 任务A变化时，联动更新任务B
@@ -632,9 +595,7 @@ export function initFilterRefer(opts = {}) {
             options: [['all', '全部'], ['both', '共有'], ['only_a', '仅A'], ['only_b', '仅B']],
             defaultValue: scope,
         }).then((value) => {
-            if (value !== null) {
-                saveAndReload({ scope: value, page: 1 });
-            }
+            if (value !== null) saveAndReload({ scope: value, page: 1 });
         });
     });
 }

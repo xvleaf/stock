@@ -1,6 +1,7 @@
-import os
+import logging
 import pandas as pd
 import datetime
+from bisect import bisect_left
 from collections import defaultdict
 from django.http import JsonResponse
 from . import tushare
@@ -9,6 +10,8 @@ from .config import (get_kline_start_date, get_kline_ma_period, get_kline_mv_per
 import akshare as ak
 from .. import utils
 from ..models import TransHistory, TransOrder
+
+logger = logging.getLogger('stock')
 
 
 def _get_kline_ma_config(freq):
@@ -319,16 +322,16 @@ def _build_trade_markers(df, code, market, deci, freq='D'):
         if start_date_dt is not None and h.date < start_date_dt:
             continue
         trade_date = h.date.strftime('%Y-%m-%d')
-        # 找到交易日期之后最近的一个K线日期（>= 交易日期）
-        # K线日期通常是该周期的最后一个交易日（如周五/月末）
-        kline_date = None
-        for d in kline_dates:
-            if d >= trade_date:
-                kline_date = d
-                break
-        # 如果没有找到（交易日期晚于最后一根K线），用最后一根
-        if kline_date is None and kline_dates:
+        # 找到交易日期之后最近的一个K线日期（>= 交易日期）。
+        # kline_dates 已按升序排列，用 bisect 二分查找（O(log K)），替代逐条线性扫描。
+        idx = bisect_left(kline_dates, trade_date)
+        if idx < len(kline_dates):
+            kline_date = kline_dates[idx]
+        elif kline_dates:
+            # 交易日期晚于最后一根K线：用最后一根
             kline_date = kline_dates[-1]
+        else:
+            kline_date = None
         if kline_date is None or kline_date not in date_hl:
             continue
         if h.action == TransHistory.ACTION_BUY:

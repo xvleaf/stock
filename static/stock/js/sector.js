@@ -1,5 +1,5 @@
 import { chartPageContainer, initChartPage, setPageConfig } from './chart.js';
-import { refreshQuotes, showRadioModal, postRequest, getCsrfToken } from './func.js';
+import { refreshQuotes, showRadioModal, postRequest, setBackAndGo } from './utils.js';
 
 export function initSectorList(opts = {}) {
     const tbody = document.getElementById('stockBody');
@@ -33,15 +33,9 @@ export function initSectorList(opts = {}) {
                 e.preventDefault();
                 const m = link.dataset.market;
                 const c = link.dataset.code;
-                fetch(`/sector/view/${m}/${c}`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
-                    body: JSON.stringify({ set_back: `/stocks/sectors/${stockMarket}/${stockCode}` }),
-                }).then(() => {
-                    window.location.href = `/sector/view/${m}/${c}`;
-                }).catch(() => {
-                    window.location.href = `/sector/view/${m}/${c}`;
-                });
+                setBackAndGo(`/sector/view/${m}/${c}`,
+                    `/stocks/sectors/${stockMarket}/${stockCode}`,
+                    `/sector/view/${m}/${c}`);
             });
         });
     }
